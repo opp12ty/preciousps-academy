@@ -1,0 +1,191 @@
+@import "tailwindcss";
+
+/* Precious PS design tokens — navy, royal blue, white, controlled gold. */
+@theme {
+  --color-navy-950: #050f26;
+  --color-navy-900: #081634;
+  --color-navy-800: #0b1f4b;
+  --color-navy-700: #122a63;
+  --color-navy-600: #1b3a7e;
+  --color-royal-700: #1a45c4;
+  --color-royal-600: #1d4ed8;
+  --color-royal-500: #2f66ea;
+  --color-royal-100: #dbe6ff;
+  --color-royal-50: #eef3ff;
+  --color-gold-600: #a8841e;
+  --color-gold-500: #c8a02f;
+  --color-gold-400: #d8b650;
+  --color-gold-100: #f7efd6;
+  --color-gold-50: #fcf8ec;
+  --color-surface: #f5f7fc;
+  --color-ink: #0d1733;
+  --color-muted: #5b6784;
+  --color-line: #e3e8f2;
+  --color-success-600: #047857;
+  --color-success-50: #ecfdf5;
+  --color-danger-600: #c62828;
+  --color-danger-50: #fef2f2;
+  --color-warn-600: #b45309;
+  --color-warn-50: #fffbeb;
+
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-display: var(--font-playfair), Georgia, "Times New Roman", serif;
+
+  --shadow-card: 0 1px 2px rgb(13 23 51 / 0.04), 0 4px 16px -4px rgb(13 23 51 / 0.08);
+  --shadow-lift: 0 12px 40px -12px rgb(11 31 75 / 0.28);
+  --radius-xl: 0.9rem;
+  --radius-2xl: 1.25rem;
+}
+
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Accessible, visible focus everywhere. */
+:focus-visible {
+  outline: 3px solid var(--color-royal-500);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -4rem;
+  z-index: 100;
+  background: var(--color-navy-800);
+  color: white;
+  padding: 0.6rem 1rem;
+  border-radius: 0.5rem;
+}
+.skip-link:focus {
+  top: 1rem;
+}
+
+/* Rich lesson / question text */
+.prose-pps {
+  line-height: 1.75;
+  font-size: 1rem;
+}
+.prose-pps h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--color-navy-800);
+  margin: 1.6rem 0 0.6rem;
+}
+.prose-pps h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 1.2rem 0 0.4rem;
+}
+.prose-pps p {
+  margin: 0.6rem 0;
+}
+.prose-pps ul,
+.prose-pps ol {
+  margin: 0.6rem 0 0.6rem 1.3rem;
+}
+.prose-pps ul {
+  list-style: disc;
+}
+.prose-pps ol {
+  list-style: decimal;
+}
+.prose-pps li {
+  margin: 0.25rem 0;
+}
+.prose-pps .table-wrap {
+  margin: 0.8rem 0;
+  overflow-x: auto;
+  border: 1px solid var(--color-line);
+  border-radius: 0.75rem;
+}
+.prose-pps table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.prose-pps th,
+.prose-pps td {
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid var(--color-line);
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+.prose-pps th {
+  background: var(--color-royal-50);
+  color: var(--color-navy-800);
+  font-weight: 700;
+}
+.prose-pps tbody tr:last-child td {
+  border-bottom: 0;
+}
+.prose-pps code {
+  background: var(--color-royal-50);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.3rem;
+}
+.katex {
+  font-size: 1.06em;
+}
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+}
+
+.bg-grid {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.05) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white;
+  }
+  .print-card {
+    box-shadow: none !important;
+    border: 1px solid #ccd !important;
+  }
+}
