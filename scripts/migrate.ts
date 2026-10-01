@@ -2,13 +2,14 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
+import { migrationUrl } from "../src/server/db/url";
 
 // Arbitrary constant shared by every deployment: serialises concurrent migration runs.
 const MIGRATION_LOCK_ID = 7_391_845_562;
 
 async function main() {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is required");
+  const url = migrationUrl();
+  if (!url) throw new Error("DATABASE_URL (or POSTGRES_URL) is required. Add a Postgres database to the Vercel project (Storage → Neon) or set DATABASE_URL under Settings → Environment Variables.");
   const local = /127\.0\.0\.1|localhost/.test(url);
   // One long-lived connection so the session-level advisory lock covers the migration transaction.
   const pool = new Pool({ connectionString: url, max: 1, idleTimeoutMillis: 0, ssl: local || /sslmode=disable/.test(url) ? undefined : true });

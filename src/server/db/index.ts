@@ -1,6 +1,7 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "./schema";
+import { databaseUrl } from "./url";
 
 export type DB = NodePgDatabase<typeof schema>;
 /** Transaction handle — same query surface as DB. */
@@ -16,7 +17,7 @@ const globalForDb = globalThis as unknown as { __ppsDb?: DB; __ppsPool?: Pool };
  */
 export function getDb(): DB {
   if (globalForDb.__ppsDb) return globalForDb.__ppsDb;
-  const url = process.env.DATABASE_URL;
+  const url = databaseUrl();
   if (!url) {
     throw new Error("DATABASE_URL is not configured. See .env.example and README (Local development).");
   }

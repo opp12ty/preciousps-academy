@@ -7,7 +7,7 @@ import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, 
 function secret(name: "AUTH_SECRET" | "ENCRYPTION_KEY"): Buffer {
   const v = process.env[name];
   if (v && v.length >= 32) return createHash("sha256").update(v).digest();
-  if (process.env.NODE_ENV === "production" && process.env.PreciousPS_ALLOW_INSECURE_SECRETS !== "1") {
+  if (process.env.NODE_ENV === "production" && process.env.PPS_ALLOW_INSECURE_SECRETS !== "1") {
     throw new Error(`${name} must be set (min 32 chars) in production`);
   }
   return createHash("sha256").update(`pps-dev-only-${name}`).digest();

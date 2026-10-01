@@ -9,7 +9,11 @@ const securityHeaders = [
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
 ];
 
+/** APP_URL falls back to the production domain Vercel assigns, so links and QR codes are right without extra setup. */
+const appUrl = process.env.APP_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : undefined);
+
 const nextConfig: NextConfig = {
+  ...(appUrl ? { env: { APP_URL: appUrl } } : {}),
   poweredByHeader: false,
   reactStrictMode: true,
   serverExternalPackages: ["@node-rs/argon2", "pg", "@electric-sql/pglite", "word-extractor", "mammoth", "unpdf", "sharp"],

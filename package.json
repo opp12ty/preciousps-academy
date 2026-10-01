@@ -16,7 +16,8 @@
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/migrate.ts",
     "db:seed": "tsx --env-file-if-exists=.env.local scripts/seed.ts",
     "brand:assets": "node scripts/brand-assets.mjs assets-source/pps-logo-original.jpg",
-    "vercel-build": "npm run db:migrate && npm run db:seed -- --bare && next build",
+    "preflight": "node scripts/preflight.mjs",
+    "vercel-build": "npm run preflight && npm run db:migrate && npm run db:seed -- --bare && next build",
     "verify": "npm run lint && npm run typecheck && npm run test && npm run build",
     "packs:build": "tsx scripts/build-content-packs.mts"
   },

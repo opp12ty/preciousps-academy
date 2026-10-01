@@ -104,7 +104,7 @@ Then open `http://localhost:3000/backend` to create the Super Admin (see below).
 
 1. **Database:** in Vercel → *Storage* → create a **Neon Postgres** database (or use any managed PostgreSQL with point-in-time recovery) and connect it to the project. It provides `DATABASE_URL`.
 2. **Import the GitHub repository** (`folahandaniel-glitch/preciousps-academy`) into your Vercel project/team.
-3. **Environment variables** (Production + Preview): `DATABASE_URL`, `AUTH_SECRET`, `ENCRYPTION_KEY`, `SETUP_TOKEN`, `APP_URL`, `CRON_SECRET`; optional `RESEND_API_KEY`, `EMAIL_FROM`, `ANTHROPIC_API_KEY`. Use **different secrets and databases for Preview and Production**.
+3. **Environment variables** (Production + Preview): `AUTH_SECRET`, `ENCRYPTION_KEY`, `SETUP_TOKEN`, `CRON_SECRET` (generate each with `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`), plus `DATABASE_URL` (set automatically by the Neon integration; `POSTGRES_URL` / `DATABASE_URL_UNPOOLED` are also understood). `APP_URL` is optional — it defaults to the production domain. Optional: `RESEND_API_KEY`, `EMAIL_FROM`, `ANTHROPIC_API_KEY`. Use **different secrets and databases for Preview and Production**. The build runs `npm run preflight` first and stops with a plain checklist if anything required is missing.
 4. **Build:** `vercel.json` runs `npm run vercel-build` = migrations → safe structural seed (`--bare`, no demo content) → `next build`.
 5. Deploy a **Preview**, run the smoke test against it, then promote to **Production** and run it again:
    ```bash
