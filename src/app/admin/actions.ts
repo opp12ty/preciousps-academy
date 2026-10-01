@@ -469,3 +469,16 @@ export async function publishPackAction(importId: string) {
     return r;
   }, "Published. Anything that could not be published yet is listed on this page.");
 }
+
+export async function flushOutboxAction() {
+  return action({ role: "staff", perm: "super.settings" }, async (a, ctx) => {
+    const r = await notifications.flushOutbox(a, ctx);
+    revalidatePath("/admin/notifications");
+    return r;
+  }, "Held e-mails were retried — check the outbox for results.");
+}
+export async function sendTestEmailAction() {
+  return action({ role: "staff", perm: "super.settings" }, async (a, ctx) => {
+    await notifications.sendTestEmail(a, ctx);
+  }, "Test e-mail sent to your address.");
+}

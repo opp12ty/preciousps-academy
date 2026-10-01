@@ -16,7 +16,7 @@ const nextConfig: NextConfig = {
   ...(appUrl ? { env: { APP_URL: appUrl } } : {}),
   poweredByHeader: false,
   reactStrictMode: true,
-  serverExternalPackages: ["@node-rs/argon2", "pg", "@electric-sql/pglite", "word-extractor", "mammoth", "unpdf", "sharp"],
+  serverExternalPackages: ["nodemailer", "@node-rs/argon2", "pg", "@electric-sql/pglite", "word-extractor", "mammoth", "unpdf", "sharp"],
   experimental: {
     serverActions: { bodySizeLimit: "12mb" },
   },

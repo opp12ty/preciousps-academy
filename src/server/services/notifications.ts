@@ -1,4 +1,5 @@
-import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { emailProvider, sendMail } from "../email-provider";
 import { getDb, type Executor } from "../db";
 import { emailOutbox, notificationPreferences, notificationReads, notifications, users } from "../db/schema";
 import { getSetting } from "../settings";
@@ -164,22 +165,22 @@ export function emailTemplate(title: string, body: string, link?: string) {
 <table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden">
 <tr><td style="background:#0b1f4b;padding:20px 24px;color:#fff">
 ${base ? `<img src="${base}/brand/logo-mark-128.png" width="40" height="40" alt="Precious PS" style="vertical-align:middle;margin-right:10px">` : ""}
-<strong style="font-size:16px;letter-spacing:.04em">Precious PS Academy</strong><br><span style="font-size:12px;color:#d4af37">Precious PS Academy</span></td></tr>
+<strong style="font-size:16px;letter-spacing:.04em">Precious PS Academy</strong><br><span style="font-size:12px;color:#d4af37">Building Brighter Minds for a Greater Tomorrow</span></td></tr>
 <tr><td style="padding:24px"><h1 style="font-size:18px;margin:0 0 12px">${esc(title)}</h1>
 <p style="font-size:14px;line-height:1.6;white-space:pre-line">${esc(body)}</p>
 ${link ? `<p><a href="${esc(base + link)}" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Open Precious PS Academy</a></p>` : ""}
-</td></tr><tr><td style="padding:16px 24px;font-size:11px;color:#64748b;border-top:1px solid #e2e8f0">Learn. Practise. Test. Improve.</td></tr>
+</td></tr><tr><td style="padding:16px 24px;font-size:11px;color:#64748b;border-top:1px solid #e2e8f0">Building Brighter Minds for a Greater Tomorrow</td></tr>
 </table></td></tr></table></body></html>`;
 }
 
 /**
- * Queues an e-mail. Delivery runs through the configured provider (RESEND_API_KEY);
+ * Queues an e-mail. Delivery runs through the configured provider (Resend or SMTP);
  * without one, messages are HELD in the outbox for Super Admin review — never
  * silently dropped and never claimed as sent.
  */
 export async function queueEmail(schoolId: string, to: string, subject: string, html: string, db: Executor = getDb()) {
   const cfg = await getSetting(schoolId, "notifications", db);
-  const status = cfg.emailEnabled && process.env.RESEND_API_KEY ? "QUEUED" : "HELD";
+  const status = cfg.emailEnabled && emailProvider() ? "QUEUED" : "HELD";
   const [row] = await db.insert(emailOutbox).values({ schoolId, toEmail: to, subject, html, status }).returning({ id: emailOutbox.id });
   if (status === "QUEUED") await deliver(row.id, db).catch(() => undefined);
 }
@@ -188,13 +189,8 @@ async function deliver(id: string, db: Executor) {
   const [m] = await db.select().from(emailOutbox).where(eq(emailOutbox.id, id)).limit(1);
   if (!m || m.status !== "QUEUED") return;
   try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: process.env.EMAIL_FROM ?? "Precious PS Academy <no-reply@example.com>", to: m.toEmail, subject: m.subject, html: m.html }),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const cfg = await getSetting(m.schoolId, "notifications", db);
+    await sendMail({ to: m.toEmail, subject: m.subject, html: m.html }, cfg.fromName);
     await db.update(emailOutbox).set({ status: "SENT", sentAt: new Date() }).where(eq(emailOutbox.id, id));
   } catch (e) {
     await db.update(emailOutbox).set({ status: "FAILED", error: (e as Error).message.slice(0, 300) }).where(eq(emailOutbox.id, id));
@@ -208,4 +204,36 @@ export async function outboxStats(schoolId: string) {
     .where(eq(emailOutbox.schoolId, schoolId))
     .groupBy(emailOutbox.status);
   return Object.fromEntries(rows.map((r) => [r.status, r.n]));
+}
+
+/** Sends messages that were HELD (or FAILED) while no provider was configured. Needs a provider and e-mail enabled. */
+export async function flushOutbox(actor: Actor, ctx: ReqCtx) {
+  if (!emailProvider()) throw new AppError("VALIDATION", "No e-mail provider is configured yet. Add RESEND_API_KEY or SMTP settings on the server first.");
+  const db = getDb();
+  const cfg = await getSetting(actor.schoolId, "notifications", db);
+  if (!cfg.emailEnabled) throw new AppError("VALIDATION", "E-mail notifications are switched off. Turn them on in Settings → Notifications first.");
+  const rows = await db
+    .select({ id: emailOutbox.id })
+    .from(emailOutbox)
+    .where(and(eq(emailOutbox.schoolId, actor.schoolId), inArray(emailOutbox.status, ["HELD", "FAILED"])))
+    .orderBy(emailOutbox.createdAt)
+    .limit(100);
+  for (const r of rows) await db.update(emailOutbox).set({ status: "QUEUED", error: null }).where(eq(emailOutbox.id, r.id));
+  for (const r of rows) await deliver(r.id, db);
+  const stats = await outboxStats(actor.schoolId);
+  await audit({ actor, action: "notifications.outbox_flushed", entityType: "email_outbox", entityId: actor.schoolId, summary: `Retried ${rows.length} held/failed e-mails` }, ctx);
+  return { attempted: rows.length, stats };
+}
+
+/** Sends a test message to the signed-in administrator so the provider can be verified end to end. */
+export async function sendTestEmail(actor: Actor, ctx: ReqCtx) {
+  if (!emailProvider()) throw new AppError("VALIDATION", "No e-mail provider is configured yet. Add RESEND_API_KEY or SMTP settings on the server first.");
+  if (!actor.email) throw new AppError("VALIDATION", "Your account has no e-mail address.");
+  const cfg = await getSetting(actor.schoolId, "notifications");
+  try {
+    await sendMail({ to: actor.email, subject: "Test e-mail from Precious PS Academy", html: emailTemplate("E-mail delivery works", "This is a test message sent from Admin → Notifications. Your e-mail provider is configured correctly.") }, cfg.fromName);
+  } catch (e) {
+    throw new AppError("VALIDATION", `The provider rejected the message: ${(e as Error).message.slice(0, 200)}`);
+  }
+  await audit({ actor, action: "notifications.test_email", entityType: "email_outbox", entityId: actor.schoolId, summary: "Sent a test e-mail" }, ctx);
 }

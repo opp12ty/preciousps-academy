@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { emailProvider, EMAIL_SETUP_HINT } from "@/server/email-provider";
 import Link from "next/link";
 import { requireStaffPage } from "@/server/http";
 import { getSettings } from "@/server/settings";
@@ -161,7 +162,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
             <Card>
               <CardHeader title="Notifications & email" />
               <div className="p-5 space-y-4">
-                {!process.env.RESEND_API_KEY && <Alert tone="info">E-mail delivery provider is not configured (RESEND_API_KEY). Messages are held in the outbox — nothing is silently dropped or falsely marked as sent.</Alert>}
+                {!emailProvider() && <Alert tone="info">E-mail delivery provider is not configured. Messages are held in the outbox — nothing is silently dropped or falsely marked as sent. {EMAIL_SETUP_HINT}</Alert>}
                 <SettingsForm settingKey="notifications" initial={st.notifications} fields={F([
                   { key: "emailEnabled", label: "Send e-mail notifications", type: "bool" },
                   { key: "fromName", label: "Sender name", type: "text" },

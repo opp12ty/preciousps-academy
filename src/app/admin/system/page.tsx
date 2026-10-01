@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { emailProvider } from "@/server/email-provider";
 import { sql } from "drizzle-orm";
 import { CheckCircle2, CircleAlert, XCircle } from "lucide-react";
 import { requireStaffPage } from "@/server/http";
@@ -37,7 +38,7 @@ export default async function SystemPage() {
     { label: "Secrets (AUTH_SECRET / ENCRYPTION_KEY)", state: env("AUTH_SECRET") && env("ENCRYPTION_KEY") ? "ok" : "warn", detail: env("AUTH_SECRET") && env("ENCRYPTION_KEY") ? "Configured" : "Using development fallbacks — set in production" },
     { label: "Scheduled maintenance (CRON_SECRET)", state: env("CRON_SECRET") ? "ok" : "warn", detail: env("CRON_SECRET") ? "Configured (auto-submit, expiry sync, reminders)" : "Not configured — lazy expiry still runs on every request" },
     { label: "Overdue exam attempts", state: c.overdue ? "warn" : "ok", detail: c.overdue ? `${c.overdue} awaiting auto-submit (processed on next access or cron)` : "None" },
-    { label: "E-mail delivery", state: env("RESEND_API_KEY") ? "ok" : "off", detail: env("RESEND_API_KEY") ? "Provider configured" : "Not configured — messages held in outbox" },
+    { label: "E-mail delivery", state: emailProvider() ? "ok" : "off", detail: emailProvider() ? `Provider configured (${emailProvider()})` : "Not configured — messages held in outbox" },
     { label: "AI provider", state: aiConfigured() ? "ok" : "off", detail: aiConfigured() ? "Anthropic API key present" : "Not configured" },
     { label: "Backups", state: "warn", detail: "Managed by your PostgreSQL provider. Verify point-in-time recovery is enabled there — this app cannot confirm it." },
   ];

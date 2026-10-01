@@ -136,7 +136,7 @@ The same acceptance flow was also exercised end-to-end through the running produ
 
 | Live | Prepared (architecture in place, not yet switched on) | Not implemented by design |
 |---|---|---|
-| Everything in *What's included* | E-mail delivery (needs `RESEND_API_KEY`; held in outbox until then) · AI generation (needs `ANTHROPIC_API_KEY`) · OCR for scanned PDFs (detected and flagged; upload an OCR'd .docx) · certificates issuance (verification live) · parent portal (guardian link table) · teacher portal (teacher role live) · push/SMS/WhatsApp · multi-school tenancy · additional UI languages · essay/file-upload/rubric grading | Payments (Paystack/Flutterwave) — no payment instructions are shown anywhere. Mobile apps are not built or published; the API is ready for them. |
+| Everything in *What's included* | E-mail delivery (needs `RESEND_API_KEY` or `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS`; held in outbox until then) · AI generation (needs `ANTHROPIC_API_KEY`) · OCR for scanned PDFs (detected and flagged; upload an OCR'd .docx) · certificates issuance (verification live) · parent portal (guardian link table) · teacher portal (teacher role live) · push/SMS/WhatsApp · multi-school tenancy · additional UI languages · essay/file-upload/rubric grading | Payments (Paystack/Flutterwave) — no payment instructions are shown anywhere. Mobile apps are not built or published; the API is ready for them. |
 
 Backups are provided by the managed PostgreSQL service (e.g. Neon point-in-time restore). This app cannot confirm that they are enabled — check your provider settings.
 

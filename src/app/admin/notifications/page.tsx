@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { OutboxButtons } from "@/components/admin/action-wrappers";
+import { emailProvider, EMAIL_SETUP_HINT } from "@/server/email-provider";
 import { desc, eq, isNull, and } from "drizzle-orm";
 import { can } from "@/core/permissions";
 import { requireStaffPage } from "@/server/http";
@@ -68,7 +70,8 @@ export default async function AdminNotifications() {
       {can(s.actor, "super.settings") && (
         <Card>
           <CardHeader title="E-mail outbox" description={`Queued ${stats.QUEUED ?? 0} · Sent ${stats.SENT ?? 0} · Held ${stats.HELD ?? 0} · Failed ${stats.FAILED ?? 0}`} />
-          {!process.env.RESEND_API_KEY && <div className="px-5 pt-4"><Alert tone="info">No e-mail provider is configured, so messages are HELD here (not sent). Set RESEND_API_KEY and EMAIL_FROM, then enable e-mail in Settings.</Alert></div>}
+          {emailProvider() && <div className="px-5 pt-4"><OutboxButtons /></div>}
+          {!emailProvider() && <div className="px-5 pt-4"><Alert tone="info">No e-mail provider is configured, so messages are HELD here (not sent). {EMAIL_SETUP_HINT}</Alert></div>}
           <Table>
             <thead><tr><Th>To</Th><Th>Subject</Th><Th>Status</Th><Th>Created</Th></tr></thead>
             <tbody>
