@@ -192,7 +192,7 @@ export const CONTENT_DEFAULTS = {
     intro: "Getting started with Precious PS Academy takes only a few minutes.",
     sections: [
       { heading: "1. Register", body: "Create your student account with your class (JSS 1–SSS 3) and, for SS students, your department. Choose a strong password — at least 10 characters with letters, numbers and a symbol." },
-      { heading: "2. Get your access code", body: "Need an Access Code? To get an access code, reach the Super Admin to get your code (08067578112)." },
+      { heading: "2. Get your access code", body: "Need an Access Code? To get an access code, reach the Super Admin to get your code (08169267383)." },
       { heading: "3. Activate", body: "Enter your code on your dashboard. Your access period starts the moment you activate it, not before." },
       { heading: "4. Learn, practise, test, improve", body: "Study lessons, complete classwork, sit mock CBT examinations and track your improvement." },
     ],
@@ -202,7 +202,7 @@ export const CONTENT_DEFAULTS = {
   faq: {
     title: "Frequently asked questions",
     items: [
-      { q: "How do I get an access code?", a: "Need an Access Code? To get an access code, reach the Super Admin to get your code (08067578112)." },
+      { q: "How do I get an access code?", a: "Need an Access Code? To get an access code, reach the Super Admin to get your code (08169267383)." },
       { q: "When does my access start?", a: "Your access period begins the moment you first activate your code — not when the code was created. Your dashboard shows the exact expiry date and a live countdown." },
       { q: "Can I share my access code?", a: "No. Each code becomes linked to one student account when it is activated and cannot be used on another account." },
       { q: "What happens if my network drops during an exam?", a: "Your answers are saved continuously. Reconnect and reopen the exam — you continue where you stopped. The timer is kept by our server, so it keeps running while you are away." },
@@ -215,11 +215,11 @@ export const CONTENT_DEFAULTS = {
   contact: {
     title: "Contact us",
     intro: "We're here to help students, parents and schools.",
-    phone: "08067578112",
+    phone: "08169267383",
     email: "",
     address: "Precious PS Academy, Nigeria",
     hours: "Monday – Friday, 8:00am – 5:00pm (WAT)",
-    accessNote: "Need an Access Code? To get an access code, reach the Super Admin to get your code (08067578112).",
+    accessNote: "Need an Access Code? To get an access code, reach the Super Admin to get your code (08169267383).",
   },
   privacy: {
     title: "Privacy Policy",
@@ -247,7 +247,7 @@ Authorised school administrators can see your account information, results and l
 Results and academic records are retained to keep historical results auditable. You may request correction of inaccurate information, or ask about deletion where the law permits, by contacting the school.
 
 ## Contact
-Questions about privacy? Contact Precious PS Academy on 08067578112.`,
+Questions about privacy? Contact Precious PS Academy on 08169267383.`,
   },
   terms: {
     title: "Terms and Conditions",

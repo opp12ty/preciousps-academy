@@ -23,7 +23,7 @@ A production-grade learning and computer-based-testing platform for secondary sc
 
 | Area | Highlights |
 |---|---|
-| **Public website** | Home (hero, students-in-uniform artwork, CTAs), About, Subjects, CBT Practice, Mock Exams, JAMB/WAEC/NECO pages, Study Centre, How It Works, FAQ, Contact, Privacy, Terms, Register, Login. Every text block is CMS-editable with version history. Footer credit *“Powered by Fodan Softnet Inc (+234 806 757 8112)”* (editable) with a small **Backend access** link. |
+| **Public website** | Home (hero, students-in-uniform artwork, CTAs), About, Subjects, CBT Practice, Mock Exams, JAMB/WAEC/NECO pages, Study Centre, How It Works, FAQ, Contact, Privacy, Terms, Register, Login. Every text block is CMS-editable with version history. Footer credit *“Powered by PreciousPS (08169267383)”* (editable) with a small **Backend access** link. |
 | **Branding** | Official logo and school-building hero image by default; Super Admin can replace logo, favicon, hero, banners, result/certificate logos, signature and stamp, and set brand colours — all from Admin → Branding. Menus, footer, principal’s message, class-level cards, exam-prep cards and every page are editable in Admin → Homepage & content (versioned). |
 | **Accounts** | Student registration with all specified fields, live password-strength meter, **show/hide on every password field** (one reusable component), Argon2id hashing, lockout, rate limiting, session/device management, forgot/reset password, forced password change. |
 | **Sections (JSS & SS)** | Every class belongs to a section: **Junior Secondary** (JSS 1–JSS 3, one Junior Secondary group with the Basic Education subjects — Basic Science, Basic Technology, Social Studies, Security Education, Business Studies, Home Economics, PHE, Cultural & Creative Arts, French, Yoruba/Igbo/Hausa, plus shared Mathematics, English, Civic Education, CRS/IRS, Agriculture, Computer Studies, History) or **Senior Secondary** (SSS 1–SSS 3, Science/Commercial/Arts). Topics, lessons, questions, examinations, assignments, resources and announcements are scoped to a section (or explicitly to all sections), enforced on the server: a JSS student never sees SS content, a JSS exam never draws SS questions, and vice versa. JSS students are placed automatically at registration; moving a student (e.g. JSS3 → SS1) re-validates the department. BECE is a first-class exam type with its own public preparation page. |
@@ -148,4 +148,4 @@ Backups are provided by the managed PostgreSQL service (e.g. Neon point-in-time 
 - Seed demo content only in non-production databases (`npm run db:seed`); production uses `--bare`.
 
 ---
-Built for Precious PS Academy (JSS 1 – SSS 3). Powered by Fodan Softnet Inc (+234 806 757 8112).
+Built for Precious PS Academy (JSS 1 – SSS 3). Powered by PreciousPS (08169267383).

@@ -337,7 +337,7 @@ describe("Access administration", () => {
     await adjustAccess(superAdmin, p.id, { action: "END", reason: "Simulated expiry" }, ctx);
     const s = await getAccessState(studentA.id);
     expect(s.status).toBe("ENDED");
-    expect(s.message).toContain("08067578112");
+    expect(s.message).toContain("08169267383");
     await expectCode(requireActiveAccess(studentA.id), "ACCESS_EXPIRED");
     await expectCode(openLesson(studentA, (await db.select().from(S.lessons).limit(1))[0].id, ctx), "ACCESS_EXPIRED");
     // Historical result remains visible after expiry.

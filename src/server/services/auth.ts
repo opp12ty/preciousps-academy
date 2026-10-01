@@ -228,7 +228,7 @@ export async function login(raw: unknown, portal: LoginPortal, ctx: ReqCtx) {
   }
   if (u.status === "SUSPENDED") {
     await audit({ schoolId: u.schoolId, action: "auth.login_blocked_suspended", entityType: "user", entityId: u.id }, ctx);
-    throw new AppError("ACCOUNT_SUSPENDED", "This account is suspended. Please contact the Super Admin (08067578112).");
+    throw new AppError("ACCOUNT_SUSPENDED", "This account is suspended. Please contact the Super Admin (08169267383).");
   }
   const isStudent = u.userType === "STUDENT";
   if ((portal === "student") !== isStudent) {
