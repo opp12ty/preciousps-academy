@@ -81,8 +81,9 @@ export async function registerStudent(raw: unknown, ctx: ReqCtx) {
   const placement = await resolvePlacement(schoolId, input.classId, input.departmentId, db);
 
   const passwordHash = await hashPassword(input.password);
+  let user: { id: string };
   try {
-    const user = await db.transaction(async (tx) => {
+    user = await db.transaction(async (tx) => {
       const [u] = await tx
         .insert(users)
         .values({
@@ -112,6 +113,22 @@ export async function registerStudent(raw: unknown, ctx: ReqCtx) {
       });
       return u;
     });
+  } catch (e) {
+    // Only the account insert is mapped to "already exists" — matched on the exact unique index that fired.
+    const err = e as { code?: string; cause?: { code?: string; constraint?: string }; constraint?: string };
+    const constraint = err.constraint ?? err.cause?.constraint ?? "";
+    if (err.code === "23505" || err.cause?.code === "23505") {
+      if (constraint === "users_email_uq") throw new AppError("DUPLICATE", "An account with this email already exists.", { email: ["This email is already registered."] });
+      if (constraint === "students_number_uq") throw new AppError("DUPLICATE", "This Student ID is already registered.", { studentNumber: ["This Student ID is already registered."] });
+      if (constraint === "students_username_uq") throw new AppError("DUPLICATE", "This username is taken.", { username: ["This username is taken."] });
+      console.error("[pps] registration unique violation on", constraint || "unknown constraint");
+      throw new AppError("DUPLICATE", "These details clash with an existing account. Check your Student ID and username.");
+    }
+    throw e;
+  }
+  // The account now exists. Audit and the welcome message are best-effort: a failure here must never
+  // make a successful registration look like an error (which would push the student to register twice).
+  try {
     await audit({ schoolId, action: "auth.register", entityType: "user", entityId: user.id, summary: `Student registered: ${input.email}`, actor: { id: user.id, schoolId, userType: "STUDENT" } }, ctx);
     await notifyUser({
       schoolId,
@@ -121,18 +138,10 @@ export async function registerStudent(raw: unknown, ctx: ReqCtx) {
       body: "Your account is ready. Activate your access code from the dashboard to unlock CBT, the Study Centre and more.",
       link: "/student",
     });
-    return { userId: user.id, schoolId };
   } catch (e) {
-    const code = (e as { code?: string; cause?: { code?: string; constraint?: string }; constraint?: string });
-    const constraint = code.constraint ?? code.cause?.constraint ?? "";
-    if (code.code === "23505" || code.cause?.code === "23505") {
-      if (constraint.includes("email")) throw new AppError("DUPLICATE", "An account with this email already exists.", { email: ["This email is already registered."] });
-      if (constraint.includes("number")) throw new AppError("DUPLICATE", "This Student ID is already registered.", { studentNumber: ["This Student ID is already registered."] });
-      if (constraint.includes("username")) throw new AppError("DUPLICATE", "This username is taken.", { username: ["This username is taken."] });
-      throw new AppError("DUPLICATE", "An account with these details already exists.");
-    }
-    throw e;
+    console.error("[pps] post-registration step failed", (e as Error).message);
   }
+  return { userId: user.id, schoolId };
 }
 
 export const loginSchema = z.object({
