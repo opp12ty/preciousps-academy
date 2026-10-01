@@ -52,3 +52,6 @@ next-env.d.ts
 
 # built content packs (npm run packs:build)
 /content-packs
+
+# local secret notes (never commit)
+vercel-secrets.txt
