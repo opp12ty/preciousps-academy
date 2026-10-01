@@ -11,6 +11,7 @@ import { readFormFile } from "@/server/files";
 import type { ContentKey } from "@/content/defaults";
 import { putSetting, type SettingKey } from "@/server/settings";
 import { audit } from "@/server/audit";
+import { clearAllRateLimits } from "@/server/rate-limit";
 import * as authSvc from "@/server/services/auth";
 import * as access from "@/server/services/access";
 import * as people from "@/server/services/people";
@@ -481,4 +482,12 @@ export async function sendTestEmailAction() {
   return action({ role: "staff", perm: "super.settings" }, async (a, ctx) => {
     await notifications.sendTestEmail(a, ctx);
   }, "Test e-mail sent to your address.");
+}
+
+export async function clearRateLimitsAction() {
+  return action({ role: "staff", perm: "super.security" }, async (a, ctx) => {
+    const n = await clearAllRateLimits();
+    await audit({ actor: a, action: "security.rate_limits_cleared", entityType: "rate_limit", entityId: a.schoolId, summary: `Cleared ${n} rate-limit counters` }, ctx);
+    return { cleared: n };
+  }, "All rate-limit blocks were cleared.");
 }

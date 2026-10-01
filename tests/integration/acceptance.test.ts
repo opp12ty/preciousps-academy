@@ -557,7 +557,7 @@ describe("Junior Secondary (JSS1–JSS3)", () => {
     const { attemptId } = await startAttempt(jss2, exam.id, crypto.randomUUID(), jssCtx);
     const picked = await db.select({ level: S.questions.level }).from(S.attemptQuestions).innerJoin(S.questions, eq(S.questions.id, S.attemptQuestions.questionId)).where(eq(S.attemptQuestions.attemptId, attemptId));
     expect(picked).toHaveLength(15);
-    expect(picked.every((q) => q.level === "JUNIOR_SECONDARY")).toBe(true);
+    expect(picked.every((q) => q.level === "JUNIOR_SECONDARY" || q.level === null)).toBe(true); // "all sections" questions are allowed; Senior Secondary ones never are
     const [ssExam] = await db.select().from(S.examinations).where(eq(S.examinations.title, "Mathematics Mock Examination (2025)"));
     await expectCode(startAttempt(jss2, ssExam.id, crypto.randomUUID(), jssCtx), "FORBIDDEN");
     await expectCode(startAttempt(ss, exam.id, crypto.randomUUID(), jssCtx), "FORBIDDEN");

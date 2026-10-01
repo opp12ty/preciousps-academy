@@ -71,9 +71,12 @@ async function assertPasswordPolicy(schoolId: string, password: string, context:
 }
 
 export async function registerStudent(raw: unknown, ctx: ReqCtx) {
-  await rateLimit("register", ctx.ip ?? "unknown", ctx);
-  const input = registerSchema.parse(raw);
   const schoolId = await getDefaultSchoolId();
+  const auth = await getSetting(schoolId, "authentication");
+  // Per-IP ceiling is high on purpose (a whole class often shares one school or carrier IP); the per-email limit stops hammering one address.
+  await rateLimit("register", `ip2:${ctx.ip ?? "unknown"}`, ctx, auth.registerPerIpPerHour);
+  const input = registerSchema.parse(raw);
+  await rateLimit("register", `email:${input.email}`, ctx, auth.registerPerEmailPerHour);
   await assertPasswordPolicy(schoolId, input.password, [input.firstName, input.lastName, input.email.split("@")[0]]);
 
   const db = getDb();

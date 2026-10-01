@@ -11,6 +11,7 @@ import { AppError } from "@/server/errors";
 import { seedPlatform } from "@/server/seed";
 import { resolveSessionToken } from "@/server/auth/session";
 import { registerStudent, signInNewStudent } from "@/server/services/auth";
+import { clearAllRateLimits } from "@/server/rate-limit";
 
 const ctx = { ip: "127.0.0.1", userAgent: "vitest" };
 const PW = "Harmattan#2026x";
@@ -47,6 +48,21 @@ describe("student registration", () => {
     expect(failed).toEqual([]);
     const users = await db.select({ id: S.users.id }).from(S.users).where(eq(S.users.userType, "STUDENT"));
     expect(users.length).toBe(12);
+  }, 120_000);
+
+  it("lets a whole class register from one shared IP (school Wi-Fi) without 'Too many attempts'", async () => {
+    const sameIp = { ip: "41.58.0.1", userAgent: "vitest" };
+    const results = await Promise.allSettled(Array.from({ length: 40 }, (_, i) => registerStudent(form(1000 + i), sameIp)));
+    expect(results.filter((r) => r.status === "rejected").map((r) => (r as PromiseRejectedResult).reason?.message)).toEqual([]);
+  }, 180_000);
+
+  it("still limits repeated attempts on one e-mail, and the Super Admin can clear blocks", async () => {
+    const ip = { ip: "41.58.0.2", userAgent: "vitest" };
+    const outcomes: string[] = [];
+    for (let i = 0; i < 12; i++) outcomes.push(await registerStudent(form(2000, { phone: `0805${String(i).padStart(7, "0")}` }), ip).then(() => "ok", (e: AppError) => e.code));
+    expect(outcomes).toContain("RATE_LIMITED");
+    expect(await clearAllRateLimits()).toBeGreaterThan(0);
+    await expect(registerStudent(form(2001), ip)).resolves.toBeTruthy();
   }, 120_000);
 
   it("signs the new student in directly with a working session", async () => {

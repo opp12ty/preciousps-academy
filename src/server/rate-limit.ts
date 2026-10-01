@@ -5,7 +5,9 @@ import { securityEvent, type ReqCtx } from "./audit";
 
 export const LIMITS = {
   login: { max: 10, windowSec: 15 * 60 },
-  register: { max: 5, windowSec: 60 * 60 },
+  // Fallback only: the live limits are Super Admin settings (Settings → Authentication). Many students share one
+  // school or mobile-carrier IP, so the per-IP ceiling is deliberately high; it only stops scripted floods.
+  register: { max: 1000, windowSec: 60 * 60 },
   passwordReset: { max: 5, windowSec: 60 * 60 },
   codeActivation: { max: 8, windowSec: 15 * 60 },
   mfa: { max: 8, windowSec: 10 * 60 },
@@ -22,8 +24,9 @@ export type LimitName = keyof typeof LIMITS;
  * Fixed-window counter stored in Postgres so limits hold across serverless
  * instances. Atomic via INSERT … ON CONFLICT.
  */
-export async function rateLimit(name: LimitName, subject: string, ctx: ReqCtx = {}) {
-  const { max, windowSec } = LIMITS[name];
+export async function rateLimit(name: LimitName, subject: string, ctx: ReqCtx = {}, maxOverride?: number) {
+  const { windowSec } = LIMITS[name];
+  const max = maxOverride ?? LIMITS[name].max;
   const key = `${name}:${subject}`.slice(0, 200);
   const db = getDb();
   const res = await db.execute<{ count: number }>(sql`
@@ -43,4 +46,10 @@ export async function rateLimit(name: LimitName, subject: string, ctx: ReqCtx = 
 
 export async function resetRateLimit(name: LimitName, subject: string) {
   await getDb().execute(sql`DELETE FROM rate_limits WHERE key = ${`${name}:${subject}`.slice(0, 200)}`);
+}
+
+/** Lifts every current rate-limit block (Super Admin recovery tool). Returns how many counters were cleared. */
+export async function clearAllRateLimits(): Promise<number> {
+  const res = await getDb().execute<{ n: number }>(sql`WITH d AS (DELETE FROM rate_limits RETURNING 1) SELECT count(*)::int AS n FROM d`);
+  return Number(res.rows[0]?.n ?? 0);
 }

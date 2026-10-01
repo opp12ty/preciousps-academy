@@ -53,6 +53,8 @@ export const SETTING_SCHEMAS = {
     maxStudentSessions: z.number().int().min(1).max(10),
     requireSuperAdmin2fa: z.boolean(),
     loginAlerts: z.boolean(),
+    registerPerIpPerHour: z.number().int().min(5).max(100000),
+    registerPerEmailPerHour: z.number().int().min(2).max(1000),
   }),
   passwordPolicy: z.object({
     minLength: z.number().int().min(10).max(64),
@@ -178,6 +180,8 @@ export const SETTING_DEFAULTS: { [K in SettingKey]: SettingValue<K> } = {
     maxStudentSessions: 3,
     requireSuperAdmin2fa: true,
     loginAlerts: true,
+    registerPerIpPerHour: 1000,
+    registerPerEmailPerHour: 10,
   },
   passwordPolicy: { ...DEFAULT_PASSWORD_POLICY, requireLetter: true, requireNumber: true, requireSymbol: true },
   accessCodes: { defaultDays: 30, allowMultipleActive: false, maxBulk: 1000 },

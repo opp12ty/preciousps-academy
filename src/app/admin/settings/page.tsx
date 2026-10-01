@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ClearRateLimitsButton } from "@/components/admin/action-wrappers";
 import { emailProvider, EMAIL_SETUP_HINT } from "@/server/email-provider";
 import Link from "next/link";
 import { requireStaffPage } from "@/server/http";
@@ -71,7 +72,13 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
                   { key: "maxStudentSessions", label: "Max simultaneous devices per student", type: "number", min: 1, max: 10, hint: "Oldest sessions are signed out when exceeded." },
                   { key: "requireSuperAdmin2fa", label: "Require 2FA for the Super Admin", type: "bool", hint: "Strongly recommended — keep on." },
                   { key: "loginAlerts", label: "Login alerts for administrators", type: "bool" },
+                  { key: "registerPerIpPerHour", label: "Registrations allowed per IP address per hour", type: "number", min: 5, max: 100000, hint: "Keep this high: a whole class often shares one school or mobile-network IP." },
+                  { key: "registerPerEmailPerHour", label: "Registration attempts per e-mail per hour", type: "number", min: 2, max: 1000 },
                 ])} />
+                <div className="mt-5 border-t border-line pt-4">
+                  <p className="mb-2 text-sm text-muted">Someone locked out by &ldquo;Too many attempts&rdquo;? Lift every current block at once.</p>
+                  <ClearRateLimitsButton />
+                </div>
               </div>
             </Card>
           )}

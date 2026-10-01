@@ -1,7 +1,8 @@
 "use client";
 
-import { Ban, CheckCircle2, LogOut, Mail, Send, Timer, Trash2, UserCheck } from "lucide-react";
+import { Ban, CheckCircle2, ShieldOff, LogOut, Mail, Send, Timer, Trash2, UserCheck } from "lucide-react";
 import {
+  clearRateLimitsAction,
   deleteRoleAction,
   flushOutboxAction,
   sendTestEmailAction,
@@ -12,6 +13,14 @@ import {
   voidResultAction,
 } from "@/app/admin/actions";
 import { ActionButton, ConfirmAction } from "../ui/interactive";
+
+export function ClearRateLimitsButton() {
+  return (
+    <ActionButton run={() => clearRateLimitsAction()}>
+      <ShieldOff className="size-4" /> Clear all rate-limit blocks
+    </ActionButton>
+  );
+}
 
 export function OutboxButtons() {
   return (
