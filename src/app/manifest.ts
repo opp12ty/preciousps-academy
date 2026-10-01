@@ -2,6 +2,9 @@ import type { MetadataRoute } from "next";
 import { getBrand } from "@/server/brand";
 
 /** PWA manifest — install to home screen; name comes from Admin → General, icons from the official logo. */
+/** Reads branding from the database, so it is rendered per request, never at build time. */
+export const dynamic = "force-dynamic";
+
 export default async function manifest(): Promise<MetadataRoute.Manifest> {
   const b = await getBrand();
   return {
