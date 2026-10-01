@@ -8,6 +8,9 @@ import { LoginForm, OwnerSetupForm } from "../forms";
 
 export const metadata: Metadata = { title: "Backend access", robots: { index: false, follow: false } };
 
+/** Server actions run under this limit; hashing plus remote-database round trips can exceed the 10 s default. */
+export const maxDuration = 60;
+
 export default async function BackendLoginPage({ searchParams }: PageProps<"/backend">) {
   const sp = await searchParams;
   const s = await getSession();

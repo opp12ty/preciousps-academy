@@ -144,6 +144,19 @@ export async function registerStudent(raw: unknown, ctx: ReqCtx) {
   return { userId: user.id, schoolId };
 }
 
+/**
+ * Signs in the student created by registerStudent() in the same request. The password was just
+ * hashed and stored by us, so it is not verified a second time (saves a full Argon2 pass and
+ * several database round trips on slow links). Never call this for any other purpose.
+ */
+export async function signInNewStudent(userId: string, ctx: ReqCtx) {
+  const schoolId = await getDefaultSchoolId();
+  const auth = await getSetting(schoolId, "authentication");
+  const session = await createSession(userId, { hours: auth.studentSessionHours, mfaPending: false, maxSessions: auth.maxStudentSessions }, ctx);
+  await getDb().update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, userId));
+  return { token: session.token, expiresAt: session.expiresAt };
+}
+
 export const loginSchema = z.object({
   identifier: z.string().trim().min(1, "Enter your email or Student ID.").max(160),
   password: z.string().min(1, "Enter your password.").max(128),

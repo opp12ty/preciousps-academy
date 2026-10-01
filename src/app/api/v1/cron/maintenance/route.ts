@@ -5,7 +5,7 @@ import { rateLimits, schools, sessions, studentAccessPeriods } from "@/server/db
 import { safeEqual } from "@/server/crypto";
 import { syncExpired } from "@/server/services/access";
 import { sweepExpiredAttempts } from "@/server/services/exams";
-import { notifyUser } from "@/server/services/notifications";
+import { deliverQueued, notifyUser } from "@/server/services/notifications";
 import { getSetting } from "@/server/settings";
 
 /**
@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
   const db = getDb();
   const submitted = await sweepExpiredAttempts({ limit: 500 });
   const expired = await syncExpired();
+  await deliverQueued().catch(() => 0);
   let reminders = 0;
   for (const s of await db.select({ id: schools.id }).from(schools)) {
     const cfg = await getSetting(s.id, "notifications");

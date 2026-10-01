@@ -6,7 +6,7 @@ import { toPublicError } from "@/server/errors";
 import { clearSessionCookie, getSession, reqCtx, setSessionCookie, type ActionResult } from "@/server/http";
 import { revokeSession } from "@/server/auth/session";
 import { audit } from "@/server/audit";
-import { bootstrapSuperAdmin, checkOwnerEmail, login, registerStudent, requestPasswordReset, resetPasswordWithToken, verifyMfa } from "@/server/services/auth";
+import { bootstrapSuperAdmin, checkOwnerEmail, login, registerStudent, signInNewStudent, requestPasswordReset, resetPasswordWithToken, verifyMfa } from "@/server/services/auth";
 
 const fd = (f: FormData) => Object.fromEntries(Array.from(f.keys()).map((k) => [k, f.get(k)?.toString() ?? ""]));
 
@@ -19,18 +19,19 @@ export async function registerAction(_: ActionResult | null, form: FormData): Pr
   try {
     const ctx = await reqCtx();
     const data = fd(form);
+    let l: { token: string; expiresAt: Date };
     try {
-      await registerStudent({ ...data, acceptTerms: data.acceptTerms === "on" }, ctx);
+      const created = await registerStudent({ ...data, acceptTerms: data.acceptTerms === "on" }, ctx);
+      l = await signInNewStudent(created.userId, ctx);
     } catch (e) {
       // A double-click or a dropped connection can leave the account created while the student saw an error.
       // If the same e-mail AND password already work, this is that student retrying: sign them in instead.
       const dup = e instanceof AppError && e.code === "DUPLICATE" && Boolean(e.fields?.email);
       if (!dup) throw e;
-      await login({ identifier: data.email, password: data.password }, "student", ctx).catch(() => {
+      l = await login({ identifier: data.email, password: data.password }, "student", ctx).catch(() => {
         throw e;
       });
     }
-    const l = await login({ identifier: data.email, password: data.password }, "student", ctx);
     await setSessionCookie(l.token, l.expiresAt);
     ok = true;
   } catch (e) {

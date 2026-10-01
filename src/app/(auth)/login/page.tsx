@@ -8,6 +8,9 @@ import { Alert } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Student Login" };
 
+/** Server actions run under this limit; hashing plus remote-database round trips can exceed the 10 s default. */
+export const maxDuration = 60;
+
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const sp = await searchParams;
   const s = await getSession();

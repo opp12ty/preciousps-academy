@@ -9,6 +9,9 @@ import { RegisterForm } from "../forms";
 
 export const metadata: Metadata = { title: "Student Registration" };
 
+/** Server actions run under this limit; hashing plus remote-database round trips can exceed the 10 s default. */
+export const maxDuration = 60;
+
 export default async function RegisterPage() {
   const s = await getSession();
   if (s && !s.mfaPending) redirect(s.user.userType === "STUDENT" ? "/student" : "/admin");

@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { after } from "next/server";
 import { emailProvider, sendMail } from "../email-provider";
 import { getDb, type Executor } from "../db";
 import { emailOutbox, notificationPreferences, notificationReads, notifications, users } from "../db/schema";
@@ -182,7 +183,24 @@ export async function queueEmail(schoolId: string, to: string, subject: string, 
   const cfg = await getSetting(schoolId, "notifications", db);
   const status = cfg.emailEnabled && emailProvider() ? "QUEUED" : "HELD";
   const [row] = await db.insert(emailOutbox).values({ schoolId, toEmail: to, subject, html, status }).returning({ id: emailOutbox.id });
-  if (status === "QUEUED") await deliver(row.id, db).catch(() => undefined);
+  if (status !== "QUEUED") return;
+  // Never make a student or admin wait on an SMTP/API round trip: deliver after the response is sent.
+  // (Inside a transaction the row is not visible yet, so it is left QUEUED for the next sweep.)
+  if (db !== getDb()) return;
+  try {
+    after(() => deliver(row.id, getDb()).catch(() => undefined));
+  } catch {
+    // Outside a request (scripts/tests) there is no after(); the maintenance sweep delivers it.
+  }
+}
+
+/** Delivers rows left QUEUED (sent inside transactions, or interrupted). Called by the maintenance cron. */
+export async function deliverQueued(limit = 50) {
+  if (!emailProvider()) return 0;
+  const db = getDb();
+  const rows = await db.select({ id: emailOutbox.id }).from(emailOutbox).where(eq(emailOutbox.status, "QUEUED")).orderBy(emailOutbox.createdAt).limit(limit);
+  for (const r of rows) await deliver(r.id, db);
+  return rows.length;
 }
 
 async function deliver(id: string, db: Executor) {
