@@ -64,14 +64,14 @@ export function LessonForm({
           <span className="text-sm font-semibold text-navy-800">Lesson notes</span>
           <div className="flex rounded-lg bg-surface p-0.5 text-xs font-semibold">
             {(["write", "preview"] as const).map((t) => (
-              <button key={t} type="button" onClick={() => setTab(t)} className={cx("rounded-md px-3 py-1", tab === t ? "bg-white text-navy-800 shadow-sm" : "text-muted")}>
+              <button key={t} type="button" onClick={() => setTab(t)} className={cx("rounded-md px-3 py-1", tab === t ? "bg-card text-navy-800 shadow-sm" : "text-muted")}>
                 {t === "write" ? "Write" : "Preview"}
               </button>
             ))}
           </div>
         </div>
         <textarea name="body" value={body} onChange={(e) => setBody(e.target.value)} rows={16} className={cx("block w-full rounded-xl border border-line px-3.5 py-2.5 font-mono text-sm", tab === "preview" && "hidden")} placeholder={"## Heading\nText with $x^2$ maths and **bold**.\n- bullet"} />
-        {tab === "preview" && <div className="prose-pps min-h-40 rounded-xl border border-line bg-white p-4" dangerouslySetInnerHTML={{ __html: renderBlocksPreview(body) }} />}
+        {tab === "preview" && <div className="prose-pps min-h-40 rounded-xl border border-line bg-card p-4" dangerouslySetInnerHTML={{ __html: renderBlocksPreview(body) }} />}
         <p className="mt-1 text-xs text-muted">Markdown-style: ## headings, - lists, **bold**, *italic*, $inline maths$, $$display maths$$ (KaTeX).</p>
       </div>
       <TextAreaField label="Worked examples" name="examples" rows={6} defaultValue={lesson?.examples ?? ""} />

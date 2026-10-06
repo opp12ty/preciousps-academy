@@ -55,7 +55,7 @@ export default async function AnalyticsPage() {
         <CardHeader title="Reports" description="Generated from live data at the moment of export." />
         <ul className="grid gap-px bg-line sm:grid-cols-2 lg:grid-cols-3">
           {reports.map((r) => (
-            <li key={r.kind} className="bg-white p-5">
+            <li key={r.kind} className="bg-card p-5">
               <p className="font-bold text-navy-800">{r.title}</p>
               <p className="mt-1 text-xs text-muted">{r.description}</p>
               <div className="mt-3 flex gap-1.5">

@@ -10,7 +10,7 @@ export type FilterDef =
 /** GET-form filter bar: shareable URLs, works without JavaScript (§106 advanced filters). */
 export function FilterBar({ filters, values, action, exportHref }: { filters: FilterDef[]; values: Record<string, string | undefined>; action: string; exportHref?: string }) {
   return (
-    <form action={action} method="get" className="mb-4 flex flex-col gap-2 rounded-2xl border border-line bg-white p-3 shadow-card lg:flex-row lg:flex-wrap lg:items-end">
+    <form action={action} method="get" className="mb-4 flex flex-col gap-2 rounded-2xl border border-line bg-card p-3 shadow-card lg:flex-row lg:flex-wrap lg:items-end">
       {filters.map((f) =>
         f.type === "search" ? (
           <label key={f.name} className="relative min-w-[14rem] flex-1">
@@ -47,7 +47,7 @@ export function FilterBar({ filters, values, action, exportHref }: { filters: Fi
             <summary className={buttonClass("secondary", "md", "list-none cursor-pointer")}>
               <Download className="size-4" /> Export
             </summary>
-            <div className="absolute right-0 z-20 mt-1 w-40 overflow-hidden rounded-xl border border-line bg-white shadow-lift">
+            <div className="absolute right-0 z-20 mt-1 w-40 overflow-hidden rounded-xl border border-line bg-card shadow-lift">
               {(["csv", "xlsx", "pdf"] as const).map((fmt) => (
                 <a key={fmt} href={`${exportHref}${exportHref.includes("?") ? "&" : "?"}format=${fmt}`} className="block px-4 py-2.5 text-sm font-semibold text-navy-800 hover:bg-surface">
                   {fmt === "csv" ? "CSV" : fmt === "xlsx" ? "Excel (.xlsx)" : "PDF"}

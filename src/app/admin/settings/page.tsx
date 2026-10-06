@@ -37,13 +37,13 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
       <div className="grid gap-6 lg:grid-cols-[14rem_1fr]">
         <nav aria-label="Settings sections" className="no-scrollbar flex gap-1 overflow-x-auto lg:flex-col">
           {SECTIONS.map(([k, l]) => (
-            <Link key={k} href={`/admin/settings?section=${k}`} className={cx("whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold", section === k ? "bg-navy-800 text-white" : "text-navy-800 hover:bg-white")}>
+            <Link key={k} href={`/admin/settings?section=${k}`} className={cx("whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold", section === k ? "bg-navy-800 text-white" : "text-navy-800 hover:bg-card")}>
               {l}
             </Link>
           ))}
-          <Link href="/admin/school" className="whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-navy-800 hover:bg-white">School →</Link>
-          <Link href="/admin/branding" className="whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-navy-800 hover:bg-white">Branding →</Link>
-          <Link href="/admin/feature-flags" className="whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-navy-800 hover:bg-white">Feature flags →</Link>
+          <Link href="/admin/school" className="whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-navy-800 hover:bg-card">School →</Link>
+          <Link href="/admin/branding" className="whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-navy-800 hover:bg-card">Branding →</Link>
+          <Link href="/admin/feature-flags" className="whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-navy-800 hover:bg-card">Feature flags →</Link>
         </nav>
         <div className="space-y-6">
           {section === "general" && (
@@ -136,6 +136,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
               <div className="p-5">
                 <SettingsForm settingKey="learning" initial={st.learning} fields={F([
                   { key: "masteryThreshold", label: "Default mastery threshold (%)", type: "number", min: 1, max: 100, hint: "Lessons can override this individually." },
+                  { key: "weeklyGoalDays", label: "Weekly study goal (active days per week)", type: "number", min: 1, max: 7, hint: "Shown on the student dashboard and the parent report." },
                   { key: "enforcePrerequisites", label: "Enforce prerequisites", type: "bool" },
                   { key: "allowRetry", label: "Allow classwork retries", type: "bool" },
                 ])} />

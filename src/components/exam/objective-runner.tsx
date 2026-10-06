@@ -72,7 +72,7 @@ export function ObjectiveRunner({ questions, endpoint, passLabel, canRetry, subm
         {questions.map((q, i) => {
           const f = byQ.get(q.id);
           return (
-            <li key={q.id} className={cx("rounded-2xl border bg-white p-5 shadow-card", f ? (f.isCorrect ? "border-emerald-200" : "border-red-200") : "border-line")}>
+            <li key={q.id} className={cx("rounded-2xl border bg-card p-5 shadow-card", f ? (f.isCorrect ? "border-emerald-200" : "border-red-200") : "border-line")}>
               <p className="mb-3 text-xs font-extrabold uppercase tracking-wide text-royal-600">Question {i + 1}</p>
               <QuestionView q={q} value={answers[q.id]} onChange={(v) => setAnswers((a) => ({ ...a, [q.id]: v }))} disabled={Boolean(outcome) || pending} review={f ? { correctOptionIds: f.correctOptionIds, correctPairs: f.correctPairs, isCorrect: f.isCorrect } : undefined} />
               {f?.explanationHtml && (

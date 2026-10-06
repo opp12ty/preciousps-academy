@@ -41,7 +41,7 @@ export default async function HomepageContentPage({ searchParams }: PageProps<"/
       <div className="grid gap-6 lg:grid-cols-[13rem_1fr]">
         <nav aria-label="Content blocks" className="no-scrollbar flex gap-1 overflow-x-auto lg:flex-col">
           {(Object.keys(LABELS) as ContentKey[]).map((k) => (
-            <Link key={k} href={`/admin/homepage?block=${k}`} className={cx("whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold", k === key ? "bg-navy-800 text-white" : "text-navy-800 hover:bg-white")}>
+            <Link key={k} href={`/admin/homepage?block=${k}`} className={cx("whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold", k === key ? "bg-navy-800 text-white" : "text-navy-800 hover:bg-card")}>
               {LABELS[k].label}
             </Link>
           ))}

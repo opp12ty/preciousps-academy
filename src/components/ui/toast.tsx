@@ -28,7 +28,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={t.id}
             role={t.tone === "error" ? "alert" : "status"}
-            className="pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl border border-line bg-white px-4 py-3 text-sm shadow-lift"
+            className="pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl border border-line bg-card px-4 py-3 text-sm shadow-lift"
           >
             {t.tone === "success" ? (
               <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success-600" aria-hidden />

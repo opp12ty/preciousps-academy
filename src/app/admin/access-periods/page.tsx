@@ -52,7 +52,7 @@ export default async function AccessPeriodsPage({ searchParams }: PageProps<"/ad
           ["expiring", "Expiring in 7 days"],
           ["all", "All"],
         ].map(([v, l]) => (
-          <Link key={v} href={`/admin/access-periods${qs({ view: v })}`} className={cx("rounded-full px-4 py-1.5 text-sm font-semibold ring-1", view === v ? "bg-navy-800 text-white ring-navy-800" : "bg-white text-navy-800 ring-line")}>
+          <Link key={v} href={`/admin/access-periods${qs({ view: v })}`} className={cx("rounded-full px-4 py-1.5 text-sm font-semibold ring-1", view === v ? "bg-navy-800 text-white ring-navy-800" : "bg-card text-navy-800 ring-line")}>
             {l}
           </Link>
         ))}

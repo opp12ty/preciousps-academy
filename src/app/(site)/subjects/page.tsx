@@ -27,7 +27,7 @@ export default async function SubjectsPage() {
               </div>
               <ul className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {subs.map((s) => (
-                  <li key={s.id} className="rounded-2xl border border-line bg-white p-5 shadow-card">
+                  <li key={s.id} className="rounded-2xl border border-line bg-card p-5 shadow-card">
                     <div className="flex items-center gap-3">
                       <span className="grid size-10 place-items-center rounded-xl bg-royal-50 text-xs font-extrabold text-royal-700">{s.code}</span>
                       <p className="font-bold text-navy-800">{s.name}</p>

@@ -7,17 +7,17 @@ export const cx = clsx;
 /* ------------------------------------------------------------ Button */
 
 const btnBase =
-  "inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-55 select-none whitespace-nowrap";
+  "inline-flex items-center justify-center gap-2 rounded-lg font-semibold tracking-[-0.005em] transition-all duration-150 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-55 select-none whitespace-nowrap";
 const btnVariants = {
-  primary: "bg-royal-600 text-white shadow-sm hover:bg-royal-700 active:bg-navy-700",
-  navy: "bg-navy-800 text-white shadow-sm hover:bg-navy-700",
-  gold: "bg-gold-500 text-navy-900 shadow-sm hover:bg-gold-400",
-  secondary: "bg-white text-navy-800 ring-1 ring-inset ring-line hover:bg-royal-50",
-  ghost: "text-navy-800 hover:bg-royal-50",
-  danger: "bg-danger-600 text-white hover:bg-red-700",
-  "danger-outline": "bg-white text-danger-600 ring-1 ring-inset ring-red-200 hover:bg-danger-50",
-  white: "bg-white text-navy-800 hover:bg-gold-50",
-  outlineLight: "text-white ring-1 ring-inset ring-white/40 hover:bg-white/10",
+  primary: "bg-royal-600 text-white shadow-[inset_0_-2px_0_rgb(0_0_0/0.18)] hover:bg-royal-700",
+  navy: "bg-navy-800 text-white shadow-[inset_0_-2px_0_rgb(0_0_0/0.3)] hover:bg-navy-700",
+  gold: "bg-gold-500 text-navy-900 shadow-[inset_0_-2px_0_rgb(0_0_0/0.14)] hover:bg-gold-400",
+  secondary: "bg-card text-navy-800 ring-1 ring-inset ring-line hover:bg-gold-50 hover:ring-gold-400/70",
+  ghost: "text-navy-800 hover:bg-navy-800/5",
+  danger: "bg-danger-600 text-white shadow-[inset_0_-2px_0_rgb(0_0_0/0.2)] hover:bg-red-700",
+  "danger-outline": "bg-card text-danger-600 ring-1 ring-inset ring-red-200 hover:bg-danger-50",
+  white: "bg-card text-navy-800 shadow-[inset_0_-2px_0_rgb(0_0_0/0.1)] hover:bg-gold-50",
+  outlineLight: "text-white ring-1 ring-inset ring-white/45 hover:bg-white/10",
 };
 const btnSizes = { sm: "h-9 px-3 text-sm", md: "h-11 px-4 text-sm", lg: "h-12 px-6 text-base" };
 
@@ -37,14 +37,14 @@ export function ButtonLink({ variant = "primary", size = "md", className, ...p }
 /* -------------------------------------------------------------- Card */
 
 export function Card({ className, ...p }: ComponentProps<"div">) {
-  return <div {...p} className={cx("rounded-2xl border border-line bg-white shadow-card print-card", className)} />;
+  return <div {...p} className={cx("rounded-2xl border border-line bg-card shadow-card print-card", className)} />;
 }
 
 export function CardHeader({ title, description, action, className }: { title: ReactNode; description?: ReactNode; action?: ReactNode; className?: string }) {
   return (
     <div className={cx("flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4", className)}>
       <div className="min-w-0">
-        <h2 className="text-base font-bold text-navy-800">{title}</h2>
+        <h2 className="flex items-center gap-2 text-[0.95rem] font-bold text-navy-800 before:h-4 before:w-1 before:rounded-full before:bg-gold-500">{title}</h2>
         {description && <p className="mt-0.5 text-sm text-muted">{description}</p>}
       </div>
       {action}
@@ -58,14 +58,14 @@ const badgeTones = {
   neutral: "bg-slate-100 text-slate-700 ring-slate-200",
   blue: "bg-royal-50 text-royal-700 ring-royal-100",
   navy: "bg-navy-800 text-white ring-navy-800",
-  gold: "bg-gold-100 text-gold-600 ring-gold-400/30",
+  gold: "bg-gold-100 text-gold-600 ring-gold-400/40",
   green: "bg-success-50 text-success-600 ring-emerald-200",
   red: "bg-danger-50 text-danger-600 ring-red-200",
   amber: "bg-warn-50 text-warn-600 ring-amber-200",
 };
 export type Tone = keyof typeof badgeTones;
 export function Badge({ tone = "neutral", children, className }: { tone?: Tone; children: ReactNode; className?: string }) {
-  return <span className={cx("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset", badgeTones[tone], className)}>{children}</span>;
+  return <span className={cx("inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-semibold ring-1 ring-inset before:size-1.5 before:rounded-full before:bg-current before:opacity-70", badgeTones[tone], className)}>{children}</span>;
 }
 
 export function statusTone(status: string | null | undefined): Tone {
@@ -156,8 +156,8 @@ export function PageHeader({ title, description, actions, eyebrow, breadcrumbs }
             </ol>
           </nav>
         )}
-        {eyebrow && <p className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-gold-600">{eyebrow}</p>}
-        <h1 className="text-2xl font-extrabold tracking-tight text-navy-800 sm:text-[1.75rem]">{title}</h1>
+        {eyebrow && <p className="mb-2 inline-flex items-center gap-2 rounded-md bg-gold-100 px-2 py-0.5 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-gold-600">{eyebrow}</p>}
+        <h1 className="text-2xl font-bold tracking-tight text-navy-800 sm:text-[1.9rem]">{title}</h1>
         {description && <p className="mt-1.5 max-w-3xl text-sm text-muted sm:text-[0.95rem]">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
@@ -174,7 +174,7 @@ export function Stat({ label, value, hint, icon, tone = "royal" }: { label: stri
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</p>
-          <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-navy-800">{value}</p>
+          <p className="mt-1.5 font-display text-[1.7rem] font-bold leading-none tabular-nums text-navy-800">{value}</p>
           {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
         </div>
         {icon && <span className={cx("grid size-10 shrink-0 place-items-center rounded-xl", tones[tone])}>{icon}</span>}
@@ -249,18 +249,18 @@ export function Pagination({ page, pageSize, total, href }: { page: number; page
 /* ------------------------------------------------------------ Inputs */
 
 export const inputClass =
-  "block w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-[0.95rem] text-ink shadow-sm placeholder:text-slate-400 focus:border-royal-500 focus:outline-none focus:ring-4 focus:ring-royal-100 disabled:bg-slate-50 aria-[invalid=true]:border-red-400 aria-[invalid=true]:ring-red-100";
+  "block w-full rounded-lg border border-line bg-card px-3.5 py-2.5 text-[0.95rem] text-ink placeholder:text-slate-400 focus:border-royal-500 focus:outline-none focus:ring-4 focus:ring-royal-100 disabled:bg-slate-50 aria-[invalid=true]:border-red-400 aria-[invalid=true]:ring-red-100";
 
 export function ProgressBar({ value, tone = "royal", label }: { value: number; tone?: "royal" | "gold" | "green"; label?: string }) {
   const v = Math.max(0, Math.min(100, value));
   const tones = { royal: "bg-royal-600", gold: "bg-gold-500", green: "bg-success-600" };
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuenow={Math.round(v)} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
+    <div className="h-2 w-full overflow-hidden rounded-full bg-navy-800/10" role="progressbar" aria-valuenow={Math.round(v)} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
       <div className={cx("h-full rounded-full transition-all", tones[tone])} style={{ width: `${v}%` }} />
     </div>
   );
 }
 
 export function Kbd({ children }: { children: ReactNode }) {
-  return <kbd className="rounded border border-line bg-white px-1.5 py-0.5 font-mono text-[0.7rem] text-muted">{children}</kbd>;
+  return <kbd className="rounded border border-line bg-card px-1.5 py-0.5 font-mono text-[0.7rem] text-muted">{children}</kbd>;
 }

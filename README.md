@@ -41,6 +41,12 @@ A production-grade learning and computer-based-testing platform for secondary sc
 | **Audit & security** | Append-only audit log (DB trigger rejects UPDATE/DELETE), security events (failed logins, invalid codes, code reuse, IDOR, privilege escalation, API manipulation, rate-limit, malicious uploads, suspicious exam activity) with resolution workflow, session management, system health page. |
 | **Settings** | General, school, branding, authentication, password policy, access codes, examination, grading, curriculum, results, certificates, notifications, AI, uploads, localisation & academic calendar, feature flags. |
 
+## Interface & upgrades
+
+The interface is a purpose-built design system ("Campus Ivory": warm ivory canvas, midnight ink, electric cobalt, bright gold; Sora + Figtree type) — deliberately different from the earlier FODAN build: floating pill header and full-bleed photographic hero on the website, photo-backed login card, light navigation rail with a **Ctrl/⌘ K quick-search palette** and a phone **bottom tab bar** in the portals.
+
+New features: **study streak and weekly goal** (editable target), **parent report links** (private, read-only, expiring, revocable; no parent account needed), **website enquiry inbox** (contact form with honeypot and rate limit → Admin → Enquiries), floating **WhatsApp** button, **news & events**, principal’s message and class-level cards (all editable in Admin → Homepage & content), brand colours and favicon editable in Admin → Branding, SMTP or Resend e-mail with test and retry buttons, editable registration rate limits.
+
 ## Architecture
 
 ```

@@ -41,7 +41,7 @@ export default async function ResourcesAdmin({ searchParams }: PageProps<"/admin
                       <a href={r.url ?? `/api/v1/assets/${r.assetId}`} target="_blank" rel="noopener noreferrer" className={buttonClass("ghost", "sm")}><ExternalLink className="size-4" /></a>
                       <details className="relative text-left">
                         <summary className={buttonClass("secondary", "sm", "list-none cursor-pointer")}><Pencil className="size-4" /> Edit</summary>
-                        <div className="absolute right-0 z-20 mt-2 w-[min(52rem,92vw)] rounded-2xl border border-line bg-white p-4 shadow-lift">
+                        <div className="absolute right-0 z-20 mt-2 w-[min(52rem,92vw)] rounded-2xl border border-line bg-card p-4 shadow-lift">
                           <ResourceForm r={r} subjects={o(cat.subjects)} classes={o(cat.classes)} departments={o(cat.departments)} />
                         </div>
                       </details>

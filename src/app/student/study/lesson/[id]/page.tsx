@@ -58,7 +58,7 @@ export default async function LessonPage({ params }: PageProps<"/student/study/l
       <ol className="mb-6 flex flex-wrap gap-2 text-xs font-semibold" aria-label="Learning path">
         {["Lesson", "Study material", "Classwork", "Assessment", "Next lesson"].map((step, i) => (
           <li key={step} className="flex items-center gap-2">
-            <span className={`rounded-full px-3 py-1 ${i === 0 || (i <= 3 && done) ? "bg-navy-800 text-white" : "bg-white text-muted ring-1 ring-line"}`}>{step}</span>
+            <span className={`rounded-full px-3 py-1 ${i === 0 || (i <= 3 && done) ? "bg-navy-800 text-white" : "bg-card text-muted ring-1 ring-line"}`}>{step}</span>
             {i < 4 && <span className="text-muted" aria-hidden>→</span>}
           </li>
         ))}

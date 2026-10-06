@@ -127,7 +127,7 @@ export function QuestionEditor({ initial, subjects, classes, departments, topics
           {hasOptions && (
             <ul className="mt-3 space-y-1.5 text-sm">
               {options.map((o, i) => (
-                <li key={i} className={cx("flex gap-2 rounded-lg px-3 py-1.5", o.isCorrect ? "bg-success-50 ring-1 ring-emerald-200" : "bg-white ring-1 ring-line")}>
+                <li key={i} className={cx("flex gap-2 rounded-lg px-3 py-1.5", o.isCorrect ? "bg-success-50 ring-1 ring-emerald-200" : "bg-card ring-1 ring-line")}>
                   <strong>{"ABCDEFGH"[i]}.</strong> <span dangerouslySetInnerHTML={{ __html: renderInlinePreview(o.text || "…") }} />
                   {type === "MATCHING" && <span className="ml-auto text-muted">→ {o.matchText}</span>}
                 </li>

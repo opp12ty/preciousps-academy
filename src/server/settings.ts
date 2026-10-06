@@ -82,6 +82,7 @@ export const SETTING_SCHEMAS = {
   }),
   learning: z.object({
     masteryThreshold: z.number().min(1).max(100),
+    weeklyGoalDays: z.number().int().min(1).max(7),
     enforcePrerequisites: z.boolean(),
     allowRetry: z.boolean(),
   }),
@@ -194,7 +195,7 @@ export const SETTING_DEFAULTS: { [K in SettingKey]: SettingValue<K> } = {
     suspiciousThreshold: 5,
   },
   grading: { scale: DEFAULT_GRADING },
-  learning: { masteryThreshold: 70, enforcePrerequisites: true, allowRetry: true },
+  learning: { masteryThreshold: 70, weeklyGoalDays: 5, enforcePrerequisites: true, allowRetry: true },
   results: { defaultVisibility: "IMMEDIATE", showHistoricalAfterExpiry: true },
   certificates: { enabled: false, numberPrefix: "PPA", minimumPercentage: 50 },
   notifications: { emailEnabled: false, fromName: "Precious PS Academy", accessExpiryReminderDays: 3 },

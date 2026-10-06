@@ -23,6 +23,7 @@ import * as resources from "@/server/services/resources";
 import * as imports from "@/server/services/imports";
 import * as content from "@/server/services/content";
 import * as notifications from "@/server/services/notifications";
+import * as engagement from "@/server/services/engagement";
 import * as ai from "@/server/services/ai";
 import * as study from "@/server/services/study";
 import * as packs from "@/server/services/content-packs";
@@ -490,4 +491,11 @@ export async function clearRateLimitsAction() {
     await audit({ actor: a, action: "security.rate_limits_cleared", entityType: "rate_limit", entityId: a.schoolId, summary: `Cleared ${n} rate-limit counters` }, ctx);
     return { cleared: n };
   }, "All rate-limit blocks were cleared.");
+}
+
+export async function updateEnquiryAction(id: string, status: string, note: string) {
+  return action({ role: "staff", perm: "students.view" }, async (a, ctx) => {
+    await engagement.updateEnquiry(a, id, { status, note }, ctx);
+    revalidatePath("/admin/enquiries");
+  });
 }

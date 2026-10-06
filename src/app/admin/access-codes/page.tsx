@@ -32,7 +32,7 @@ export default async function AccessCodesPage({ searchParams }: PageProps<"/admi
       )}
       <nav aria-label="Status" className="no-scrollbar flex gap-2 overflow-x-auto">
         {tabs.map((t) => (
-          <Link key={t || "all"} href={`/admin/access-codes${qs({ ...sp, status: t || undefined, page: undefined })}`} className={cx("whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-semibold ring-1", (sp.status ?? "") === t ? "bg-navy-800 text-white ring-navy-800" : "bg-white text-navy-800 ring-line hover:bg-surface")}>
+          <Link key={t || "all"} href={`/admin/access-codes${qs({ ...sp, status: t || undefined, page: undefined })}`} className={cx("whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-semibold ring-1", (sp.status ?? "") === t ? "bg-navy-800 text-white ring-navy-800" : "bg-card text-navy-800 ring-line hover:bg-surface")}>
             {t ? t.toLowerCase().replace(/^\w/, (c) => c.toUpperCase()) : "All"} <span className="opacity-70">{t ? (list.counts[t] ?? 0) : Object.values(list.counts).reduce((x, y) => x + y, 0)}</span>
           </Link>
         ))}

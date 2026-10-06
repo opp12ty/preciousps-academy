@@ -14,6 +14,7 @@
     "db:local": "tsx scripts/local-db.mts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/migrate.ts",
+    "dev:demo": "tsx --env-file-if-exists=.env.local scripts/dev-demo.ts",
     "db:seed": "tsx --env-file-if-exists=.env.local scripts/seed.ts",
     "brand:assets": "node scripts/brand-assets.mjs assets-source/pps-logo-original.jpg",
     "preflight": "node scripts/preflight.mjs",

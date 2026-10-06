@@ -26,7 +26,7 @@ export function QuestionView({
   return (
     <div>
       <div className="prose-pps text-[1.05rem] text-ink" dangerouslySetInnerHTML={{ __html: q.stemHtml }} />
-      {q.imageUrl && <img src={q.imageUrl} alt="Question diagram" className="mt-3 max-h-80 w-auto max-w-full rounded-xl border border-line bg-white object-contain" loading="lazy" />}
+      {q.imageUrl && <img src={q.imageUrl} alt="Question diagram" className="mt-3 max-h-80 w-auto max-w-full rounded-xl border border-line bg-card object-contain" loading="lazy" />}
 
       {(q.type === "MCQ" || q.type === "TRUE_FALSE") && (
         <div role="radiogroup" aria-label="Options" className="mt-5 grid gap-2.5">
@@ -43,10 +43,10 @@ export function QuestionView({
                       ? "border-emerald-500 bg-success-50"
                       : selected
                         ? "border-red-400 bg-danger-50"
-                        : "border-line bg-white"
+                        : "border-line bg-card"
                     : selected
                       ? "border-royal-600 bg-royal-50"
-                      : "border-line bg-white hover:border-royal-100 hover:bg-surface",
+                      : "border-line bg-card hover:border-royal-100 hover:bg-surface",
                   disabled && !review && "cursor-not-allowed opacity-70",
                 )}
               >
@@ -69,7 +69,7 @@ export function QuestionView({
               const checked = ids.includes(o.id);
               const isRight = review?.correctOptionIds.includes(o.id);
               return (
-                <label key={o.id} className={cx("flex min-h-14 cursor-pointer items-start gap-3 rounded-xl border-2 px-4 py-3", review ? (isRight ? "border-emerald-500 bg-success-50" : checked ? "border-red-400 bg-danger-50" : "border-line") : checked ? "border-royal-600 bg-royal-50" : "border-line bg-white hover:bg-surface")}>
+                <label key={o.id} className={cx("flex min-h-14 cursor-pointer items-start gap-3 rounded-xl border-2 px-4 py-3", review ? (isRight ? "border-emerald-500 bg-success-50" : checked ? "border-red-400 bg-danger-50" : "border-line") : checked ? "border-royal-600 bg-royal-50" : "border-line bg-card hover:bg-surface")}>
                   <input type="checkbox" className="mt-1.5 size-5 accent-royal-600" checked={checked} disabled={disabled} onChange={() => onChange({ optionIds: checked ? ids.filter((x) => x !== o.id) : [...ids, o.id] })} />
                   <span className="font-bold text-navy-800">{o.label}.</span>
                   <span className="flex-1 leading-relaxed" dangerouslySetInnerHTML={{ __html: o.html }} />
@@ -106,7 +106,7 @@ export function QuestionView({
           {q.options.map((o) => {
             const pairs = value && "pairs" in value ? value.pairs : {};
             return (
-              <div key={o.id} className="grid items-center gap-2 rounded-xl border border-line bg-white p-3 sm:grid-cols-2">
+              <div key={o.id} className="grid items-center gap-2 rounded-xl border border-line bg-card p-3 sm:grid-cols-2">
                 <span className="text-sm font-semibold" dangerouslySetInnerHTML={{ __html: o.html }} />
                 <select
                   className="rounded-lg border border-line px-3 py-2.5 text-sm"

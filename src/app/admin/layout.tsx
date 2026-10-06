@@ -34,6 +34,7 @@ import {
   Trophy,
   UserCog,
   Users,
+  Inbox,
   UsersRound,
 } from "lucide-react";
 import { AppShell, type NavGroup, type NavItem } from "@/components/shell/app-shell";
@@ -42,6 +43,7 @@ import { getSession } from "@/server/http";
 import { redirect } from "next/navigation";
 import { getBrand } from "@/server/brand";
 import { unreadCount } from "@/server/services/notifications";
+import { newEnquiryCount } from "@/server/services/engagement";
 import { logoutAction } from "../(auth)/actions";
 
 type Item = NavItem & { perm?: Permission | SuperCapability };
@@ -51,14 +53,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (!s) redirect("/backend");
   if (s.mfaPending) redirect("/backend/verify");
   if (s.user.userType === "STUDENT") redirect("/student");
-  const [brand, unread] = await Promise.all([getBrand(), unreadCount(s.user.id, s.user.schoolId)]);
+  const [brand, unread, enquiries] = await Promise.all([getBrand(), unreadCount(s.user.id, s.user.schoolId), newEnquiryCount(s.user.schoolId)]);
   const a = s.actor;
   const groups: { title?: string; items: Item[] }[] = [
-    { items: [{ href: "/admin", label: "Dashboard", icon: <LayoutDashboard /> }] },
+    { items: [{ href: "/admin", label: "Dashboard", icon: <LayoutDashboard />, mobile: true }] },
     {
       title: "People",
       items: [
-        { href: "/admin/students", label: "Students", icon: <Users />, perm: "students.view" },
+        { href: "/admin/students", label: "Students", icon: <Users />, mobile: true, perm: "students.view" },
+        { href: "/admin/enquiries", label: "Enquiries", icon: <Inbox />, badge: enquiries, perm: "students.view" },
         { href: "/admin/administrators", label: "Administrators", icon: <UserCog />, perm: "super.admins" },
         { href: "/admin/roles", label: "Roles & Permissions", icon: <ShieldCheck />, perm: "super.roles" },
       ],
@@ -79,12 +82,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     {
       title: "Assessment",
       items: [
-        { href: "/admin/questions", label: "Question Bank", icon: <FileQuestion />, perm: "questions.view" },
+        { href: "/admin/questions", label: "Question Bank", icon: <FileQuestion />, mobile: true, perm: "questions.view" },
         { href: "/admin/imports", label: "Question Imports", icon: <FileUp />, perm: "questions.import" },
         { href: "/admin/ai", label: "AI Question Generator", icon: <Bot />, perm: "questions.ai" },
         { href: "/admin/examinations", label: "Examinations", icon: <MonitorCheck />, perm: "exams.view" },
         { href: "/admin/attempts", label: "Attempts", icon: <Timer />, perm: "exams.attempts" },
-        { href: "/admin/results", label: "Results", icon: <Trophy />, perm: "results.view" },
+        { href: "/admin/results", label: "Results", icon: <Trophy />, mobile: true, perm: "results.view" },
         { href: "/admin/assignments", label: "Assignments", icon: <ClipboardList />, perm: "assignments.manage" },
         { href: "/admin/classwork", label: "Classwork", icon: <NotebookPen />, perm: "assignments.manage" },
       ],

@@ -318,7 +318,7 @@ export function CbtClient(p: Props) {
               className={cx(
                 "relative grid h-10 place-items-center rounded-lg text-sm font-bold tabular-nums transition",
                 i === index ? "ring-2 ring-navy-800 ring-offset-2" : "",
-                ans ? "bg-royal-600 text-white" : "bg-white text-navy-800 ring-1 ring-line",
+                ans ? "bg-royal-600 text-white" : "bg-card text-navy-800 ring-1 ring-line",
               )}
             >
               {i + 1}
@@ -329,7 +329,7 @@ export function CbtClient(p: Props) {
       </div>
       <ul className="mt-4 grid grid-cols-2 gap-2 text-xs text-muted">
         <li className="flex items-center gap-2"><span className="size-3 rounded bg-royal-600" /> Answered ({answeredCount})</li>
-        <li className="flex items-center gap-2"><span className="size-3 rounded bg-white ring-1 ring-line" /> Unanswered ({total - answeredCount})</li>
+        <li className="flex items-center gap-2"><span className="size-3 rounded bg-card ring-1 ring-line" /> Unanswered ({total - answeredCount})</li>
         <li className="flex items-center gap-2"><span className="size-3 rounded-full bg-gold-500" /> Flagged ({flaggedCount})</li>
         <li className="flex items-center gap-2"><span className="size-3 rounded ring-2 ring-navy-800" /> Current</li>
       </ul>
@@ -407,7 +407,7 @@ export function CbtClient(p: Props) {
       )}
 
       <div className="mx-auto grid max-w-6xl gap-5 px-3 py-4 sm:px-5 lg:grid-cols-[1fr_17rem]">
-        <section aria-labelledby="q-heading" className="rounded-2xl border border-line bg-white p-5 shadow-card sm:p-7">
+        <section aria-labelledby="q-heading" className="rounded-2xl border border-line bg-card p-5 shadow-card sm:p-7">
           <div className="mb-4 flex items-center justify-between gap-2">
             <h2 id="q-heading" className="text-sm font-extrabold uppercase tracking-wide text-royal-600">
               Question {index + 1}
@@ -449,7 +449,7 @@ export function CbtClient(p: Props) {
         </section>
 
         <aside className="hidden lg:block">
-          <div className="sticky top-32 space-y-4 rounded-2xl border border-line bg-white p-4 shadow-card">
+          <div className="sticky top-32 space-y-4 rounded-2xl border border-line bg-card p-4 shadow-card">
             <p className="text-sm font-bold text-navy-800">Question palette</p>
             {palette}
             <button type="button" onClick={() => setConfirmOpen(true)} className={buttonClass("navy", "md", "w-full")}>
@@ -460,7 +460,7 @@ export function CbtClient(p: Props) {
       </div>
 
       {/* Mobile bottom bar */}
-      <nav aria-label="Question navigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-lift lg:hidden">
+      <nav aria-label="Question navigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-card px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-lift lg:hidden">
         <div className="grid grid-cols-[1fr_auto_1fr] gap-2">
           <button type="button" onClick={() => go(index - 1)} disabled={index === 0} className={buttonClass("secondary", "lg")}>
             <ChevronLeft className="size-5" /> Prev
@@ -483,7 +483,7 @@ export function CbtClient(p: Props) {
       {paletteOpen && (
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Question palette">
           <button className="absolute inset-0 bg-navy-950/50" aria-label="Close palette" onClick={() => setPaletteOpen(false)} />
-          <div className="absolute inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-8">
+          <div className="absolute inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto rounded-t-3xl bg-card p-5 pb-8">
             <div className="mb-4 flex items-center justify-between">
               <p className="font-bold text-navy-800">Questions</p>
               <button onClick={() => setPaletteOpen(false)} aria-label="Close" className="rounded-lg p-1">
@@ -525,7 +525,7 @@ export function CbtClient(p: Props) {
               <p className="font-semibold">{unanswered.length} question(s) unanswered:</p>
               <p className="mt-1 flex flex-wrap gap-1">
                 {unanswered.slice(0, 30).map((x) => (
-                  <button key={x.id} className="rounded bg-white px-2 py-0.5 font-bold ring-1 ring-amber-200" onClick={() => { setConfirmOpen(false); go(p.questions.indexOf(x)); }}>
+                  <button key={x.id} className="rounded bg-card px-2 py-0.5 font-bold ring-1 ring-amber-200" onClick={() => { setConfirmOpen(false); go(p.questions.indexOf(x)); }}>
                     {p.questions.indexOf(x) + 1}
                   </button>
                 ))}
@@ -547,7 +547,7 @@ export function CbtClient(p: Props) {
 
       {fsPrompt && (
         <div className="fixed inset-0 z-[60] grid place-items-center bg-navy-950/70 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lift">
+          <div className="w-full max-w-md rounded-2xl bg-card p-6 shadow-lift">
             <p className="text-lg font-extrabold text-navy-800">Before you begin</p>
             <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-muted">
               <li>The timer is controlled by the examination server and keeps running if you leave.</li>

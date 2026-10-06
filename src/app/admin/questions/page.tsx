@@ -38,11 +38,11 @@ export default async function QuestionsPage({ searchParams }: PageProps<"/admin/
       />
       <nav className="no-scrollbar mb-4 flex gap-2 overflow-x-auto" aria-label="Status">
         {tabs.map(([v, l]) => (
-          <Link key={v || "all"} href={`/admin/questions${qs({ ...sp, status: v || undefined, page: undefined })}`} className={cx("whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-semibold ring-1", (sp.status ?? "") === v ? "bg-navy-800 text-white ring-navy-800" : "bg-white text-navy-800 ring-line")}>
+          <Link key={v || "all"} href={`/admin/questions${qs({ ...sp, status: v || undefined, page: undefined })}`} className={cx("whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-semibold ring-1", (sp.status ?? "") === v ? "bg-navy-800 text-white ring-navy-800" : "bg-card text-navy-800 ring-line")}>
             {l} {v && <span className="opacity-70">{list.statusCounts[v] ?? 0}</span>}
           </Link>
         ))}
-        <Link href={`/admin/questions${qs({ flagged: "1" })}`} className={cx("whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-semibold ring-1", sp.flagged ? "bg-gold-500 text-navy-900 ring-gold-500" : "bg-white text-navy-800 ring-line")}>Needs review (stats)</Link>
+        <Link href={`/admin/questions${qs({ flagged: "1" })}`} className={cx("whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-semibold ring-1", sp.flagged ? "bg-gold-500 text-navy-900 ring-gold-500" : "bg-card text-navy-800 ring-line")}>Needs review (stats)</Link>
       </nav>
       <FilterBar
         action="/admin/questions"

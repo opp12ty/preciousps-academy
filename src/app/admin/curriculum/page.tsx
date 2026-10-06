@@ -65,7 +65,7 @@ export default async function CurriculumPage({ searchParams }: PageProps<"/admin
                   <Link href={`/admin/lessons/new?topicId=${t.id}`} className={buttonClass("secondary", "sm")}>Add lesson</Link>
                   <details className="relative">
                     <summary className={buttonClass("secondary", "sm", "list-none cursor-pointer")}><Pencil className="size-4" /> Edit</summary>
-                    <div className="absolute right-0 z-20 mt-2 w-[min(52rem,92vw)] rounded-2xl border border-line bg-white p-4 shadow-lift">
+                    <div className="absolute right-0 z-20 mt-2 w-[min(52rem,92vw)] rounded-2xl border border-line bg-card p-4 shadow-lift">
                       <TopicForm {...common} topic={t} />
                     </div>
                   </details>

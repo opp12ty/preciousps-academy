@@ -46,7 +46,7 @@ export function SettingsForm({ settingKey, initial, fields, columns = 2 }: { set
           const v = values[f.key];
           if (f.type === "bool")
             return (
-              <label key={f.key} htmlFor={id} className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-white p-3.5">
+              <label key={f.key} htmlFor={id} className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-card p-3.5">
                 <input id={id} type="checkbox" className="mt-0.5 size-5 accent-royal-600" checked={Boolean(v)} disabled={f.disabled} onChange={(e) => set(f.key, e.target.checked)} />
                 <span>
                   <span className="block text-sm font-semibold text-navy-800">{f.label}</span>

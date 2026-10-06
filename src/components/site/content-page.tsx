@@ -6,12 +6,15 @@ import { RichText } from "../rich-text";
 
 export function PageHero({ eyebrow, title, intro }: { eyebrow?: string; title: string; intro?: string }) {
   return (
-    <section className="relative overflow-hidden bg-navy-800 text-white">
-      <div className="bg-grid absolute inset-0 opacity-50" aria-hidden />
-      <div className="relative mx-auto max-w-5xl px-4 py-14 sm:px-6 sm:py-20">
-        {eyebrow && <p className="text-xs font-bold uppercase tracking-[0.2em] text-gold-400">{eyebrow}</p>}
-        <h1 className="mt-2 font-display text-4xl font-extrabold tracking-tight sm:text-5xl">{title}</h1>
-        {intro && <p className="mt-4 max-w-3xl text-lg leading-relaxed text-white/80">{intro}</p>}
+    <section className="relative overflow-hidden px-3 pt-6 sm:px-5">
+      <div className="relative mx-auto max-w-6xl overflow-hidden rounded-3xl bg-navy-800 px-6 py-14 text-white sm:px-12 sm:py-20">
+        <div className="bg-dots absolute inset-0 opacity-50" aria-hidden />
+        <div className="absolute -right-24 -top-24 size-80 rounded-full bg-gold-500/20 blur-3xl" aria-hidden />
+        <div className="relative max-w-3xl">
+          {eyebrow && <p className="inline-block rounded-md bg-gold-500 px-2 py-0.5 text-[0.7rem] font-bold uppercase tracking-[0.16em] text-navy-900">{eyebrow}</p>}
+          <h1 className="mt-4 text-4xl font-extrabold tracking-tight sm:text-5xl">{title}</h1>
+          {intro && <p className="mt-4 text-lg leading-relaxed text-white/75">{intro}</p>}
+        </div>
       </div>
     </section>
   );

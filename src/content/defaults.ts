@@ -73,6 +73,13 @@ export const CONTENT_DEFAULTS = {
     networkNote: "Built for Nigerian networks: small downloads, continuous autosave and safe recovery if your connection drops mid-exam.",
     faqHeading: "Questions, answered",
     faqIntro: "Everything students and parents ask most often.",
+    newsHeading: "News & events",
+    newsIntro: "What is happening at Precious PS Academy.",
+    news: [
+      { date: "New term", title: "Registration is open for JSS 1 – SSS 3", body: "Create your student account, get your access code from the school and start learning on any phone." },
+      { date: "Mock season", title: "BECE, WAEC, NECO and JAMB mock CBT papers", body: "Sit full timed practice papers under real examination conditions and see your result instantly." },
+      { date: "Study Centre", title: "New guided lessons added every week", body: "Lessons, classwork and assignments for every class, organised by term and topic." },
+    ],
     closingHeading: "Ready to start practising?",
     closingBody: "Create your student account, activate your access code and begin today.",
   },
@@ -284,6 +291,8 @@ We may update these terms. Continued use means you accept the updated terms.`,
       { label: "Contact", href: "/contact" },
     ],
     backendLabel: "Backend access",
+    whatsapp: "2348169267383",
+    whatsappLabel: "Chat with us",
   },
   navigation: {
     primary: [

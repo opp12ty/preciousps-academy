@@ -15,6 +15,7 @@ import {
   Target,
   Trophy,
   UserRound,
+  Users,
 } from "lucide-react";
 import { AppShell, type NavGroup } from "@/components/shell/app-shell";
 import { requireStudentPage } from "@/server/http";
@@ -28,11 +29,11 @@ export default async function StudentLayout({ children }: { children: React.Reac
   const s = await requireStudentPage({ allowPasswordChange: true });
   const [brand, access, unread] = await Promise.all([getBrand(), getAccessState(s.user.id), unreadCount(s.user.id, s.user.schoolId)]);
   const groups: NavGroup[] = [
-    { items: [{ href: "/student", label: t("student.dashboard"), icon: <LayoutDashboard /> }] },
+    { items: [{ href: "/student", label: t("student.dashboard"), icon: <LayoutDashboard />, mobile: true }] },
     {
       title: "Learn",
       items: [
-        { href: "/student/study", label: t("student.studyCentre"), icon: <BookOpen /> },
+        { href: "/student/study", label: t("student.studyCentre"), icon: <BookOpen />, mobile: true },
         { href: "/student/subjects", label: t("student.subjects"), icon: <BookMarked /> },
         { href: "/student/classwork", label: t("student.classwork"), icon: <NotebookPen /> },
         { href: "/student/assignments", label: t("student.assignments"), icon: <ClipboardList /> },
@@ -44,8 +45,8 @@ export default async function StudentLayout({ children }: { children: React.Reac
       items: [
         { href: "/student/practice", label: t("student.practice"), icon: <Target /> },
         { href: "/student/mock", label: t("student.mock"), icon: <MonitorCheck /> },
-        { href: "/student/exams", label: t("student.exams"), icon: <ClipboardCheck /> },
-        { href: "/student/results", label: t("student.results"), icon: <Trophy /> },
+        { href: "/student/exams", label: t("student.exams"), icon: <ClipboardCheck />, mobile: true },
+        { href: "/student/results", label: t("student.results"), icon: <Trophy />, mobile: true },
         { href: "/student/performance", label: t("student.performance"), icon: <LineChart /> },
       ],
     },
@@ -53,6 +54,7 @@ export default async function StudentLayout({ children }: { children: React.Reac
       title: "Account",
       items: [
         { href: "/student/notifications", label: t("student.notifications"), icon: <Bell />, badge: unread },
+        { href: "/student/family", label: "Parent report", icon: <Users /> },
         { href: "/student/profile", label: t("student.profile"), icon: <UserRound /> },
         { href: "/student/security", label: t("student.security"), icon: <ShieldCheck /> },
       ],

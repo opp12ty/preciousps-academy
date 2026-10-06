@@ -15,7 +15,7 @@ export function ResultReview({ items }: { items: Item[] }) {
         const chosen = new Set(resp?.optionIds ?? (resp?.optionId ? [resp.optionId] : []));
         const state = it.isCorrect === null ? "blank" : it.isCorrect ? "right" : "wrong";
         return (
-          <li key={it.position} className="rounded-2xl border border-line bg-white p-5 shadow-card print-card">
+          <li key={it.position} className="rounded-2xl border border-line bg-card p-5 shadow-card print-card">
             <div className="mb-3 flex items-center justify-between gap-2">
               <span className="text-xs font-extrabold uppercase tracking-wide text-royal-600">Question {it.position}</span>
               <span className={cx("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold", state === "right" ? "bg-success-50 text-success-600" : state === "wrong" ? "bg-danger-50 text-danger-600" : "bg-slate-100 text-slate-600")}>

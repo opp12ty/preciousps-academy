@@ -62,7 +62,7 @@ export default async function ResultPage({ params, searchParams }: PageProps<"/s
       </div>
       {/* Printable result slip */}
       <Card className="overflow-hidden">
-        <div className="flex flex-col items-center gap-2 border-b border-line bg-white px-6 py-6 text-center">
+        <div className="flex flex-col items-center gap-2 border-b border-line bg-card px-6 py-6 text-center">
           <img src={brand.logoUrl} alt="Precious PS Academy logo" className="size-24 rounded-xl object-contain" />
           <p className="text-lg font-extrabold tracking-wide text-navy-800">Precious PS Academy</p>
           <p className="text-xs font-bold tracking-[0.18em] text-gold-600">{brand.schoolName}</p>
@@ -98,7 +98,7 @@ export default async function ResultPage({ params, searchParams }: PageProps<"/s
             { l: "Unanswered", v: res.unansweredCount, c: "text-slate-600" },
             { l: "Time used", v: `${minutes}m ${res.timeUsedSec % 60}s`, c: "text-navy-800" },
           ].map((x) => (
-            <div key={x.l} className="bg-white px-4 py-4 text-center">
+            <div key={x.l} className="bg-card px-4 py-4 text-center">
               <p className={`text-2xl font-extrabold ${x.c}`}>{x.v}</p>
               <p className="text-xs text-muted">{x.l}</p>
             </div>

@@ -1,22 +1,21 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
-import { ArrowRight, Quote, GraduationCap, School, BookOpen, CheckCircle2, ClipboardCheck, KeyRound, LineChart, MonitorCheck, ShieldCheck, Target, UserPlus, Wifi } from "lucide-react";
+import { ArrowRight, ArrowUpRight, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, GraduationCap, LineChart, MonitorCheck, Plus, Quote, School, ShieldCheck, Target, UserPlus, Wifi } from "lucide-react";
 import { getBrand } from "@/server/brand";
 import { getContent } from "@/server/services/content";
-import { Logo } from "@/components/brand";
-import { buttonClass } from "@/components/ui/primitives";
+import { buttonClass, cx } from "@/components/ui/primitives";
 
-const JOURNEY_ICONS = { UserPlus, KeyRound, BookOpen, MonitorCheck } as const;
-const ICONS = { BookOpen, MonitorCheck, Target, ClipboardCheck, LineChart, ShieldCheck } as const;
+const FEATURE_ICONS = { BookOpen, MonitorCheck, Target, ClipboardCheck, LineChart, ShieldCheck } as const;
+const TILE = ["bg-royal-600 text-white", "bg-gold-500 text-navy-900", "bg-navy-800 text-white", "bg-card text-navy-800 ring-1 ring-line"];
 
 export default async function HomePage() {
   const brand = await getBrand();
-  const home = await getContent(brand.schoolId, "home");
-  const faq = await getContent(brand.schoolId, "faq");
+  const [home, faq] = await Promise.all([getContent(brand.schoolId, "home"), getContent(brand.schoolId, "faq")]);
+  const marquee = [...home.prepCards.map((c) => c.title), ...home.trust, ...home.stats.map((s) => s.label)];
   return (
     <>
       {home.announcement.enabled && home.announcement.text && (
-        <div className="bg-gold-500 px-4 py-2 text-center text-sm font-semibold text-navy-900">
+        <div className="mx-3 mt-3 rounded-xl bg-gold-500 px-4 py-2 text-center text-sm font-bold text-navy-900 sm:mx-5">
           {home.announcement.link ? (
             <Link href={home.announcement.link} className="underline-offset-2 hover:underline">
               {home.announcement.text}
@@ -27,22 +26,20 @@ export default async function HomePage() {
         </div>
       )}
 
-      {/* HERO */}
-      <section className="relative overflow-hidden bg-navy-800 text-white">
-        <div className="bg-grid absolute inset-0 opacity-60" aria-hidden />
-        <div className="absolute -right-40 -top-40 size-[34rem] rounded-full bg-royal-600/25 blur-3xl" aria-hidden />
-        <div className="relative mx-auto grid max-w-7xl items-center gap-10 px-4 pb-16 pt-12 sm:px-6 lg:grid-cols-[1fr_1.1fr] lg:pb-24 lg:pt-20">
-          <div>
-            <div className="mb-6 inline-flex items-center gap-3 rounded-2xl bg-white/[0.06] py-2 pl-2 pr-4 ring-1 ring-white/15">
-              <span className="grid size-12 place-items-center overflow-hidden rounded-xl ring-1 ring-white/30">
-                <Logo src={brand.markUrl} alt="Precious PS Academy crest" className="size-full" priority />
-              </span>
-              <span className="text-[0.7rem] font-bold tracking-[0.2em] text-gold-400">{home.heroEyebrow}</span>
-            </div>
-            <h1 className="font-display text-[2.6rem] font-extrabold leading-[1.05] tracking-tight sm:text-6xl lg:text-[4.1rem]">{home.heroHeading}</h1>
+      {/* HERO — full-bleed school photograph */}
+      <section className="relative -mt-[4.5rem] isolate overflow-hidden bg-navy-900 text-white">
+        <img src={brand.heroUrl} alt={`${brand.schoolName} school building`} fetchPriority="high" decoding="async" className="absolute inset-0 -z-20 size-full object-cover object-[60%_40%]" />
+        <div className="absolute inset-0 -z-10 bg-[linear-gradient(95deg,rgb(6_12_36/0.96)_8%,rgb(10_20_50/0.82)_42%,rgb(10_20_50/0.25)_100%)]" aria-hidden />
+        <div className="bg-dots absolute inset-0 -z-10 opacity-40" aria-hidden />
+        <div className="mx-auto grid max-w-6xl items-end gap-10 px-4 pb-20 pt-36 sm:px-6 sm:pt-44 lg:grid-cols-[1.35fr_1fr] lg:pb-28">
+          <div className="animate-rise">
+            <p className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-[0.7rem] font-bold uppercase tracking-[0.18em] text-gold-400 backdrop-blur">
+              <span className="size-1.5 rounded-full bg-gold-400" aria-hidden />
+              {home.heroEyebrow}
+            </p>
+            <h1 className="mt-5 text-[2.7rem] font-extrabold leading-[1.02] tracking-tight sm:text-6xl lg:text-[4.4rem]">{home.heroHeading}</h1>
             <p className="mt-4 text-xl font-semibold text-gold-400 sm:text-2xl">{home.tagline}</p>
-            <p className="mt-2 text-sm font-semibold uppercase tracking-[0.16em] text-white/60">{home.positioning}</p>
-            <p className="mt-6 max-w-xl text-base leading-relaxed text-white/80 sm:text-lg">{home.heroDescription}</p>
+            <p className="mt-5 max-w-xl text-base leading-relaxed text-white/80 sm:text-lg">{home.heroDescription}</p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <Link href="/register" className={buttonClass("gold", "lg")}>
                 <UserPlus className="size-5" aria-hidden />
@@ -56,75 +53,75 @@ export default async function HomePage() {
                 {home.ctaCbt}
               </Link>
             </div>
-            <ul className="mt-8 grid gap-2 text-sm text-white/75 sm:grid-cols-3">
+          </div>
+          <aside className="animate-rise rounded-2xl border border-white/15 bg-white/10 p-5 backdrop-blur-md [animation-delay:150ms]" aria-label="Quick start">
+            <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-gold-400">{home.journeyHeading}</p>
+            <ol className="mt-4 space-y-3.5">
+              {home.journey.map((j, i) => (
+                <li key={j.title} className="flex gap-3">
+                  <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-gold-500 font-display text-xs font-bold text-navy-900">{i + 1}</span>
+                  <span>
+                    <span className="block text-sm font-bold">{j.title}</span>
+                    <span className="block text-xs leading-snug text-white/70">{j.body}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+            <ul className="mt-5 grid gap-1.5 border-t border-white/15 pt-4 text-xs text-white/80">
               {home.trust.map((t) => (
                 <li key={t} className="flex items-center gap-2">
-                  <CheckCircle2 className="size-4 shrink-0 text-gold-400" aria-hidden />
+                  <CheckCircle2 className="size-3.5 shrink-0 text-gold-400" aria-hidden />
                   {t}
                 </li>
               ))}
             </ul>
-          </div>
-          <div className="relative mx-auto w-full max-w-2xl">
-            <img
-              src={brand.heroUrl}
-              alt={`${brand.schoolName} students in school uniform on campus`}
-              width={1280}
-              height={720}
-              fetchPriority="high"
-              decoding="async"
-              className="aspect-video w-full rounded-[2rem] bg-navy-700 object-cover shadow-lift ring-4 ring-white/10"
-            />
-            {/* floating product cards */}
-            <div className="absolute -left-2 top-8 hidden rounded-2xl bg-white p-3.5 text-navy-800 shadow-lift sm:block">
-              <p className="text-[0.65rem] font-bold uppercase tracking-wider text-muted">Time remaining</p>
-              <p className="font-mono text-xl font-bold tabular-nums text-royal-600">00:42:15</p>
-              <div className="mt-2 grid grid-cols-5 gap-1">
-                {Array.from({ length: 10 }).map((_, i) => (
-                  <span key={i} className={`size-4 rounded ${i < 6 ? "bg-royal-600" : i === 6 ? "bg-gold-500" : "bg-slate-200"}`} />
-                ))}
-              </div>
-            </div>
-            <div className="absolute -right-1 bottom-10 hidden rounded-2xl bg-white p-3.5 shadow-lift sm:block">
-              <p className="text-[0.65rem] font-bold uppercase tracking-wider text-muted">Mathematics Mock</p>
-              <div className="mt-1 flex items-end gap-2">
-                <p className="text-3xl font-extrabold text-navy-800">82%</p>
-                <span className="mb-1 rounded-full bg-success-50 px-2 py-0.5 text-xs font-bold text-success-600">Grade A</span>
-              </div>
-            </div>
-          </div>
+          </aside>
         </div>
       </section>
 
+      {/* TICKER */}
+      <div className="overflow-hidden border-y border-line bg-card py-3" aria-hidden>
+        <div className="animate-ticker flex w-max gap-10 whitespace-nowrap">
+          {[...marquee, ...marquee].map((m, i) => (
+            <span key={i} className="flex items-center gap-10 font-display text-sm font-semibold text-navy-800/70">
+              {m}
+              <span className="size-1.5 rotate-45 bg-gold-500" />
+            </span>
+          ))}
+        </div>
+      </div>
+
       {/* STATS */}
-      <section className="border-b border-line bg-white">
-        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-px bg-line px-0 sm:px-6 lg:grid-cols-4">
-          {home.stats.map((s) => (
-            <div key={s.label} className="bg-white px-4 py-7 text-center">
-              <p className="text-3xl font-extrabold text-navy-800">{s.value}</p>
-              <p className="mt-1 text-xs font-medium text-muted sm:text-sm">{s.label}</p>
+      <section className="mx-auto max-w-6xl px-4 pt-14 sm:px-6">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {home.stats.map((s, i) => (
+            <div key={s.label} className={cx("rounded-2xl p-6", i === 0 ? "bg-navy-800 text-white" : "border border-line bg-card")}>
+              <p className={cx("font-display text-4xl font-extrabold", i === 0 ? "text-gold-400" : "text-royal-600")}>{s.value}</p>
+              <p className={cx("mt-2 text-sm", i === 0 ? "text-white/75" : "text-muted")}>{s.label}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* FEATURES */}
-      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:py-24">
-        <div className="mx-auto max-w-2xl text-center">
+      {/* FEATURES — bento */}
+      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-24">
+        <div className="max-w-2xl">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-gold-600">{home.whyEyebrow}</p>
-          <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-navy-800 sm:text-4xl">{home.featuresHeading}</h2>
+          <h2 className="mt-2 text-3xl font-bold tracking-tight text-navy-800 sm:text-4xl">{home.featuresHeading}</h2>
           <p className="mt-3 text-muted">{home.featuresIntro}</p>
         </div>
-        <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {home.features.map((f) => {
-            const Icon = ICONS[f.icon as keyof typeof ICONS] ?? BookOpen;
+        <div className="mt-10 grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {home.features.map((f, i) => {
+            const Icon = FEATURE_ICONS[f.icon as keyof typeof FEATURE_ICONS] ?? BookOpen;
+            const big = i === 0 || i === 3;
             return (
-              <div key={f.title} className="group rounded-2xl border border-line bg-white p-6 shadow-card transition hover:-translate-y-0.5 hover:shadow-lift">
-                <span className="grid size-12 place-items-center rounded-xl bg-navy-800 text-gold-400">
-                  <Icon className="size-6" aria-hidden />
+              <div key={f.title} className={cx("group relative overflow-hidden rounded-2xl p-6 transition hover:-translate-y-0.5", TILE[i % 4], big && "lg:col-span-2")}>
+                <span className={cx("grid size-11 place-items-center rounded-xl", i % 4 === 3 ? "bg-navy-800 text-gold-400" : "bg-white/15")}>
+                  <Icon className="size-5" aria-hidden />
                 </span>
-                <h3 className="mt-4 text-lg font-bold text-navy-800">{f.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted">{f.body}</p>
+                <h3 className="mt-5 text-lg font-bold">{f.title}</h3>
+                <p className={cx("mt-2 text-sm leading-relaxed", i % 4 === 3 ? "text-muted" : "opacity-80")}>{f.body}</p>
+                <Icon className="absolute -bottom-6 -right-4 size-28 opacity-[0.07]" aria-hidden />
               </div>
             );
           })}
@@ -132,94 +129,103 @@ export default async function HomePage() {
       </section>
 
       {/* LEVELS */}
-      <section className="mx-auto max-w-7xl px-4 pb-4 sm:px-6">
-        <div className="mx-auto max-w-2xl text-center">
-          <h2 className="text-3xl font-extrabold tracking-tight text-navy-800 sm:text-4xl">{home.levelsHeading}</h2>
-          <p className="mt-3 text-muted">{home.levelsIntro}</p>
-        </div>
-        <div className="mt-10 grid gap-5 md:grid-cols-2">
-          {home.levels.map((l, i) => (
-            <Link key={l.title} href={l.href} className="group flex gap-5 rounded-2xl border border-line bg-white p-6 shadow-card transition hover:-translate-y-0.5 hover:shadow-lift">
-              <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-navy-800 text-gold-400">{i === 0 ? <School className="size-7" aria-hidden /> : <GraduationCap className="size-7" aria-hidden />}</span>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-gold-600">{l.range}</p>
-                <h3 className="mt-1 text-xl font-extrabold text-navy-800">{l.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted">{l.body}</p>
-              </div>
-            </Link>
-          ))}
+      <section className="bg-navy-900 text-white">
+        <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-20">
+          <div className="max-w-2xl">
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">{home.levelsHeading}</h2>
+            <p className="mt-3 text-white/70">{home.levelsIntro}</p>
+          </div>
+          <div className="mt-10 grid gap-4 md:grid-cols-2">
+            {home.levels.map((l, i) => (
+              <Link key={l.title} href={l.href} className="group relative overflow-hidden rounded-2xl border border-white/15 bg-white/[0.06] p-7 transition hover:bg-white/10">
+                <div className="flex items-start justify-between gap-4">
+                  <span className="grid size-12 place-items-center rounded-xl bg-gold-500 text-navy-900">{i === 0 ? <School className="size-6" aria-hidden /> : <GraduationCap className="size-6" aria-hidden />}</span>
+                  <ArrowUpRight className="size-5 text-white/50 transition group-hover:text-gold-400" aria-hidden />
+                </div>
+                <p className="mt-6 text-xs font-bold uppercase tracking-[0.18em] text-gold-400">{l.range}</p>
+                <h3 className="mt-1 text-2xl font-bold">{l.title}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-white/70">{l.body}</p>
+              </Link>
+            ))}
+          </div>
         </div>
       </section>
 
+      {/* PRINCIPAL */}
       {home.principal.enabled && home.principal.message && (
-        <section className="mx-auto max-w-4xl px-4 py-14 sm:px-6">
-          <figure className="relative rounded-[2rem] border border-line bg-white p-8 shadow-card sm:p-10">
-            <Quote className="absolute -top-5 left-8 size-10 rounded-full bg-gold-500 p-2 text-navy-900" aria-hidden />
-            <figcaption className="text-xs font-bold uppercase tracking-[0.18em] text-gold-600">{home.principal.heading}</figcaption>
-            <blockquote className="mt-3 text-lg leading-relaxed text-navy-800">{home.principal.message}</blockquote>
-            <p className="mt-5 font-bold text-navy-800">{home.principal.name}</p>
-            <p className="text-sm text-muted">{home.principal.title}</p>
+        <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-24">
+          <figure className="grid gap-8 rounded-3xl border border-line bg-card p-8 sm:p-12 lg:grid-cols-[auto_1fr]">
+            <Quote className="size-16 rounded-2xl bg-gold-500 p-4 text-navy-900" aria-hidden />
+            <div>
+              <figcaption className="text-xs font-bold uppercase tracking-[0.18em] text-gold-600">{home.principal.heading}</figcaption>
+              <blockquote className="mt-3 font-display text-xl font-semibold leading-snug text-navy-800 sm:text-2xl">{home.principal.message}</blockquote>
+              <p className="mt-6 font-bold text-navy-800">{home.principal.name}</p>
+              <p className="text-sm text-muted">{home.principal.title}</p>
+            </div>
           </figure>
         </section>
       )}
 
-      {/* JOURNEY */}
-      <section className="bg-surface">
-        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:py-20">
-          <h2 className="text-center text-3xl font-extrabold tracking-tight text-navy-800">{home.journeyHeading}</h2>
-          <ol className="mt-10 grid gap-4 md:grid-cols-4">
-            {home.journey.map((step, i) => ({ ...step, icon: JOURNEY_ICONS[step.icon as keyof typeof JOURNEY_ICONS] ?? BookOpen, n: i })).map((s, i) => (
-              <li key={s.title} className="relative rounded-2xl bg-white p-6 shadow-card">
-                <span className="absolute right-5 top-5 font-display text-4xl font-extrabold text-royal-100">{i + 1}</span>
-                <s.icon className="size-7 text-royal-600" aria-hidden />
-                <h3 className="mt-4 font-bold text-navy-800">{s.title}</h3>
-                <p className="mt-1.5 text-sm text-muted">{s.body}</p>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </section>
-
       {/* EXAM PREP */}
-      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:py-20">
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {home.prepCards.map((c) => (
-            <Link key={c.href} href={c.href} className="group flex flex-col justify-between rounded-2xl bg-navy-800 p-6 text-white shadow-card transition hover:bg-navy-700">
+      <section className="mx-auto max-w-6xl px-4 pb-6 sm:px-6">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {home.prepCards.map((c, i) => (
+            <Link key={c.href} href={c.href} className={cx("group flex min-h-[15rem] flex-col justify-between rounded-2xl p-6 transition hover:-translate-y-1", TILE[(i + 2) % 4])}>
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-gold-400">{home.prepLabel}</p>
-                <h3 className="mt-2 text-2xl font-extrabold">{c.title}</h3>
-                <p className="mt-2 text-sm text-white/75">{c.body}</p>
+                <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] opacity-70">{home.prepLabel}</p>
+                <h3 className="mt-2 text-2xl font-bold">{c.title}</h3>
+                <p className="mt-2 text-sm opacity-80">{c.body}</p>
               </div>
-              <span className="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-gold-400">
-                Learn more <ArrowRight className="size-4 transition group-hover:translate-x-0.5" aria-hidden />
+              <span className="mt-6 inline-flex items-center gap-1.5 text-sm font-bold">
+                Learn more <ArrowRight className="size-4 transition group-hover:translate-x-1" aria-hidden />
               </span>
             </Link>
           ))}
         </div>
-        <div className="mt-8 flex items-center gap-3 rounded-2xl border border-line bg-surface px-5 py-4 text-sm text-muted">
+        <p className="mt-6 flex items-center gap-3 rounded-xl border border-line bg-card px-5 py-4 text-sm text-muted">
           <Wifi className="size-5 shrink-0 text-royal-600" aria-hidden />
           {home.networkNote}
+        </p>
+      </section>
+
+      {/* NEWS */}
+      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight text-navy-800">{home.newsHeading}</h2>
+            <p className="mt-2 text-muted">{home.newsIntro}</p>
+          </div>
+        </div>
+        <div className="mt-8 grid gap-4 md:grid-cols-3">
+          {home.news.map((n) => (
+            <article key={n.title} className="rounded-2xl border border-line bg-card p-6">
+              <p className="inline-flex items-center gap-1.5 rounded-md bg-gold-100 px-2 py-0.5 text-[0.7rem] font-bold uppercase tracking-wide text-gold-600">
+                <CalendarDays className="size-3.5" aria-hidden />
+                {n.date}
+              </p>
+              <h3 className="mt-3 text-lg font-bold text-navy-800">{n.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted">{n.body}</p>
+            </article>
+          ))}
         </div>
       </section>
 
-      {/* FAQ PREVIEW */}
-      <section className="bg-surface">
-        <div className="mx-auto grid max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_1.4fr] lg:py-20">
+      {/* FAQ */}
+      <section className="border-t border-line bg-card">
+        <div className="mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_1.5fr] lg:py-20">
           <div>
-            <h2 className="text-3xl font-extrabold tracking-tight text-navy-800">{home.faqHeading}</h2>
+            <h2 className="text-3xl font-bold tracking-tight text-navy-800">{home.faqHeading}</h2>
             <p className="mt-3 text-muted">{home.faqIntro}</p>
             <Link href="/faq" className={buttonClass("secondary", "md", "mt-6")}>
               View all FAQs
             </Link>
           </div>
-          <div className="divide-y divide-line rounded-2xl border border-line bg-white">
-            {faq.items.slice(0, 4).map((f) => (
+          <div className="divide-y divide-line rounded-2xl border border-line bg-surface">
+            {faq.items.slice(0, 5).map((f) => (
               <details key={f.q} className="group px-5 py-4 [&_summary::-webkit-details-marker]:hidden">
                 <summary className="flex cursor-pointer items-center justify-between gap-4 font-semibold text-navy-800">
                   {f.q}
-                  <span className="text-xl text-royal-600 transition group-open:rotate-45" aria-hidden>
-                    +
-                  </span>
+                  <Plus className="size-5 shrink-0 text-royal-600 transition group-open:rotate-45" aria-hidden />
                 </summary>
                 <p className="mt-2 text-sm leading-relaxed text-muted">{f.a}</p>
               </details>
@@ -228,14 +234,15 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* CLOSING CTA */}
-      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
-        <div className="relative overflow-hidden rounded-[2rem] bg-royal-600 px-6 py-12 text-center text-white sm:px-12">
-          <div className="bg-grid absolute inset-0 opacity-40" aria-hidden />
+      {/* CLOSING */}
+      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+        <div className="relative overflow-hidden rounded-3xl bg-royal-600 px-6 py-14 text-center text-white sm:px-12">
+          <img src={brand.markUrl} alt="" className="absolute -right-16 -top-16 size-72 rounded-full object-cover opacity-10" aria-hidden />
+          <div className="bg-dots absolute inset-0 opacity-30" aria-hidden />
           <div className="relative">
-            <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">{home.closingHeading}</h2>
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">{home.closingHeading}</h2>
             <p className="mx-auto mt-3 max-w-xl text-white/85">{home.closingBody}</p>
-            <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
               <Link href="/register" className={buttonClass("gold", "lg")}>
                 {home.ctaRegister}
               </Link>

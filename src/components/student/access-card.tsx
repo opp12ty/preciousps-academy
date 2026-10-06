@@ -59,7 +59,7 @@ export function AccessCard({ initial, contact }: { initial: AccessState; contact
   const pct = active && state.activatedAt ? Math.min(100, (left / Math.max(total, expires - new Date(state.activatedAt).getTime())) * 100) : 0;
 
   return (
-    <div id="activate" className="overflow-hidden rounded-2xl border border-line bg-white shadow-card">
+    <div id="activate" className="overflow-hidden rounded-2xl border border-line bg-card shadow-card">
       <div className={cx("relative px-5 py-5 text-white", active ? "bg-navy-800" : "bg-slate-700")}>
         <div className="bg-grid absolute inset-0 opacity-50" aria-hidden />
         <div className="relative flex flex-wrap items-start justify-between gap-3">

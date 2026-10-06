@@ -55,3 +55,6 @@ next-env.d.ts
 
 # local secret notes (never commit)
 vercel-secrets.txt
+
+# duplicate source images dropped in the project folder
+Dapo*.jpeg

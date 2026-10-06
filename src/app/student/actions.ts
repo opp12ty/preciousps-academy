@@ -4,6 +4,7 @@ import { action, type ActionResult } from "@/server/http";
 import { activateCode } from "@/server/services/access";
 import { changePassword } from "@/server/services/auth";
 import { revokeOtherOwnSessions, revokeOwnSession, updateOwnProfile } from "@/server/services/people";
+import { createParentLink, revokeParentLink } from "@/server/services/engagement";
 import { markRead, setPreference } from "@/server/services/notifications";
 
 export async function activateCodeAction(_: ActionResult | null, form: FormData) {
@@ -45,4 +46,14 @@ export async function setPreferenceAction(category: string, channel: "inApp" | "
 
 export async function markReadAction(id: string) {
   return action({ role: "any" }, async (actor) => markRead(actor.id, id === "all" ? "all" : id, actor.schoolId));
+}
+
+export async function createParentLinkAction(label: string, days: number) {
+  return action({ role: "student" }, async (actor, ctx) => createParentLink(actor, { label, days }, ctx));
+}
+
+export async function revokeParentLinkAction(id: string) {
+  return action({ role: "student" }, async (actor, ctx) => {
+    await revokeParentLink(actor, id, ctx);
+  });
 }

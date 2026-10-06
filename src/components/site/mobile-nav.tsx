@@ -24,7 +24,7 @@ export function MobileNav({ links }: { links: { href: string; label: string }[] 
         {open ? <X className="size-5" /> : <Menu className="size-5" />}
       </button>
       {open && (
-        <div id="mobile-menu" className="fixed inset-x-0 bottom-0 top-[4.25rem] z-40 overflow-y-auto border-t border-line bg-white px-4 pb-10 pt-4">
+        <div id="mobile-menu" className="fixed inset-x-0 bottom-0 top-[4.75rem] z-40 overflow-y-auto border-t border-line bg-card px-4 pb-10 pt-4">
           <nav aria-label="Mobile">
             <ul className="grid gap-1">
               {links.map((l) => (
