@@ -15,7 +15,7 @@ export default async function BackendLoginPage({ searchParams }: PageProps<"/bac
   const sp = await searchParams;
   const s = await getSession();
   if (s?.mfaPending) redirect("/backend/verify");
-  if (s && s.user.userType !== "STUDENT") redirect("/admin");
+  if (s && s.user.userType !== "STUDENT" && s.user.userType !== "PARENT") redirect("/admin");
   if (!(await superAdminExists())) {
     const configured = Boolean(process.env.SETUP_TOKEN && process.env.SETUP_TOKEN.length >= 16);
     return (

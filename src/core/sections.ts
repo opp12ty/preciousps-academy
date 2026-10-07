@@ -3,13 +3,13 @@
  * examinations, assignments, resources) is either scoped to a section or left open to all
  * sections (null). A student only ever sees content for their own class's section.
  */
-export const SECTIONS = ["JUNIOR_SECONDARY", "SENIOR_SECONDARY", "PRIMARY", "OTHER"] as const;
+export const SECTIONS = ["PRIMARY", "JUNIOR_SECONDARY", "SENIOR_SECONDARY", "OTHER"] as const;
 export type Section = (typeof SECTIONS)[number];
 
 export const SECTION_LABELS: Record<Section, string> = {
   JUNIOR_SECONDARY: "Junior Secondary (JSS 1–JSS 3)",
   SENIOR_SECONDARY: "Senior Secondary (SSS 1–SSS 3)",
-  PRIMARY: "Primary",
+  PRIMARY: "Primary (Basic 1–Basic 6)",
   OTHER: "Other / international",
 };
 
@@ -22,10 +22,24 @@ export const SECTION_SHORT: Record<Section, string> = {
 
 /** Admin form choices. "ALL" = every section; "AUTO" = follow the class / topic. */
 export const SECTION_CHOICES = [
+  { value: "PRIMARY", label: SECTION_LABELS.PRIMARY },
   { value: "JUNIOR_SECONDARY", label: SECTION_LABELS.JUNIOR_SECONDARY },
   { value: "SENIOR_SECONDARY", label: SECTION_LABELS.SENIOR_SECONDARY },
-  { value: "ALL", label: "All sections (JSS and SS)" },
+  { value: "ALL", label: "All sections (Primary, JSS and SS)" },
 ];
+/** Short choices for list filters. */
+export const SECTION_FILTER_OPTIONS = [
+  { value: "PRIMARY", label: "Primary" },
+  { value: "JUNIOR_SECONDARY", label: "JSS" },
+  { value: "SENIOR_SECONDARY", label: "SS" },
+  { value: "ALL", label: "All sections" },
+];
+
+/** The section a standard class code belongs to: BASIC1–BASIC6, JSS1–JSS3, SS1–SS3. */
+export function sectionOfClassCode(code: string): Section {
+  const c = code.toUpperCase();
+  return c.startsWith("BASIC") ? "PRIMARY" : c.startsWith("JSS") ? "JUNIOR_SECONDARY" : "SENIOR_SECONDARY";
+}
 export const SECTION_CHOICES_AUTO = [{ value: "AUTO", label: "Follow the class / topic" }, ...SECTION_CHOICES];
 
 /** Stored value → form value. */

@@ -1,11 +1,12 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import { AlertTriangle, ChevronLeft, ChevronRight, CloudOff, Eraser, Flag, Grid3x3, Loader2, Maximize, Send, ShieldCheck, Timer, Wifi, X } from "lucide-react";
+import { AlertTriangle, Calculator, ChevronLeft, ChevronRight, CloudOff, Eraser, Flag, Grid3x3, Loader2, Maximize, Send, ShieldCheck, Timer, Wifi, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal } from "../ui/interactive";
 import { buttonClass, cx } from "../ui/primitives";
+import { ExamCalculator } from "./calculator";
 import { QuestionView } from "./question-view";
 import { isAnswered, type AnswerValue, type RenderedQuestion } from "./types";
 
@@ -19,6 +20,15 @@ interface Props {
   deadlineAt: string;
   autosaveSeconds: number;
   fullscreenGuidance: boolean;
+  /** Lockdown: the exam must stay full screen and in front; leaving is counted and finally submits. */
+  lockdown: boolean;
+  maxScreenLeaves: number;
+  /** Seconds to come back after leaving before the exam is submitted. */
+  returnCountdownSeconds: number;
+  /** Rules shown in the pop-up before the exam (empty = no pop-up). */
+  lockdownRules: string[];
+  screenLeaves: number;
+  calculator: boolean;
   questions: (RenderedQuestion & { response: AnswerValue; flagged: boolean })[];
 }
 
@@ -47,7 +57,17 @@ export function CbtClient(p: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [fatal, setFatal] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
-  const [fsPrompt, setFsPrompt] = useState(p.fullscreenGuidance);
+  const [fsPrompt, setFsPrompt] = useState(p.fullscreenGuidance || p.lockdown);
+  const [leaves, setLeaves] = useState(p.screenLeaves);
+  const [away, setAway] = useState(false);
+  const [awayLeft, setAwayLeft] = useState(p.returnCountdownSeconds);
+  const awaySince = useRef(0);
+  const [calcOpen, setCalcOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [accepted, setAccepted] = useState(false);
+  const rulesRequired = p.lockdown && p.lockdownRules.length > 0;
+  const lastLeave = useRef(0);
+  const graceUntil = useRef(0);
 
   // Server clock offset is measured after mount; until then "now" is the server's time.
   const offset = useRef(0);
@@ -149,6 +169,85 @@ export function CbtClient(p: Props) {
     void post(`/api/v1/attempts/${p.attemptId}/events`, { type }).catch(() => undefined);
   }, [p.attemptId, post]);
 
+  /** The server submitted the attempt: go to the result. */
+  const closeAfterLockdown = useCallback(
+    (resultId: string | null) => {
+      submittedRef.current = true;
+      sessionStorage.removeItem(storeKey);
+      if (resultId) router.replace(`/student/results/${resultId}?submitted=auto`);
+      else {
+        router.replace(`/cbt/${p.attemptId}`);
+        router.refresh();
+      }
+    },
+    [p.attemptId, router, storeKey],
+  );
+
+  /**
+   * One "left the examination screen" incident. Tab switch, another window and leaving full screen
+   * often fire together, so they are merged; the server keeps the count and submits at the limit.
+   */
+  const leftScreen = useCallback(() => {
+    if (!p.lockdown || submittedRef.current || !fsPromptSeen.current) return;
+    const t = Date.now();
+    if (t < graceUntil.current || t - lastLeave.current < 3000) return;
+    lastLeave.current = t;
+    if (!awaySince.current) awaySince.current = t; // the countdown starts at the first leave and is not reset by more events
+    setAwayLeft(p.returnCountdownSeconds);
+    setAway(true);
+    setCalcOpen(false);
+    void post(`/api/v1/attempts/${p.attemptId}/events`, { type: "SCREEN_LEFT" })
+      .then((r) => {
+        const d = r.data as { leaves?: number; submitted?: boolean; resultId?: string | null } | undefined;
+        if (typeof d?.leaves === "number") setLeaves(d.leaves);
+        if (d?.submitted) closeAfterLockdown(d.resultId ?? null);
+      })
+      .catch(() => setLeaves((n) => n + 1));
+  }, [closeAfterLockdown, p.attemptId, p.lockdown, p.returnCountdownSeconds, post]);
+
+  /** Back on the exam: the server checks the time away against the countdown. */
+  const returned = useCallback(async () => {
+    awaySince.current = 0;
+    setAway(false);
+    try {
+      const r = await post(`/api/v1/attempts/${p.attemptId}/events`, { type: "SCREEN_RETURNED" });
+      const d = r.data as { submitted?: boolean; resultId?: string | null } | undefined;
+      if (d?.submitted) closeAfterLockdown(d.resultId ?? null);
+    } catch {
+      /* offline: the next save or the deadline settles it */
+    }
+  }, [closeAfterLockdown, p.attemptId, post]);
+
+  // Countdown on the warning. Reaching 0 before the student returns submits the exam.
+  useEffect(() => {
+    if (!away) return;
+    const tick = setInterval(() => {
+      const left = Math.max(0, p.returnCountdownSeconds - Math.floor((Date.now() - awaySince.current) / 1000));
+      setAwayLeft(left);
+      if (left === 0 && !submittedRef.current) {
+        clearInterval(tick);
+        setSubmitting(true);
+        void post(`/api/v1/attempts/${p.attemptId}/events`, { type: "AWAY_TIMEOUT" })
+          .then((r) => {
+            const d = r.data as { submitted?: boolean; resultId?: string | null } | undefined;
+            if (d?.submitted) closeAfterLockdown(d.resultId ?? null);
+            else setSubmitting(false);
+          })
+          .catch(() => setSubmitting(false));
+      }
+    }, 250);
+    return () => clearInterval(tick);
+  }, [away, closeAfterLockdown, p.attemptId, p.returnCountdownSeconds, post]);
+
+  const enterFullscreen = useCallback(async () => {
+    graceUntil.current = Date.now() + 1500; // the browser's own full-screen switch is not "leaving"
+    try {
+      await document.documentElement.requestFullscreen?.();
+    } catch {
+      /* not supported (e.g. iPhone): the tab and window checks still apply */
+    }
+  }, []);
+
   /* ---------- answering */
   const record = useCallback(
     (qid: string, response: AnswerValue, flagged: boolean) => {
@@ -227,9 +326,21 @@ export function CbtClient(p: Props) {
 
   /* ---------- anomaly detection + connectivity */
   useEffect(() => {
-    const vis = () => document.visibilityState === "hidden" && report("TAB_HIDDEN");
-    const blur = () => report("WINDOW_BLUR");
-    const fs = () => !document.fullscreenElement && fsPromptSeen.current && report("FULLSCREEN_EXIT");
+    const vis = () => {
+      if (document.visibilityState !== "hidden") return;
+      report("TAB_HIDDEN");
+      leftScreen();
+    };
+    const blur = () => {
+      report("WINDOW_BLUR");
+      // A moment later, so a click on the browser's own prompts is not counted as leaving.
+      setTimeout(() => !document.hasFocus() && leftScreen(), 400);
+    };
+    const fs = () => {
+      if (document.fullscreenElement || !fsPromptSeen.current) return;
+      report("FULLSCREEN_EXIT");
+      leftScreen();
+    };
     const block = (type: string) => (e: Event) => {
       e.preventDefault();
       report(type);
@@ -272,7 +383,7 @@ export function CbtClient(p: Props) {
       window.removeEventListener("online", on);
       window.removeEventListener("beforeunload", unload);
     };
-  }, [flush, report]);
+  }, [flush, report, leftScreen]);
 
   /* ---------- keyboard shortcuts */
   useEffect(() => {
@@ -337,7 +448,7 @@ export function CbtClient(p: Props) {
   );
 
   return (
-    <div className="min-h-dvh bg-surface pb-28 lg:pb-8">
+    <div className={cx("min-h-dvh bg-surface pb-28 lg:pb-8", p.lockdown && "select-none")}>
       {/* Sticky header with server-synced timer */}
       <header className="sticky top-0 z-40 border-b border-line bg-white/95 shadow-sm backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-3 py-2.5 sm:px-5">
@@ -356,6 +467,16 @@ export function CbtClient(p: Props) {
             <Timer className="size-5" aria-hidden />
             {timeText}
           </div>
+          {p.lockdown && (
+            <button type="button" onClick={() => setRulesOpen(true)} aria-label="Examination rules" title="Examination rules" className={cx("hidden h-11 shrink-0 items-center gap-1.5 rounded-xl px-3 text-xs font-bold ring-1 sm:flex", leaves > 0 ? "bg-danger-50 text-danger-600 ring-red-200" : "bg-white text-navy-800 ring-line hover:bg-royal-50")}>
+              <ShieldCheck className="size-4" aria-hidden /> Left screen {leaves}/{p.maxScreenLeaves}
+            </button>
+          )}
+          {p.calculator && (
+            <button type="button" onClick={() => setCalcOpen((o) => !o)} aria-pressed={calcOpen} aria-label="Calculator" className={cx("grid size-11 shrink-0 place-items-center rounded-xl ring-1 ring-line", calcOpen ? "bg-navy-800 text-white" : "bg-white text-navy-800 hover:bg-royal-50")}>
+              <Calculator className="size-5" aria-hidden />
+            </button>
+          )}
         </div>
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-3 pb-2 text-xs sm:px-5">
           <span className="font-semibold text-navy-800">
@@ -483,7 +604,7 @@ export function CbtClient(p: Props) {
       {paletteOpen && (
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Question palette">
           <button className="absolute inset-0 bg-navy-950/50" aria-label="Close palette" onClick={() => setPaletteOpen(false)} />
-          <div className="absolute inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto rounded-t-3xl bg-card p-5 pb-8">
+          <div className="scroll-80 absolute inset-x-0 bottom-0 rounded-t-3xl bg-card p-5 pb-8">
             <div className="mb-4 flex items-center justify-between">
               <p className="font-bold text-navy-800">Questions</p>
               <button onClick={() => setPaletteOpen(false)} aria-label="Close" className="rounded-lg p-1">
@@ -546,34 +667,103 @@ export function CbtClient(p: Props) {
       </Modal>
 
       {fsPrompt && (
-        <div className="fixed inset-0 z-[60] grid place-items-center bg-navy-950/70 p-4">
+        <div className="overlay z-[60] bg-navy-950/70">
           <div className="w-full max-w-md rounded-2xl bg-card p-6 shadow-lift">
-            <p className="text-lg font-extrabold text-navy-800">Before you begin</p>
+            <p className="text-lg font-extrabold text-navy-800">{rulesRequired ? "Examination rules — read carefully" : "Before you begin"}</p>
+            {rulesRequired && (
+              <ol className="mt-3 list-decimal space-y-1.5 rounded-xl border border-red-200 bg-danger-50 py-3 pl-8 pr-3 text-sm font-medium text-navy-800">
+                {p.lockdownRules.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ol>
+            )}
             <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-muted">
               <li>The timer is controlled by the examination server and keeps running if you leave.</li>
               <li>Your answers save automatically. If your network drops, keep going — they are kept on this device.</li>
-              <li>Leaving this window, switching tabs and copy/paste are recorded for the examination office.</li>
+              {p.lockdown ? (
+                <li>
+                  <strong className="text-navy-800">Stay on this screen.</strong> The examination runs in full screen. Opening another tab, app or window, or leaving full screen, is counted.{" "}
+                  {p.maxScreenLeaves === 1 ? "If you leave even once, your examination is submitted automatically." : `You will be warned the first ${p.maxScreenLeaves === 2 ? "time" : `${p.maxScreenLeaves - 1} times`}; leaving ${p.maxScreenLeaves === 2 ? "a second time" : `${p.maxScreenLeaves} times`} submits your examination automatically.`}
+                </li>
+              ) : (
+                <li>Leaving this window, switching tabs and copy/paste are recorded for the examination office.</li>
+              )}
+              {p.calculator && <li>A calculator is provided: use the calculator button beside the timer. Do not use your phone or another app.</li>}
             </ul>
+            {rulesRequired && (
+              <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface p-3 text-sm font-semibold text-navy-800">
+                <input type="checkbox" className="mt-0.5 size-5 accent-royal-600" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
+                I have read and understand these rules. I will not leave the examination screen or engage in any examination malpractice.
+              </label>
+            )}
             <div className="mt-5 grid gap-2 sm:grid-cols-2">
               <button
                 type="button"
-                className={buttonClass("primary")}
+                disabled={rulesRequired && !accepted}
+                className={buttonClass("primary", "md", "disabled:cursor-not-allowed disabled:opacity-50")}
                 onClick={async () => {
-                  fsPromptSeen.current = true;
                   setFsPrompt(false);
-                  try {
-                    await document.documentElement.requestFullscreen?.();
-                  } catch {
-                    /* not supported (e.g. iPhone) */
-                  }
+                  await enterFullscreen();
+                  fsPromptSeen.current = true;
                 }}
               >
-                <Maximize className="size-4" /> Enter full screen
+                <Maximize className="size-4" /> {p.lockdown ? "Enter full screen and begin" : "Enter full screen"}
               </button>
-              <button type="button" className={buttonClass("secondary")} onClick={() => setFsPrompt(false)}>
-                Continue
-              </button>
+              {!p.lockdown && (
+                <button type="button" className={buttonClass("secondary")} onClick={() => setFsPrompt(false)}>
+                  Continue
+                </button>
+              )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {rulesOpen && (
+        <div className="overlay z-[60] bg-navy-950/70" role="dialog" aria-labelledby="rules-title">
+          <div className="w-full max-w-md rounded-2xl bg-card p-6 shadow-lift">
+            <p id="rules-title" className="text-lg font-extrabold text-navy-800">Examination rules</p>
+            <p className="mt-1 text-sm text-muted">
+              You have left the screen <strong className="text-navy-800">{leaves}</strong> of {p.maxScreenLeaves} time{p.maxScreenLeaves === 1 ? "" : "s"} allowed. Reaching {p.maxScreenLeaves} submits your examination.
+            </p>
+            {p.lockdownRules.length > 0 && (
+              <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-sm text-navy-800">
+                {p.lockdownRules.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ol>
+            )}
+            <button type="button" className={buttonClass("primary", "md", "mt-5 w-full")} onClick={() => setRulesOpen(false)}>
+              Back to my examination
+            </button>
+          </div>
+        </div>
+      )}
+
+      {calcOpen && p.calculator && !away && <ExamCalculator onClose={() => setCalcOpen(false)} />}
+
+      {away && !submitting && (
+        <div className="overlay z-[65] bg-navy-950" role="alertdialog" aria-labelledby="away-title">
+          <div className="w-full max-w-md rounded-2xl bg-card p-6 text-center shadow-lift">
+            <AlertTriangle className="mx-auto size-10 text-danger-600" aria-hidden />
+            <p id="away-title" className="mt-3 text-lg font-extrabold text-navy-800">You left the examination screen</p>
+            <div className="mx-auto mt-4 grid size-24 place-items-center rounded-full border-[6px] border-danger-600 bg-danger-50" role="timer" aria-live="assertive" aria-label={`${awayLeft} seconds to return`}>
+              <span className="font-mono text-4xl font-extrabold tabular-nums text-danger-600">{awayLeft}</span>
+            </div>
+            <p className="mt-3 text-sm font-semibold text-navy-800">Return within {awayLeft} second{awayLeft === 1 ? "" : "s"} or your examination will be submitted.</p>
+            <p className="mt-2 text-sm text-muted">
+              This has been recorded ({Math.min(leaves, p.maxScreenLeaves)} of {p.maxScreenLeaves}). {leaves >= p.maxScreenLeaves - 1 ? "If you leave again, your examination will be submitted automatically." : "Stay on this screen until you finish."} The exam timer has not stopped.
+            </p>
+            <button
+              type="button"
+              className={buttonClass("primary", "md", "mt-5 w-full")}
+              onClick={async () => {
+                await enterFullscreen();
+                await returned();
+              }}
+            >
+              <Maximize className="size-4" /> Return to the examination
+            </button>
           </div>
         </div>
       )}

@@ -118,6 +118,17 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
                   { key: "suspiciousThreshold", label: "Flag attempt after N anomalies", type: "number", min: 1, max: 100 },
                   { key: "fullscreenGuidance", label: "Show full-screen guidance before exams", type: "bool" },
                   { key: "singleActiveSession", label: "Single active exam window", type: "bool", hint: "Answers from a second window are rejected until the student takes over (recorded)." },
+                  { key: "lockdown", label: "Lock the exam screen", type: "bool", hint: "The exam stays full screen. Leaving it (another tab, app or window) hides the questions, is counted and warned." },
+                  { key: "maxScreenLeaves", label: "Screen leaves allowed before automatic submission (1–10)", type: "number", min: 1, max: 10, hint: "The exam is submitted on this leave. 2 = one warning, then the exam is submitted on the second leave. 1 = submitted the first time." },
+                  { key: "returnCountdownSeconds", label: "Seconds to return after leaving the screen (1–10)", type: "number", min: 1, max: 10, hint: "The warning counts down from this number. If the student has not returned to the exam by 0, it is submitted automatically." },
+                  { key: "lockdownRulesPopup", label: "Show the lockdown rules pop-up before every exam", type: "bool", hint: "The student must tick “I understand” before the exam starts. The rules can be opened again from the exam screen." },
+                  { key: "lockdownRules", label: "Lockdown rules shown to students (one rule per line)", type: "textarea" },
+                  { key: "studentIdAuto", label: "Generate Student IDs automatically at registration", type: "bool", hint: "Students no longer type an ID; they receive one and can sign in with it, their username or their e-mail." },
+                  { key: "studentIdPrefix", label: "Student ID prefix", type: "text", maxLength: 12, hint: "e.g. PPS gives PPS/2026/0001." },
+                  { key: "studentIdIncludeYear", label: "Include the registration year in Student IDs", type: "bool" },
+                  { key: "studentIdDigits", label: "Digits in the Student ID number", type: "number", min: 3, max: 8, hint: "4 gives 0001, 0002 …" },
+                  { key: "calculatorEnabled", label: "On-screen calculator", type: "bool", hint: "Shown only in examinations for the subjects listed below." },
+                  { key: "calculatorSubjectCodes", label: "Calculator subjects (codes)", type: "text", hint: "Subject codes separated by commas, e.g. MTH, PHY, CHM." },
                 ])} />
               </div>
             </Card>

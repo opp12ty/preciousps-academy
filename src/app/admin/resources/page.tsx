@@ -5,6 +5,7 @@ import { listResources } from "@/server/services/resources";
 import { getCatalog } from "@/server/services/curriculum";
 import { resourceStatusAction } from "../actions";
 import { ResourceForm } from "@/components/admin/resource-form";
+import { CentralUpload } from "@/components/admin/central-upload";
 import { FilterBar, spRecord } from "@/components/admin/filters";
 import { ActionButton } from "@/components/ui/interactive";
 import { Badge, buttonClass, Card, CardHeader, EmptyState, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui/primitives";
@@ -14,7 +15,7 @@ export const metadata: Metadata = { title: "Resources" };
 export default async function ResourcesAdmin({ searchParams }: PageProps<"/admin/resources">) {
   const s = await requireStaffPage("resources.manage");
   const sp = spRecord(await searchParams);
-  const [cat, rows] = await Promise.all([getCatalog(s.user.schoolId), listResources(s.user.schoolId, { search: sp.search, subjectId: sp.subjectId, type: sp.type, status: sp.status })]);
+  const [cat, rows] = await Promise.all([getCatalog(s.user.schoolId), listResources(s.user.schoolId, { kind: "LINK", search: sp.search, subjectId: sp.subjectId, type: sp.type, status: sp.status })]);
   const o = <T extends { id: string; name: string }>(x: T[]) => x.map((y) => ({ value: y.id, label: y.name }));
   return (
     <div className="space-y-6">
@@ -22,6 +23,10 @@ export default async function ResourcesAdmin({ searchParams }: PageProps<"/admin
       <Card>
         <CardHeader title="Add a resource" />
         <div className="p-5"><ResourceForm subjects={o(cat.subjects)} classes={o(cat.classes)} departments={o(cat.departments)} /></div>
+      </Card>
+      <Card>
+        <CardHeader title="Add many links at once from Excel" description="Download the template, fill in the Resources sheet and upload it. Links already in the Resource Centre are not added twice." />
+        <div className="p-5"><CentralUpload templateHref="/api/v1/admin/central-template?only=resources" /></div>
       </Card>
       <FilterBar action="/admin/resources" values={sp} filters={[{ type: "search", name: "search", placeholder: "Title or description" }, { type: "select", name: "subjectId", label: "Subject", options: o(cat.subjects) }, { type: "select", name: "type", label: "Type", options: ["VIDEO", "AUDIO", "DOCUMENT", "WEBSITE", "LIBRARY", "PRESENTATION", "OTHER"].map((v) => ({ value: v, label: v.toLowerCase() })) }, { type: "select", name: "status", label: "Status", options: [{ value: "PUBLISHED", label: "Published" }, { value: "DRAFT", label: "Draft" }, { value: "ARCHIVED", label: "Archived" }] }]} />
       <Card>

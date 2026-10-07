@@ -1,4 +1,5 @@
 import katex from "katex";
+import { FIGURE_TOKEN, renderFigure } from "@/core/diagrams";
 import { cx } from "./ui/primitives";
 
 /**
@@ -19,12 +20,13 @@ function math(tex: string, display: boolean) {
 export function renderInline(src: string): string {
   // Tokenise math first so markdown markers inside formulas are untouched.
   const parts: string[] = [];
-  const re = /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g;
+  // Group 1–2: a [[diagram: …]] / [[image: …]] picture; 3: display maths; 4: inline maths.
+  const re = new RegExp(`${FIGURE_TOKEN.source}|\\$\\$([\\s\\S]+?)\\$\\$|\\$([^$\\n]+?)\\$`, "g");
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(src))) {
     parts.push(fmt(src.slice(last, m.index)));
-    parts.push(m[1] !== undefined ? math(m[1], true) : math(m[2], false));
+    parts.push(m[1] !== undefined ? renderFigure(m[1], m[2]) : m[3] !== undefined ? math(m[3], true) : math(m[4], false));
     last = re.lastIndex;
   }
   parts.push(fmt(src.slice(last)));
@@ -43,6 +45,7 @@ const BULLET = /^\s*[-*]\s+/;
 const NUMBERED = /^\s*\d+[.)]\s+/;
 const TABLE_ROW = /^\s*\|.*\|\s*$/;
 const TABLE_RULE = /^\s*\|[\s:|-]+\|\s*$/;
+const FIGURE_LINE = new RegExp(`^\\s*${FIGURE_TOKEN.source}\\s*$`);
 
 const list = (tag: "ul" | "ol", lines: string[], marker: RegExp) => `<${tag}>${lines.map((l) => `<li>${renderInline(l.replace(marker, ""))}</li>`).join("")}</${tag}>`;
 
@@ -86,22 +89,22 @@ export function renderBlocks(src: string): string {
       if (rest) out.push(renderBlocks(rest));
       continue;
     }
-    // A paragraph followed by a bulleted list, numbered list or table.
-    const tail = [
-      { test: (l: string) => BULLET.test(l), render: (ls: string[]) => list("ul", ls, BULLET) },
-      { test: (l: string) => NUMBERED.test(l), render: (ls: string[]) => list("ol", ls, NUMBERED) },
-      { test: (l: string) => TABLE_ROW.test(l), render: table },
-    ].find(({ test }) => {
-      const start = lines.findIndex(test);
-      return start > 0 && lines.slice(start).every(test);
-    });
-    if (tail) {
-      const start = lines.findIndex(tail.test);
-      out.push(`<p>${renderInline(lines.slice(0, start).join("\n"))}</p>`);
-      out.push(tail.render(lines.slice(start)));
-      continue;
+    // Mixed block: runs of table rows, bullets, numbered items and plain text, in any order.
+    const kind = (l: string) => (FIGURE_LINE.test(l) ? "fig" : TABLE_ROW.test(l) ? "table" : BULLET.test(l) ? "ul" : NUMBERED.test(l) ? "ol" : "p");
+    const runs: { kind: string; lines: string[] }[] = [];
+    for (const l of lines) {
+      const k = kind(l);
+      const run = runs[runs.length - 1];
+      if (run && run.kind === k) run.lines.push(l);
+      else runs.push({ kind: k, lines: [l] });
     }
-    out.push(`<p>${renderInline(b)}</p>`);
+    for (const run of runs) {
+      if (run.kind === "fig") out.push(...run.lines.map((l) => renderInline(l.trim())));
+      else if (run.kind === "table") out.push(table(run.lines));
+      else if (run.kind === "ul") out.push(list("ul", run.lines, BULLET));
+      else if (run.kind === "ol") out.push(list("ol", run.lines, NUMBERED));
+      else out.push(`<p>${renderInline(run.lines.join("\n"))}</p>`);
+    }
   }
   return out.join("");
 }

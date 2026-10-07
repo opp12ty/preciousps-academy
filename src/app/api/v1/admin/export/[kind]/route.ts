@@ -64,7 +64,7 @@ export const GET = api<{ kind: string }>({ auth: "staff" }, async ({ req, params
         .where(and(eq(activationCodes.schoolId, actor!.schoolId), status ? inArray(activationCodes.status, [status as "UNUSED"]) : undefined, batch ? eq(activationCodes.batchId, batch) : undefined))
         .orderBy(desc(activationCodes.createdAt))
         .limit(20_000);
-      rows = list.map((r) => ({ Code: reveal ? decrypt(r.c.codeEnc) : `…${r.c.codeSuffix}`, Status: r.c.status, Days: r.c.durationDays, Batch: r.c.batchId, Note: r.c.note, Created: r.c.createdAt, Activated: r.c.activatedAt, Student: r.email ? `${r.first} ${r.last} <${r.email}>` : "" }));
+      rows = list.map((r) => ({ Code: reveal ? decrypt(r.c.codeEnc) : `…${r.c.codeSuffix}`, Status: r.c.status, For: r.c.audience === "PARENT" ? "Parent" : "Student", Days: r.c.durationDays, Batch: r.c.batchId, Note: r.c.note, Created: r.c.createdAt, Activated: r.c.activatedAt, "Activated by": r.email ? `${r.first} ${r.last} <${r.email}>` : "" }));
       if (reveal) await audit({ actor, action: "codes.revealed_export", entityType: "code_batch", entityId: batch ?? "all", summary: `${rows.length} codes revealed in export` }, ctx);
       break;
     }

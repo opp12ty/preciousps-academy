@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Loader2, Plus, Save, Trash2 } from "lucide-react";
+/* eslint-disable @next/next/no-img-element */
+import { ArrowDown, ArrowUp, Loader2, Plus, RotateCcw, Save, Trash2, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { saveContentAction } from "@/app/admin/actions";
@@ -10,18 +11,75 @@ import { useToast } from "../ui/toast";
 
 type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
 
-const LONG = /body|description|intro|answer|^a$|text|about/i;
+const LONG = /body|description|intro|answer|^a$|text|about|message/i;
+const IMAGE = /AssetId$/;
 const label = (k: string) =>
   k
     .replace(/([A-Z])/g, " $1")
     .replace(/^./, (c) => c.toUpperCase())
     .replace(/^Q$/, "Question")
-    .replace(/^A$/, "Answer");
+    .replace(/^A$/, "Answer")
+    .replace(/ Asset Id$/, "")
+    .replace(/^Dark Glow Style$/, "Dark glow style (deep navy sections with glowing accents)")
+    .replace(/^Animations$/, "Animations (drifting glow, shimmer and sections easing in)");
+
+/** Image slot stored as an uploaded asset id; large photos are scaled down in the browser first. */
+function ImageField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+  const upload = async (file: File) => {
+    setBusy(true);
+    try {
+      let out = file;
+      const bitmap = await createImageBitmap(file).catch(() => null);
+      if (bitmap) {
+        const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(bitmap.width * scale);
+        canvas.height = Math.round(bitmap.height * scale);
+        canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        bitmap.close();
+        const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.88));
+        if (blob) out = new File([blob], file.name.replace(/.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+      }
+      const fd = new FormData();
+      fd.set("file", out);
+      fd.set("kind", "IMAGE");
+      const r = await fetch("/api/v1/assets", { method: "POST", body: fd }).then((x) => x.json());
+      if (r.ok) {
+        onChange(r.data.id);
+        toast("info", "Uploaded — click Publish changes to show it on the site.");
+      } else toast("error", r.error.message);
+    } catch {
+      toast("error", "The picture could not be uploaded. Try a JPG or PNG file.");
+    }
+    setBusy(false);
+  };
+  return (
+    <div className="flex items-center gap-4 rounded-xl border border-line bg-surface p-3">
+      <div className="grid size-24 shrink-0 place-items-center overflow-hidden rounded-xl bg-white ring-1 ring-line">
+        {value ? <img src={`/api/v1/assets/${value}`} alt="" className="size-full object-cover object-top" /> : <span className="px-2 text-center text-xs text-muted">Default picture in use</span>}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <label className={buttonClass("secondary", "sm", "cursor-pointer")}>
+          {busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />} {value ? "Change picture" : "Upload picture"}
+          <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
+        </label>
+        {value && (
+          <button type="button" className={buttonClass("ghost", "sm")} onClick={() => onChange("")}>
+            <RotateCcw className="size-4" /> Use default
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /** Renders editable fields from the shape of the stored content (strings, lists, nested groups). */
 function Node({ value, onChange, path, template }: { value: Json; onChange: (v: Json) => void; path: string; template?: Json }) {
   if (typeof value === "string") {
     const key = path.split(".").pop() ?? "";
+    if (IMAGE.test(key)) return <ImageField value={value} onChange={onChange} />;
     const long = LONG.test(key) || value.length > 90;
     return long ? <textarea className={inputClass} rows={Math.min(14, Math.max(3, Math.ceil(value.length / 90)))} value={value} onChange={(e) => onChange(e.target.value)} /> : <input className={inputClass} value={value} onChange={(e) => onChange(e.target.value)} />;
   }

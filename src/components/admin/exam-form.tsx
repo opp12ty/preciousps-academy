@@ -29,6 +29,7 @@ export interface ExamData {
   endsAt: string | null;
   maxAttempts: number;
   requiresAccess: boolean;
+  isPremium?: boolean;
   resultVisibility: string;
   showExplanations: boolean;
   poolFilter: { years?: number[]; topicIds?: string[]; difficulties?: string[]; matchClass?: boolean } | null;
@@ -57,7 +58,7 @@ export function ExamForm({ exam, subjects, classes, departments, topics, years, 
     >
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <TextField className="sm:col-span-2" label="Title" name="title" required defaultValue={exam?.title} placeholder="e.g. 2025 Mathematics Examination" />
-        <SelectField label="Examination type" name="examType" defaultValue={exam?.examType ?? "MOCK"} options={["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "CONTINUOUS_ASSESSMENT", "JAMB", "WAEC", "NECO", "BECE", "CUSTOM"].map((v) => ({ value: v, label: v.replace(/_/g, " ") }))} />
+        <SelectField label="Examination type" name="examType" defaultValue={exam?.examType ?? "MOCK"} options={["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "CONTINUOUS_ASSESSMENT", "JAMB", "WAEC", "NECO", "BECE", "CUSTOM", "IELTS", "TOEFL", "SAT", "CHECKPOINT"].map((v) => ({ value: v, label: v.replace(/_/g, " ") }))} />
         <SelectField label="Subject" name="subjectId" required placeholder="Select" options={subjects} value={subjectId} onChange={(e) => setSubjectId(e.target.value)} />
         <SelectField label="Class" name="classId" placeholder="All classes" options={classes} defaultValue={exam?.classId ?? ""} />
         <SelectField label="Department" name="departmentId" placeholder="All departments" options={departments} defaultValue={exam?.departmentId ?? ""} />
@@ -81,6 +82,7 @@ export function ExamForm({ exam, subjects, classes, departments, topics, years, 
         <CheckboxField name="randomizeQuestions" label="Randomise question selection & order" defaultChecked={exam?.randomizeQuestions ?? true} />
         <CheckboxField name="randomizeOptions" label="Randomise option order" defaultChecked={exam?.randomizeOptions ?? true} hint="Answer keys stay correct automatically." />
         <CheckboxField name="requiresAccess" label="Requires an active access code" defaultChecked={exam?.requiresAccess ?? true} />
+        <CheckboxField name="isPremium" label="Premium only (International & Advanced area)" defaultChecked={exam?.isPremium ?? false} />
         <CheckboxField name="showExplanations" label="Show explanations in review" defaultChecked={exam?.showExplanations ?? true} />
         <SelectField label="Result visibility" name="resultVisibility" defaultValue={exam?.resultVisibility ?? defaults.visibility} options={[{ value: "IMMEDIATE", label: "Immediately after submission" }, { value: "AFTER_RELEASE", label: "After release by the school" }, { value: "HIDDEN", label: "Hidden from students" }]} />
       </fieldset>

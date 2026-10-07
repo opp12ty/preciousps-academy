@@ -39,6 +39,12 @@ export default async function CbtPage({ params }: PageProps<"/cbt/[attemptId]">)
       deadlineAt={view.deadlineAt}
       autosaveSeconds={view.autosaveSeconds}
       fullscreenGuidance={view.fullscreenGuidance}
+      lockdown={view.lockdown}
+      maxScreenLeaves={view.maxScreenLeaves}
+      returnCountdownSeconds={view.returnCountdownSeconds}
+      lockdownRules={view.lockdownRules}
+      screenLeaves={view.screenLeaves}
+      calculator={view.calculator}
       questions={view.questions.map((q) => ({ ...renderQuestion(q.attemptQuestionId, q.position, q), response: (q.response as AnswerValue) ?? null, flagged: q.flagged }))}
     />
   );

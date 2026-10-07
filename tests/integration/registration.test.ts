@@ -12,6 +12,8 @@ import { seedPlatform } from "@/server/seed";
 import { resolveSessionToken } from "@/server/auth/session";
 import { registerStudent, signInNewStudent } from "@/server/services/auth";
 import { clearAllRateLimits } from "@/server/rate-limit";
+import { getSetting } from "@/server/settings";
+import { sql } from "drizzle-orm";
 
 const ctx = { ip: "127.0.0.1", userAgent: "vitest" };
 const PW = "Harmattan#2026x";
@@ -40,6 +42,13 @@ beforeAll(async () => {
   classId = c.id;
 }, 180_000);
 afterAll(async () => close());
+
+/** Student IDs are generated automatically by default; the clash test needs typed IDs. */
+async function setAutoStudentId(on: boolean) {
+  const sid = (await db.select({ id: S.schools.id }).from(S.schools).limit(1))[0].id;
+  const cur = await getSetting(sid, "examination");
+  await db.execute(sql`INSERT INTO settings (school_id, key, value) VALUES (${sid}, ${"examination"}, ${JSON.stringify({ ...cur, studentIdAuto: on })}::jsonb) ON CONFLICT (school_id, key) DO UPDATE SET value = EXCLUDED.value`);
+}
 
 describe("student registration", () => {
   it("registers many new students at once without false 'already exists' errors", async () => {
@@ -73,6 +82,7 @@ describe("student registration", () => {
   });
 
   it("reports the real clash: e-mail, Student ID and username separately", async () => {
+    await setAutoStudentId(false);
     await registerStudent(form(300, { username: "ada.300" }), ctx);
     const code = async (over: Record<string, unknown>) => registerStudent(form(301, over), ctx).catch((e: AppError) => e);
     const e1 = (await code({ email: "kid300@students.test" })) as AppError;
@@ -84,5 +94,6 @@ describe("student registration", () => {
     // none of the failed attempts left a half-created account behind
     const stray = await db.select().from(S.users).where(eq(S.users.email, "kid301@students.test"));
     expect(stray.length).toBe(0);
+    await setAutoStudentId(true);
   });
 });

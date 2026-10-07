@@ -35,7 +35,8 @@ import {
 import { audit, securityEvent, type Actor, type ReqCtx } from "../audit";
 import { AppError } from "../errors";
 import { getSetting } from "../settings";
-import { requireActiveAccess } from "./access";
+import { featureWithheld, requireFeature, requirePremiumAccess } from "./access";
+import { FEATURE_DENIED } from "@/core/features";
 import { loadBankQuestions } from "./questions";
 import { resolveSection, sectionCond, studentScope, type StudentScope } from "./scope";
 import { SECTIONS, sectionAllows } from "@/core/sections";
@@ -67,7 +68,7 @@ export const examInputSchema = z
     departmentId: uuidOpt,
     level: sectionOpt,
     year: z.coerce.number().int().min(1990).max(2100).nullish(),
-    examType: z.enum(["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "CONTINUOUS_ASSESSMENT", "JAMB", "WAEC", "NECO", "BECE", "CUSTOM"]),
+    examType: z.enum(["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "CONTINUOUS_ASSESSMENT", "JAMB", "WAEC", "NECO", "BECE", "CUSTOM", "IELTS", "TOEFL", "SAT", "CHECKPOINT"]),
     questionCount: z.coerce.number().int().min(1).max(500),
     durationMinutes: z.coerce.number().int().min(1).max(600),
     totalMarks: z.coerce.number().positive().max(10000).nullish(),
@@ -79,6 +80,7 @@ export const examInputSchema = z
     endsAt: dateOpt,
     maxAttempts: z.coerce.number().int().min(1).max(100).default(1),
     requiresAccess: z.boolean().default(true),
+    isPremium: z.boolean().default(false),
     resultVisibility: z.enum(["IMMEDIATE", "AFTER_RELEASE", "HIDDEN"]).default("IMMEDIATE"),
     showExplanations: z.boolean().default(true),
     poolFilter: z
@@ -87,6 +89,8 @@ export const examInputSchema = z
         topicIds: z.array(z.string().uuid()).max(200).optional(),
         difficulties: z.array(z.enum(["EASY", "MEDIUM", "HARD"])).optional(),
         matchClass: z.boolean().optional(),
+        /** Draw only questions tagged with these exam types (e.g. JAMB-only tests). */
+        examTypes: z.array(z.enum(["JAMB", "WAEC", "NECO", "BECE", "IELTS", "TOEFL", "SAT", "CHECKPOINT"])).max(8).optional(),
       })
       .nullish(),
   })
@@ -117,7 +121,7 @@ export async function updateExam(actor: Actor, id: string, raw: unknown, ctx: Re
   const level = await resolveSection(actor.schoolId, e.classId, e.level);
   const [row] = await db
     .update(examinations)
-    .set({ ...e, level, poolFilter: e.poolFilter ?? null, version: cur.version + 1, updatedAt: new Date() })
+    .set({ ...e, level, poolFilter: keepExamTypes(e.poolFilter ?? null, cur.poolFilter), version: cur.version + 1, updatedAt: new Date() })
     .where(eq(examinations.id, id))
     .returning();
   await audit({ actor, action: "exam.edited", entityType: "examination", entityId: id, summary: `${row.title} → v${row.version}` }, ctx);
@@ -142,13 +146,23 @@ export async function setExamStatus(actor: Actor, id: string, status: "DRAFT" | 
   }
 }
 
+type PoolFilter = { years?: number[]; topicIds?: string[]; difficulties?: string[]; matchClass?: boolean; examTypes?: ("JAMB" | "WAEC" | "NECO" | "BECE" | "IELTS" | "TOEFL" | "SAT" | "CHECKPOINT")[] };
+
+/** The exam form does not edit the exam-type restriction, so an edit must not silently drop it. */
+function keepExamTypes(next: PoolFilter | null, current: unknown): PoolFilter | null {
+  const types = (current as PoolFilter | null)?.examTypes;
+  if (!types?.length || next?.examTypes?.length) return next;
+  return { ...(next ?? {}), examTypes: types };
+}
+
 function poolConditions(exam: typeof examinations.$inferSelect): SQL[] {
-  const f = (exam.poolFilter ?? {}) as { years?: number[]; topicIds?: string[]; difficulties?: string[]; matchClass?: boolean };
+  const f = (exam.poolFilter ?? {}) as PoolFilter;
   const conds: SQL[] = [eq(questions.schoolId, exam.schoolId), eq(questions.subjectId, exam.subjectId), eq(questions.status, "APPROVED")];
   if (f.years?.length) conds.push(inArray(questions.year, f.years));
   if (f.topicIds?.length) conds.push(inArray(questions.topicId, f.topicIds));
   if (f.difficulties?.length) conds.push(inArray(questions.difficulty, f.difficulties as ("EASY" | "MEDIUM" | "HARD")[]));
   if (f.matchClass && exam.classId) conds.push(or(eq(questions.classId, exam.classId), isNull(questions.classId))!);
+  if (f.examTypes?.length) conds.push(inArray(questions.examType, f.examTypes));
   // A JSS exam never draws SS questions and vice versa.
   if (exam.level) conds.push(sectionCond(questions.level, exam.level));
   return conds;
@@ -180,19 +194,25 @@ function eligible(exam: typeof examinations.$inferSelect, scope: StudentScope) {
   return (!exam.classId || exam.classId === scope.classId) && (!exam.departmentId || exam.departmentId === scope.departmentId) && sectionAllows(exam.level, scope.level);
 }
 
-export async function listStudentExams(actor: Actor, filter?: { types?: string[] }) {
+const isJambOnly = (exam: typeof examinations.$inferSelect) => exam.examType === "JAMB" && Boolean((exam.poolFilter as PoolFilter | null)?.examTypes?.includes("JAMB"));
+
+export async function listStudentExams(actor: Actor, filter?: { types?: string[]; jambOnly?: boolean; premium?: boolean }) {
   const db = getDb();
   const scope = await studentScope(actor.id);
   const now = new Date();
   const conds: SQL[] = [eq(examinations.schoolId, actor.schoolId), eq(examinations.status, "PUBLISHED")];
   if (filter?.types?.length) conds.push(inArray(examinations.examType, filter.types as "MOCK"[]));
+  // Premium examinations live in their own area and never appear in the ordinary lists.
+  conds.push(eq(examinations.isPremium, Boolean(filter?.premium)));
   const exams = await db
-    .select({ e: examinations, subject: subjects.name })
+    .select({ e: examinations, subject: subjects.name, className: classes.name, department: departments.name })
     .from(examinations)
     .innerJoin(subjects, eq(subjects.id, examinations.subjectId))
+    .leftJoin(classes, eq(classes.id, examinations.classId))
+    .leftJoin(departments, eq(departments.id, examinations.departmentId))
     .where(and(...conds))
     .orderBy(asc(examinations.startsAt), desc(examinations.createdAt));
-  const mine = exams.filter((x) => eligible(x.e, scope));
+  const mine = exams.filter((x) => eligible(x.e, scope) && (!filter?.jambOnly || isJambOnly(x.e)));
   const ids = mine.map((x) => x.e.id);
   const attempts = ids.length
     ? await db
@@ -200,7 +220,7 @@ export async function listStudentExams(actor: Actor, filter?: { types?: string[]
         .from(examinationAttempts)
         .where(and(eq(examinationAttempts.userId, actor.id), inArray(examinationAttempts.examinationId, ids)))
     : [];
-  return mine.map(({ e, subject }) => {
+  return mine.map(({ e, subject, className, department }) => {
     const mineA = attempts.filter((a) => a.examId === e.id && a.status !== "VOIDED");
     const live = mineA.find((a) => a.status === "IN_PROGRESS" && a.deadlineAt > now);
     const window = e.startsAt && e.startsAt > now ? "UPCOMING" : e.endsAt && e.endsAt < now ? "CLOSED" : "OPEN";
@@ -209,6 +229,9 @@ export async function listStudentExams(actor: Actor, filter?: { types?: string[]
       title: e.title,
       description: e.description,
       subject,
+      /** Null when the examination is open to every class / department in the section. */
+      className,
+      department,
       examType: e.examType,
       year: e.year,
       questionCount: e.questionCount,
@@ -244,7 +267,8 @@ export async function startAttempt(actor: Actor, examId: string, clientSessionId
   const now = new Date();
   if (exam.startsAt && exam.startsAt > now) throw new AppError("EXAM_UNAVAILABLE", "This examination has not opened yet.");
   if (exam.endsAt && exam.endsAt <= now) throw new AppError("EXAM_UNAVAILABLE", "This examination has closed.");
-  if (exam.requiresAccess) await requireActiveAccess(actor.id);
+  if (exam.isPremium) await requirePremiumAccess(actor.id);
+  else if (exam.requiresAccess) await requireFeature(actor.id, "CBT");
 
   // Close out any attempt whose time ran out before we decide.
   await sweepExpiredAttempts({ userId: actor.id });
@@ -357,8 +381,17 @@ export async function getAttemptView(actor: Actor, attemptId: string, ctx: ReqCt
   const ans = await db.select().from(attemptAnswers).where(eq(attemptAnswers.attemptId, a.id));
   const byQ = new Map(ans.map((x) => [x.attemptQuestionId, x]));
   const cfg = await getSetting(actor.schoolId, "examination");
+  const [subject] = await db.select({ code: subjects.code }).from(examinations).innerJoin(subjects, eq(subjects.id, examinations.subjectId)).where(eq(examinations.id, a.examinationId));
+  const calculatorCodes = cfg.calculatorSubjectCodes.split(/[,\s]+/).map((c) => c.trim().toUpperCase()).filter(Boolean);
+  const [{ leaves }] = await db.select({ leaves: sql<number>`count(*)::int` }).from(attemptEvents).where(and(eq(attemptEvents.attemptId, a.id), eq(attemptEvents.type, "SCREEN_LEFT")));
   return {
     status: "IN_PROGRESS" as const,
+    lockdown: cfg.lockdown,
+    maxScreenLeaves: cfg.maxScreenLeaves,
+    returnCountdownSeconds: cfg.returnCountdownSeconds,
+    lockdownRules: cfg.lockdownRulesPopup ? cfg.lockdownRules.split("\n").map((r) => r.trim()).filter(Boolean) : [],
+    screenLeaves: leaves,
+    calculator: cfg.calculatorEnabled && Boolean(subject) && calculatorCodes.includes(subject.code.toUpperCase()),
     attemptId: a.id,
     examTitle: snap.title,
     studentName: `${u.firstName} ${u.lastName}`,
@@ -470,14 +503,51 @@ export async function claimAttemptSession(actor: Actor, attemptId: string, clien
   return { takenOver: takeover };
 }
 
-const EVENT_TYPES = ["TAB_HIDDEN", "WINDOW_BLUR", "FULLSCREEN_EXIT", "COPY_ATTEMPT", "PASTE_ATTEMPT", "CONTEXT_MENU", "OFFLINE", "ONLINE"] as const;
+const EVENT_TYPES = ["TAB_HIDDEN", "WINDOW_BLUR", "FULLSCREEN_EXIT", "COPY_ATTEMPT", "PASTE_ATTEMPT", "CONTEXT_MENU", "OFFLINE", "ONLINE", "SCREEN_LEFT", "SCREEN_RETURNED", "AWAY_TIMEOUT"] as const;
+/** Network delay allowed on top of the countdown before a late return counts as "did not come back". */
+const RETURN_GRACE_MS = 3_000;
 
-/** Records browser-detectable anomalies. We do not claim to prevent physical cheating (§35). */
+/**
+ * Records browser-detectable anomalies. We do not claim to prevent physical cheating (§35).
+ * SCREEN_LEFT is one "left the examination screen" incident; with lockdown on, the server submits
+ * the attempt when the allowed number is reached, so the limit cannot be dodged from the browser.
+ */
 export async function recordAttemptEvent(actor: Actor, attemptId: string, type: string, ctx: ReqCtx) {
   if (!(EVENT_TYPES as readonly string[]).includes(type)) throw new AppError("VALIDATION", "Unknown event.");
   const a = await loadOwnedAttempt(actor, attemptId, ctx);
-  if (a.status !== "IN_PROGRESS") return;
+  if (a.status !== "IN_PROGRESS") return { recorded: false };
   const db = getDb();
+  if (type === "SCREEN_LEFT") {
+    const cfg = await getSetting(actor.schoolId, "examination");
+    await db.insert(attemptEvents).values({ attemptId: a.id, type });
+    await db.update(examinationAttempts).set({ suspiciousEvents: sql`${examinationAttempts.suspiciousEvents} + 1` }).where(eq(examinationAttempts.id, a.id));
+    const [{ leaves }] = await db.select({ leaves: sql<number>`count(*)::int` }).from(attemptEvents).where(and(eq(attemptEvents.attemptId, a.id), eq(attemptEvents.type, "SCREEN_LEFT")));
+    if (cfg.lockdown && leaves >= cfg.maxScreenLeaves) {
+      await db.insert(attemptEvents).values({ attemptId: a.id, type: "LOCKDOWN_SUBMIT", detail: { leaves } });
+      await securityEvent({ type: "SUSPICIOUS_EXAM_ACTIVITY", severity: "HIGH", userId: actor.id, schoolId: actor.schoolId, detail: { attemptId: a.id, reason: "left_exam_screen", leaves } }, ctx);
+      const done = await finaliseAttempt(a.id, "TIMEOUT", ctx);
+      return { recorded: true, leaves, max: cfg.maxScreenLeaves, submitted: true, resultId: done?.id ?? null };
+    }
+    return { recorded: true, leaves, max: cfg.maxScreenLeaves, submitted: false };
+  }
+  if (type === "SCREEN_RETURNED" || type === "AWAY_TIMEOUT") {
+    // Timed on the server from the SCREEN_LEFT it recorded, so a paused or edited browser clock does not help.
+    const cfg = await getSetting(actor.schoolId, "examination");
+    const [left] = await db.select({ at: attemptEvents.createdAt }).from(attemptEvents).where(and(eq(attemptEvents.attemptId, a.id), eq(attemptEvents.type, "SCREEN_LEFT"))).orderBy(desc(attemptEvents.createdAt)).limit(1);
+    const [back] = await db.select({ at: attemptEvents.createdAt }).from(attemptEvents).where(and(eq(attemptEvents.attemptId, a.id), eq(attemptEvents.type, "SCREEN_RETURNED"))).orderBy(desc(attemptEvents.createdAt)).limit(1);
+    const open = left && (!back || back.at < left.at);
+    const awayMs = open ? Date.now() - left.at.getTime() : 0;
+    const allowed = cfg.returnCountdownSeconds * 1000;
+    const late = cfg.lockdown && open && (type === "AWAY_TIMEOUT" ? awayMs >= allowed - 1500 : awayMs > allowed + RETURN_GRACE_MS);
+    await db.insert(attemptEvents).values({ attemptId: a.id, type, detail: { awayMs } });
+    if (late) {
+      await db.insert(attemptEvents).values({ attemptId: a.id, type: "LOCKDOWN_SUBMIT", detail: { reason: "did_not_return", awayMs } });
+      await securityEvent({ type: "SUSPICIOUS_EXAM_ACTIVITY", severity: "HIGH", userId: actor.id, schoolId: actor.schoolId, detail: { attemptId: a.id, reason: "did_not_return_to_exam", awayMs } }, ctx);
+      const done = await finaliseAttempt(a.id, "TIMEOUT", ctx);
+      return { recorded: true, submitted: true, resultId: done?.id ?? null };
+    }
+    return { recorded: true, submitted: false };
+  }
   const suspicious = !["ONLINE", "OFFLINE"].includes(type);
   await db.insert(attemptEvents).values({ attemptId: a.id, type });
   if (suspicious) {
@@ -491,6 +561,7 @@ export async function recordAttemptEvent(actor: Actor, attemptId: string, type: 
       await securityEvent({ type: "SUSPICIOUS_EXAM_ACTIVITY", severity: "MEDIUM", userId: actor.id, schoolId: actor.schoolId, detail: { attemptId: a.id, events: row.n } }, ctx);
     }
   }
+  return { recorded: true };
 }
 
 export async function submitAttempt(actor: Actor, attemptId: string, ctx: ReqCtx) {
@@ -624,6 +695,7 @@ export async function getStudentResult(actor: Actor, resultId: string, ctx: ReqC
     throw new AppError("NOT_FOUND", "Result not found.");
   }
   const snap = row.a.examSnapshot as { title: string; resultVisibility: string; showExplanations: boolean; passMark: number };
+  if (await featureWithheld(actor.id, "RESULTS")) return { visible: false as const, voided: false, examTitle: snap.title, submittedAt: row.a.submittedAt, message: FEATURE_DENIED };
   const visible = !row.r.isVoided && Boolean(row.r.releasedAt) && snap.resultVisibility !== "HIDDEN";
   if (!visible) {
     return { visible: false as const, voided: row.r.isVoided, examTitle: snap.title, submittedAt: row.a.submittedAt, message: row.r.isVoided ? "This attempt was voided by the examination office." : "Your result will be available once released by the school." };
@@ -663,6 +735,7 @@ export async function attemptReview(attemptId: string, withExplanations: boolean
 
 export async function listStudentResults(actor: Actor) {
   const db = getDb();
+  if (await featureWithheld(actor.id, "RESULTS")) return [];
   return db
     .select({
       id: results.id,
@@ -898,4 +971,69 @@ export async function listExamsAdmin(actor: Actor, f: { status?: string; search?
   const withPool = [];
   for (const r of rows) withPool.push({ ...r, pool: await poolSize(r.e, db) });
   return withPool;
+}
+
+/* ------------------------------------------------------------ JAMB tests */
+
+export const JAMB_TEST_QUESTIONS = 50;
+const JAMB_TEST_MINUTES = 40;
+
+/** One row per subject: how many JAMB-tagged questions it has and the state of its JAMB-only test. */
+export async function jambOverview(actor: Actor) {
+  const db = getDb();
+  const subs = await db.select({ id: subjects.id, name: subjects.name, code: subjects.code }).from(subjects).where(and(eq(subjects.schoolId, actor.schoolId), isNull(subjects.archivedAt))).orderBy(asc(subjects.name));
+  const counts = await db
+    .select({ subjectId: questions.subjectId, approved: sql<number>`(count(*) filter (where ${questions.status} = 'APPROVED'))::int`, total: sql<number>`count(*)::int` })
+    .from(questions)
+    .where(and(eq(questions.schoolId, actor.schoolId), eq(questions.examType, "JAMB"), sectionCond(questions.level, "SENIOR_SECONDARY")))
+    .groupBy(questions.subjectId);
+  const tests = (await db.select().from(examinations).where(and(eq(examinations.schoolId, actor.schoolId), eq(examinations.examType, "JAMB"), ne(examinations.status, "ARCHIVED"))).orderBy(desc(examinations.createdAt))).filter(isJambOnly);
+  return subs.map((s) => {
+    const c = counts.find((x) => x.subjectId === s.id);
+    const t = tests.find((x) => x.subjectId === s.id);
+    return { ...s, approved: c?.approved ?? 0, total: c?.total ?? 0, test: t ? { id: t.id, title: t.title, status: t.status, questionCount: t.questionCount, durationMinutes: t.durationMinutes } : null };
+  });
+}
+
+/**
+ * Creates the subject's JAMB-only test if it does not exist and publishes it once the subject has
+ * enough approved JAMB questions. Safe to run again after more questions are uploaded.
+ */
+export async function setupJambTests(actor: Actor, subjectIds: string[] | "ALL", ctx: ReqCtx) {
+  const db = getDb();
+  const rows = (await jambOverview(actor)).filter((r) => (subjectIds === "ALL" ? r.total > 0 || r.test : subjectIds.includes(r.id)));
+  const out = { created: 0, published: 0, waiting: [] as string[] };
+  for (const r of rows) {
+    let test = r.test;
+    if (!test) {
+      const [row] = await db
+        .insert(examinations)
+        .values({
+          schoolId: actor.schoolId,
+          title: `JAMB ${r.name}`,
+          description: `${JAMB_TEST_QUESTIONS} JAMB (UTME) questions in ${r.name}. Every attempt draws a fresh set.`,
+          subjectId: r.id,
+          level: "SENIOR_SECONDARY",
+          examType: "JAMB",
+          questionCount: JAMB_TEST_QUESTIONS,
+          durationMinutes: JAMB_TEST_MINUTES,
+          maxAttempts: 100,
+          poolFilter: { examTypes: ["JAMB"] } satisfies PoolFilter,
+          status: "DRAFT",
+          createdBy: actor.id,
+        })
+        .returning();
+      await audit({ actor, action: "exam.created", entityType: "examination", entityId: row.id, summary: row.title }, ctx);
+      test = { id: row.id, title: row.title, status: row.status, questionCount: row.questionCount, durationMinutes: row.durationMinutes };
+      out.created++;
+    }
+    if (test.status === "PUBLISHED") continue;
+    if (r.approved >= test.questionCount) {
+      // Published quietly: setting up many subjects at once must not send one announcement per subject.
+      await db.update(examinations).set({ status: "PUBLISHED", updatedAt: new Date() }).where(eq(examinations.id, test.id));
+      await audit({ actor, action: "exam.published", entityType: "examination", entityId: test.id, summary: test.title }, ctx);
+      out.published++;
+    } else out.waiting.push(`${r.name} (${r.approved}/${test.questionCount})`);
+  }
+  return out;
 }

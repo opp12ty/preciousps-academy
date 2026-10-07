@@ -17,7 +17,7 @@ export interface PackLesson {
   title: string;
   summary: string;
   minutes?: number;
-  /** Markdown: ## headings, - lists, **bold**, $maths$. */
+  /** Markdown: ## headings, - lists, **bold**, $maths$, and pictures on their own line: [[diagram: fraction 3/4]] (see src/core/diagrams.ts). */
   notes: string;
   /** Worked examples with full solutions. */
   examples: string;
@@ -33,9 +33,11 @@ export interface PackTopic {
   objectives: string[];
   lesson: PackLesson;
   questions: Q[];
+  /** UTME-style questions on this topic (original, not past questions); uploaded with Exam Type "JAMB". */
+  jamb?: Q[];
 }
 
-export type ClassCode = "JSS1" | "JSS2" | "JSS3" | "SS1" | "SS2" | "SS3";
+export type ClassCode = "BASIC1" | "BASIC2" | "BASIC3" | "BASIC4" | "BASIC5" | "BASIC6" | "JSS1" | "JSS2" | "JSS3" | "SS1" | "SS2" | "SS3";
 
 export interface TermPlan {
   classCode: ClassCode;
@@ -54,5 +56,7 @@ export interface SubjectPack {
   seniorExams?: ("WAEC" | "NECO" | "JAMB")[];
   /** JSS3 BECE mock paper. */
   bece?: boolean;
+  /** Basic 6 Common Entrance practice paper (covers Basic 4–Basic 6). */
+  entrance?: boolean;
   terms: TermPlan[];
 }

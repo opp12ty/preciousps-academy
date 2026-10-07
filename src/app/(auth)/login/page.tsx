@@ -14,15 +14,19 @@ export const maxDuration = 60;
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const sp = await searchParams;
   const s = await getSession();
-  if (s && !s.mfaPending) redirect(s.user.userType === "STUDENT" ? "/student" : "/admin");
+  if (s && !s.mfaPending) redirect(s.user.userType === "STUDENT" ? "/student" : s.user.userType === "PARENT" ? "/parent" : "/admin");
   return (
     <AuthShell
-      title="Student login"
+      title="Student and parent login"
       subtitle={
         <>
           New here?{" "}
           <Link href="/register" className="font-semibold text-royal-600 hover:underline">
             Create your student account
+          </Link>{" "}
+          ·{" "}
+          <Link href="/register/parent" className="font-semibold text-royal-600 hover:underline">
+            Parent / guardian registration
           </Link>
         </>
       }

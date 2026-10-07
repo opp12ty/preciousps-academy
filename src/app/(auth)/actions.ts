@@ -6,7 +6,7 @@ import { toPublicError } from "@/server/errors";
 import { clearSessionCookie, getSession, reqCtx, setSessionCookie, type ActionResult } from "@/server/http";
 import { revokeSession } from "@/server/auth/session";
 import { audit } from "@/server/audit";
-import { bootstrapSuperAdmin, checkOwnerEmail, login, registerStudent, signInNewStudent, requestPasswordReset, resetPasswordWithToken, verifyMfa } from "@/server/services/auth";
+import { bootstrapSuperAdmin, checkOwnerEmail, login, registerParent, registerStudent, signInNewStudent, requestPasswordReset, resetPasswordWithToken, verifyMfa } from "@/server/services/auth";
 
 const fd = (f: FormData) => Object.fromEntries(Array.from(f.keys()).map((k) => [k, f.get(k)?.toString() ?? ""]));
 
@@ -42,6 +42,22 @@ export async function registerAction(_: ActionResult | null, form: FormData): Pr
   return { ok: true };
 }
 
+export async function registerParentAction(_: ActionResult | null, form: FormData): Promise<ActionResult> {
+  let dest = "";
+  try {
+    const ctx = await reqCtx();
+    const data = fd(form);
+    const r = await registerParent({ ...data, acceptTerms: data.acceptTerms === "on" }, ctx);
+    const l = await login({ identifier: data.email, password: data.password }, "student", ctx);
+    await setSessionCookie(l.token, l.expiresAt);
+    dest = r.accessError ? "/parent/access?code=failed" : r.linkError ? "/parent?welcome=1&code=failed" : "/parent?welcome=1";
+  } catch (e) {
+    const p = toPublicError(e);
+    return { ok: false, error: p.message, fields: p.fields };
+  }
+  redirect(dest);
+}
+
 async function doLogin(portal: "student" | "backend", form: FormData): Promise<ActionResult> {
   let dest = "";
   try {
@@ -49,6 +65,7 @@ async function doLogin(portal: "student" | "backend", form: FormData): Promise<A
     const r = await login({ identifier: data.identifier, password: data.password }, portal, await reqCtx());
     await setSessionCookie(r.token, r.expiresAt);
     if (r.mfaPending) dest = `/backend/verify${data.next ? `?next=${encodeURIComponent(data.next)}` : ""}`;
+    else if (r.userType === "PARENT") dest = "/parent";
     else if (portal === "student") dest = r.mustChangePassword ? "/student/security?force=1" : safeNext(data.next, "/student");
     else dest = r.mustChangePassword ? "/admin/security?force=password" : safeNext(data.next, "/admin");
   } catch (e) {
@@ -86,7 +103,7 @@ export async function logoutAction() {
     await audit({ actor: s.actor, action: "auth.logout", entityType: "user", entityId: s.user.id }, await reqCtx());
   }
   await clearSessionCookie();
-  redirect(s && s.user.userType !== "STUDENT" ? "/backend?signedOut=1" : "/login?signedOut=1");
+  redirect(s && s.user.userType !== "STUDENT" && s.user.userType !== "PARENT" ? "/backend?signedOut=1" : "/login?signedOut=1");
 }
 
 export async function forgotAction(_: ActionResult | null, form: FormData): Promise<ActionResult> {

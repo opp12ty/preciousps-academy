@@ -3,17 +3,20 @@ import Link from "next/link";
 import { Trophy } from "lucide-react";
 import { requireStudentPage } from "@/server/http";
 import { listStudentResults } from "@/server/services/exams";
-import { Badge, Card, EmptyState, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui/primitives";
+import { featureWithheld } from "@/server/services/access";
+import { FEATURE_DENIED } from "@/core/features";
+import { Alert, Badge, Card, EmptyState, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Results" };
 const fmt = (d: Date) => new Intl.DateTimeFormat("en-NG", { timeZone: "Africa/Lagos", dateStyle: "medium", timeStyle: "short" }).format(d);
 
 export default async function ResultsPage() {
   const s = await requireStudentPage();
-  const rows = await listStudentResults(s.actor);
+  const [rows, withheld] = await Promise.all([listStudentResults(s.actor), featureWithheld(s.user.id, "RESULTS")]);
   return (
     <>
       <PageHeader eyebrow="Performance" title="My results" description="Results remain available even after your access period ends." />
+      {withheld && <Alert tone="warning" className="mb-6">{FEATURE_DENIED}</Alert>}
       <Card>
         {rows.length ? (
           <Table>

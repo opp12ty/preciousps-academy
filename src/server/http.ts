@@ -3,11 +3,12 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { NextResponse, type NextRequest } from "next/server";
 import { cache } from "react";
-import { can, type Permission, type SuperCapability } from "@/core/permissions";
+import { can, isStaffType, type Permission, type SuperCapability } from "@/core/permissions";
 import { securityEvent, type Actor, type ReqCtx } from "./audit";
 import { resolveSessionToken, type ResolvedSession } from "./auth/session";
 import { AppError, toPublicError } from "./errors";
 import { getSetting } from "./settings";
+import { requireParentAccess, getParentAccess } from "./services/access";
 
 export const SESSION_COOKIE = process.env.NODE_ENV === "production" ? "__Host-pps_session" : "pps_session";
 
@@ -51,6 +52,7 @@ export const getSession = cache(async (): Promise<ResolvedSession | null> => {
 export async function requireStudentPage(opts: { allowPasswordChange?: boolean } = {}) {
   const s = await getSession();
   if (!s || s.mfaPending) redirect("/login");
+  if (s.user.userType === "PARENT") redirect("/parent");
   if (s.user.userType !== "STUDENT") redirect("/admin");
   if (s.user.mustChangePassword && !opts.allowPasswordChange) redirect("/student/security?force=1");
   return s;
@@ -61,6 +63,7 @@ export async function requireStaffPage(perm?: Permission | SuperCapability, opts
   if (!s) redirect("/backend");
   if (s.mfaPending) redirect("/backend/verify");
   if (s.user.userType === "STUDENT") redirect("/student");
+  if (!isStaffType(s.user.userType)) redirect("/parent");
   if (!opts.allowSetup) {
     if (s.user.mustChangePassword) redirect("/admin/security?force=password");
     if (s.user.userType === "SUPER_ADMIN" && !s.user.totpEnabled) {
@@ -75,6 +78,19 @@ export async function requireStaffPage(perm?: Permission | SuperCapability, opts
   return s;
 }
 
+/**
+ * Parent pages need a running parent access code. Only the pages that let a parent enter a code,
+ * change the password or sign out pass `allowLocked`.
+ */
+export async function requireParentPage(opts: { allowLocked?: boolean } = {}) {
+  const s = await getSession();
+  if (!s || s.mfaPending) redirect("/login");
+  if (s.user.userType === "STUDENT") redirect("/student");
+  if (s.user.userType !== "PARENT") redirect("/admin");
+  if (!opts.allowLocked && !(await getParentAccess(s.user.id)).active) redirect("/parent/access");
+  return s;
+}
+
 /* -------------------------------------------------------- server actions */
 
 export type ActionResult<T = unknown> = { ok: true; data?: T; message?: string } | { ok: false; error: string; fields?: Record<string, string[]> };
@@ -85,7 +101,7 @@ export type ActionResult<T = unknown> = { ok: true; data?: T; message?: string }
  * already enforce same-origin POSTs, which covers CSRF.)
  */
 export async function action<T>(
-  guard: { role: "student" | "staff" | "any"; perm?: Permission | SuperCapability },
+  guard: { role: "student" | "staff" | "parent" | "any"; perm?: Permission | SuperCapability; allowLocked?: boolean },
   fn: (actor: Actor, ctx: ReqCtx, session: ResolvedSession) => Promise<T>,
   message?: string,
 ): Promise<ActionResult<T>> {
@@ -94,7 +110,10 @@ export async function action<T>(
     if (!s || s.mfaPending) throw new AppError("UNAUTHENTICATED", "Your session has expired. Please sign in again.");
     const ctx = await reqCtx();
     if (guard.role === "student" && s.user.userType !== "STUDENT") throw new AppError("FORBIDDEN", "This action is for students.");
-    if (guard.role === "staff" && s.user.userType === "STUDENT") {
+    if (guard.role === "parent" && s.user.userType !== "PARENT") throw new AppError("FORBIDDEN", "This action is for parents and guardians.");
+    // Hiding the menu is never enough: every parent action is refused without a running parent access code.
+    if (s.user.userType === "PARENT" && !guard.allowLocked) await requireParentAccess(s.user.id);
+    if (guard.role === "staff" && !isStaffType(s.user.userType)) {
       await securityEvent({ type: "PRIVILEGE_ESCALATION", severity: "HIGH", userId: s.user.id, schoolId: s.user.schoolId, detail: { via: "action" } }, ctx);
       throw new AppError("FORBIDDEN", "Permission denied.");
     }
@@ -155,7 +174,7 @@ export function api<P = Record<string, string>>(
         if (session.mfaPending && !opts.allowMfaPending) throw new AppError("MFA_REQUIRED", "Two-factor verification required.");
         if (session.user.mustChangePassword && !opts.allowPasswordChange) throw new AppError("PASSWORD_CHANGE_REQUIRED", "You must change your password first.");
         const t = session.user.userType;
-        if ((opts.auth === "student" && t !== "STUDENT") || (opts.auth === "staff" && t === "STUDENT")) {
+        if ((opts.auth === "student" && t !== "STUDENT") || (opts.auth === "staff" && !isStaffType(t))) {
           await securityEvent({ type: "UNAUTHORIZED_API", severity: "HIGH", userId: session.user.id, schoolId: session.user.schoolId, detail: { path: req.nextUrl.pathname } }, ctx);
           throw new AppError("FORBIDDEN", "Permission denied.");
         }

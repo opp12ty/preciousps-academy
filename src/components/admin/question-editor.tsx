@@ -89,7 +89,7 @@ export function QuestionEditor({ initial, subjects, classes, departments, topics
         <SelectField label="Question type" name="type" options={TYPES} value={type} onChange={(e) => changeType(e.target.value)} />
         <SelectField label="Difficulty" name="difficulty" options={["EASY", "MEDIUM", "HARD"].map((v) => ({ value: v, label: v.toLowerCase() }))} defaultValue={initial?.difficulty ?? "MEDIUM"} />
         <SelectField label="Year" name="year" placeholder="—" options={years.map((y) => ({ value: String(y), label: String(y) }))} defaultValue={initial?.year?.toString() ?? ""} />
-        <SelectField label="Exam type" name="examType" placeholder="—" options={["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "CONTINUOUS_ASSESSMENT", "JAMB", "WAEC", "NECO", "BECE", "CUSTOM"].map((v) => ({ value: v, label: v.replace(/_/g, " ") }))} defaultValue={initial?.examType ?? ""} />
+        <SelectField label="Exam type" name="examType" placeholder="—" options={["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "CONTINUOUS_ASSESSMENT", "JAMB", "WAEC", "NECO", "BECE", "CUSTOM", "IELTS", "TOEFL", "SAT", "CHECKPOINT"].map((v) => ({ value: v, label: v.replace(/_/g, " ") }))} defaultValue={initial?.examType ?? ""} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

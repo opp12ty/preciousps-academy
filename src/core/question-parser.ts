@@ -209,7 +209,7 @@ export const EXCEL_TEMPLATE_COLUMNS = [
   "Copyright Status",
 ] as const;
 
-export const EXAM_TYPES = ["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "CONTINUOUS_ASSESSMENT", "JAMB", "WAEC", "NECO", "BECE", "CUSTOM"] as const;
+export const EXAM_TYPES = ["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "CONTINUOUS_ASSESSMENT", "JAMB", "WAEC", "NECO", "BECE", "CUSTOM", "IELTS", "TOEFL", "SAT", "CHECKPOINT"] as const;
 export const COPYRIGHT_STATUSES = ["ORIGINAL", "TEACHER_AUTHORED", "LICENSED", "AUTHORIZED", "AI_GENERATED", "UNKNOWN"] as const;
 
 export interface ExcelRowResult {

@@ -18,7 +18,7 @@ import {
 import { audit, securityEvent, type Actor, type ReqCtx } from "../audit";
 import { AppError } from "../errors";
 import { getSetting } from "../settings";
-import { requireActiveAccess } from "./access";
+import { requireFeature } from "./access";
 import { loadBankQuestions } from "./questions";
 import { sectionCond, studentScope } from "./scope";
 import { sectionAllows } from "@/core/sections";
@@ -62,7 +62,7 @@ export async function mySubjects(actor: Actor) {
 }
 
 export async function subjectOutline(actor: Actor, subjectId: string) {
-  await requireActiveAccess(actor.id);
+  await requireFeature(actor.id, "STUDY_CENTRE");
   const db = getDb();
   const scope = await studentScope(actor.id);
   const [subject] = await db.select().from(subjects).where(and(eq(subjects.id, subjectId), eq(subjects.schoolId, actor.schoolId)));
@@ -156,7 +156,7 @@ async function lessonForStudent(actor: Actor, lessonId: string, ctx: ReqCtx) {
 }
 
 export async function openLesson(actor: Actor, lessonId: string, ctx: ReqCtx) {
-  await requireActiveAccess(actor.id);
+  await requireFeature(actor.id, "STUDY_CENTRE");
   const db = getDb();
   const l = await lessonForStudent(actor, lessonId, ctx);
   const cfg = await getSetting(actor.schoolId, "learning");
@@ -204,7 +204,7 @@ export async function openLesson(actor: Actor, lessonId: string, ctx: ReqCtx) {
 
 /** Marks lessons without classwork as complete when the student finishes reading. */
 export async function completeReading(actor: Actor, lessonId: string, ctx: ReqCtx) {
-  await requireActiveAccess(actor.id);
+  await requireFeature(actor.id, "STUDY_CENTRE");
   const db = getDb();
   await lessonForStudent(actor, lessonId, ctx);
   if ((await approvedClasswork(lessonId)).length > 0) throw new AppError("VALIDATION", "Complete the classwork to finish this lesson.");
@@ -222,7 +222,7 @@ const classworkSchema = z.object({
 
 /** Auto-marks classwork on the server; passing at the mastery threshold completes the lesson. */
 export async function submitClasswork(actor: Actor, lessonId: string, raw: unknown, ctx: ReqCtx) {
-  await requireActiveAccess(actor.id);
+  await requireFeature(actor.id, "STUDY_CENTRE");
   const input = classworkSchema.parse(raw);
   const db = getDb();
   const { l } = await lessonForStudent(actor, lessonId, ctx);

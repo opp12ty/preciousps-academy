@@ -13,6 +13,8 @@ import { rateLimit, resetRateLimit } from "../rate-limit";
 import { getDefaultSchoolId, getSetting } from "../settings";
 import { emailTemplate, notifyUser, queueEmail } from "./notifications";
 import { resolvePlacement } from "./scope";
+import { requestChildLink } from "./guardians";
+import { activateCode } from "./access";
 
 const email = z.string().trim().toLowerCase().email("Enter a valid email address.").max(160);
 const name = z.string().trim().min(1, "Required").max(60).regex(/^[\p{L}\p{M}' .-]+$/u, "Use letters only.");
@@ -42,7 +44,14 @@ export const registerSchema = z
       .optional()
       .or(z.literal("").transform(() => undefined)),
     gender: z.enum(["MALE", "FEMALE"]).optional().or(z.literal("").transform(() => undefined)),
-    studentNumber: z.string().trim().min(2, "Student ID is required.").max(40).regex(/^[A-Za-z0-9/_-]+$/, "Letters, numbers, / - _ only."),
+    /** Ignored when Student IDs are generated automatically (System Settings → Examination). */
+    studentNumber: z
+      .string()
+      .trim()
+      .max(40)
+      .regex(/^[A-Za-z0-9/_-]*$/, "Letters, numbers, / - _ only.")
+      .optional()
+      .transform((v) => v || undefined),
     schoolName: z.string().trim().max(120).optional(),
     classId: z.string().uuid("Select your class."),
     /** Optional when the class has a single department (e.g. JSS). */
@@ -83,7 +92,42 @@ export async function registerStudent(raw: unknown, ctx: ReqCtx) {
   // Class & department must belong to this school and to each other (never trust ids blindly).
   const placement = await resolvePlacement(schoolId, input.classId, input.departmentId, db);
 
+  const idCfg = await getSetting(schoolId, "examination");
+  if (!idCfg.studentIdAuto && (!input.studentNumber || input.studentNumber.length < 2)) throw new AppError("VALIDATION", "Student ID is required.", { studentNumber: ["Student ID is required."] });
   const passwordHash = await hashPassword(input.password);
+  // Two students registering at the same moment can draw the same next number; the unique index
+  // rejects the second, which then simply takes the following number.
+  for (let attempt = 0; ; attempt++) {
+    const studentNumber = idCfg.studentIdAuto ? await nextStudentNumber(schoolId, idCfg) : input.studentNumber!;
+    try {
+      return await createStudentAccount(schoolId, { ...input, studentNumber }, placement, passwordHash, ctx);
+    } catch (e) {
+      const dupNumber = e instanceof AppError && e.code === "DUPLICATE" && Boolean(e.fields?.studentNumber);
+      if (idCfg.studentIdAuto && dupNumber && attempt < 5) continue;
+      throw e;
+    }
+  }
+}
+
+/** PREFIX/YEAR/0001 — the next free number for this prefix (and year). */
+export async function nextStudentNumber(schoolId: string, cfg: { studentIdPrefix: string; studentIdIncludeYear: boolean; studentIdDigits: number }) {
+  const year = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos", year: "numeric" }).format(new Date());
+  const stem = cfg.studentIdIncludeYear ? `${cfg.studentIdPrefix.toUpperCase()}/${year}/` : `${cfg.studentIdPrefix.toUpperCase()}/`;
+  const [{ max }] = await getDb()
+    .select({ max: sql<number | null>`max(cast(substring(${students.studentNumber} from ${stem.length + 1}::int) as integer))` })
+    .from(students)
+    .where(and(eq(students.schoolId, schoolId), sql`upper(${students.studentNumber}) LIKE ${stem.replace(/[%_]/g, "\\$&") + "%"}`, sql`substring(${students.studentNumber} from ${stem.length + 1}::int) ~ '^[0-9]+$'`));
+  return stem + String((max ?? 0) + 1).padStart(cfg.studentIdDigits, "0");
+}
+
+export async function createStudentAccount(
+  schoolId: string,
+  input: z.output<typeof registerSchema> & { studentNumber: string },
+  placement: { classId: string; departmentId: string | null },
+  passwordHash: string,
+  ctx: ReqCtx,
+) {
+  const db = getDb();
   let user: { id: string };
   try {
     user = await db.transaction(async (tx) => {
@@ -138,13 +182,13 @@ export async function registerStudent(raw: unknown, ctx: ReqCtx) {
       userId: user.id,
       category: "ANNOUNCEMENT",
       title: "Welcome to Precious PS Academy",
-      body: "Your account is ready. Activate your access code from the dashboard to unlock CBT, the Study Centre and more.",
+      body: `Your account is ready. Your Student ID is ${input.studentNumber}. You can sign in with your Student ID${input.username ? `, your username (${input.username})` : ""} or your e-mail. Activate your access code from the dashboard to unlock CBT, the Study Centre and more.`,
       link: "/student",
     });
   } catch (e) {
     console.error("[pps] post-registration step failed", (e as Error).message);
   }
-  return { userId: user.id, schoolId };
+  return { userId: user.id, schoolId, studentNumber: input.studentNumber };
 }
 
 /**
@@ -231,7 +275,8 @@ export async function login(raw: unknown, portal: LoginPortal, ctx: ReqCtx) {
     throw new AppError("ACCOUNT_SUSPENDED", "This account is suspended. Please contact the Super Admin (08169267383).");
   }
   const isStudent = u.userType === "STUDENT";
-  if ((portal === "student") !== isStudent) {
+  // Parents and guardians sign in on the same page as students.
+  if ((portal === "student") !== (isStudent || u.userType === "PARENT")) {
     // Same message as a wrong password — do not reveal which portal an account belongs to.
     await securityEvent({ type: "FAILED_LOGIN", userId: u.id, schoolId: u.schoolId, detail: { reason: "wrong_portal", portal } }, ctx);
     throw invalid;
@@ -241,7 +286,7 @@ export async function login(raw: unknown, portal: LoginPortal, ctx: ReqCtx) {
   const session = await createSession(
     u.id,
     {
-      hours: isStudent ? auth.studentSessionHours : auth.adminSessionHours,
+      hours: isStudent || u.userType === "PARENT" ? auth.studentSessionHours : auth.adminSessionHours,
       mfaPending,
       maxSessions: isStudent ? auth.maxStudentSessions : undefined,
     },
@@ -254,7 +299,7 @@ export async function login(raw: unknown, portal: LoginPortal, ctx: ReqCtx) {
   }
   if (!mfaPending) {
     await audit({ actor: { id: u.id, schoolId: u.schoolId, userType: u.userType }, action: "auth.login", entityType: "user", entityId: u.id }, ctx);
-    if (!isStudent && auth.loginAlerts) {
+    if (!isStudent && u.userType !== "PARENT" && auth.loginAlerts) {
       await notifyUser({
         schoolId: u.schoolId,
         userId: u.id,
@@ -327,6 +372,12 @@ export async function changePassword(actor: Actor, raw: unknown, currentSessionI
 }
 
 /** Self-service reset request. Always responds the same way (no enumeration). */
+/** The sign-in names a student can use, for showing on their own pages. */
+export async function studentIdentity(userId: string) {
+  const [s] = await getDb().select({ studentNumber: students.studentNumber, username: students.username }).from(students).where(eq(students.userId, userId));
+  return s ?? null;
+}
+
 export async function requestPasswordReset(identifier: string, ctx: ReqCtx) {
   await rateLimit("passwordReset", `${ctx.ip ?? "unknown"}`, ctx);
   const db = getDb();
@@ -590,4 +641,68 @@ export async function bootstrapSuperAdmin(raw: unknown, ctx: ReqCtx) {
 export async function superAdminExists() {
   const [row] = await getDb().select({ id: users.id }).from(users).where(eq(users.userType, "SUPER_ADMIN")).limit(1);
   return Boolean(row);
+}
+
+/* ------------------------------------------------------- parents / guardians */
+
+export const parentRegisterSchema = z
+  .object({
+    firstName: name,
+    lastName: name,
+    email,
+    phone,
+    relationship: z.string().trim().max(40).optional(),
+    /** Optional: the link code for the first child. More children can be added after signing in. */
+    childCode: z.string().trim().max(20).optional(),
+    /** Optional parent access code, so the portal opens straight after registration. */
+    accessCode: z.string().trim().max(40).optional(),
+    password: z.string().min(1, "Password is required.").max(128),
+    confirmPassword: z.string(),
+    acceptTerms: z.literal(true, { message: "You must accept the Terms and Privacy Policy." }),
+  })
+  .refine((d) => d.password === d.confirmPassword, { path: ["confirmPassword"], message: "Passwords do not match." });
+
+export async function registerParent(raw: unknown, ctx: ReqCtx) {
+  await rateLimit("register", ctx.ip ?? "unknown", ctx);
+  const input = parentRegisterSchema.parse(raw);
+  const schoolId = await getDefaultSchoolId();
+  if (!(await getSetting(schoolId, "parents")).registrationOpen) throw new AppError("FORBIDDEN", "Parent and guardian registration is closed at the moment. Please contact the school.");
+  await assertPasswordPolicy(schoolId, input.password, [input.firstName, input.lastName, input.email.split("@")[0]]);
+  const passwordHash = await hashPassword(input.password);
+  let userId: string;
+  try {
+    const [u] = await getDb()
+      .insert(users)
+      .values({ schoolId, email: input.email, passwordHash, userType: "PARENT", firstName: input.firstName, lastName: input.lastName, phone: input.phone, passwordChangedAt: new Date() })
+      .returning({ id: users.id });
+    userId = u.id;
+  } catch (e) {
+    const c = e as { code?: string; cause?: { code?: string } };
+    if (c.code === "23505" || c.cause?.code === "23505") throw new AppError("DUPLICATE", "An account with this e-mail already exists.", { email: ["This e-mail is already registered."] });
+    throw e;
+  }
+  const actor: Actor = { id: userId, schoolId, userType: "PARENT", permissions: new Set(), name: `${input.firstName} ${input.lastName}`, email: input.email };
+  await audit({ actor, action: "auth.register_parent", entityType: "user", entityId: userId, summary: `Parent/guardian registered: ${input.email}` }, ctx);
+  let linked = false;
+  let linkError: string | null = null;
+  if (input.childCode) {
+    try {
+      // Only a request: it becomes a connection after the student and/or the school confirm it.
+      await requestChildLink(actor, input.childCode, input.relationship, ctx);
+      linked = true;
+    } catch (e) {
+      // The account is still created; the parent can enter the code again after signing in.
+      linkError = e instanceof AppError ? e.message : "The child link code could not be used.";
+    }
+  }
+  let accessError: string | null = null;
+  if (input.accessCode) {
+    try {
+      await activateCode(actor, input.accessCode, ctx);
+    } catch (e) {
+      // The account still exists; the parent can enter the code again on the Parent access page.
+      accessError = e instanceof AppError ? e.message : "The parent access code could not be used.";
+    }
+  }
+  return { userId, schoolId, linked, linkError, accessError };
 }

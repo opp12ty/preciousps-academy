@@ -87,7 +87,9 @@ export async function generateQuestions(actor: Actor, raw: unknown, ctx: ReqCtx)
   const topicName = topic?.title ?? input.topicText ?? "any topic in the syllabus";
   const section = cls?.level ?? input.level ?? topic?.level ?? "SENIOR_SECONDARY";
   const junior = section === "JUNIOR_SECONDARY";
-  const audience = junior
+  const audience = section === "PRIMARY"
+    ? "Nigerian primary school pupils (Basic 1–Basic 6, NERDC Basic Education curriculum). Use short sentences, everyday Nigerian examples and age-appropriate wording (about 6–11 years). Never reproduce or paraphrase past Common Entrance questions. "
+    : junior
     ? "Nigerian junior secondary students (JSS 1–JSS 3, Basic Education curriculum). Keep language simple and age-appropriate (about 10–14 years). Never reproduce or paraphrase past BECE or Common Entrance questions. "
     : "Nigerian senior secondary students (SSS 1–SSS 3). Never reproduce or paraphrase past JAMB, WAEC or NECO questions. ";
 

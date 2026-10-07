@@ -21,7 +21,7 @@ export function ImportUpload({ subjects, classes, departments, years }: { subjec
         <SelectField label="Subject (for Word/PDF/PPT)" name="subjectId" placeholder="From spreadsheet" options={subjects} />
         <SelectField label="Class" name="classId" placeholder="Any" options={classes} />
         <SelectField label="Department" name="departmentId" placeholder="Any" options={departments} />
-        <SelectField label="Section" name="level" required placeholder="Choose section" options={SECTION_CHOICES_AUTO} hint="JSS or SS. Follow the class when every row names its class." />
+        <SelectField label="Section" name="level" required placeholder="Choose section" options={SECTION_CHOICES_AUTO} hint="Primary, JSS or SS. Follow the class when every row names its class." />
         <SelectField label="Year" name="year" placeholder="—" options={years.map((y) => ({ value: String(y), label: String(y) }))} />
         <SelectField label="Exam type" name="examType" placeholder="—" options={["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "JAMB", "WAEC", "NECO", "BECE"].map((v) => ({ value: v, label: v.replace("_", " ") }))} />
         <SelectField label="Copyright status" name="copyrightStatus" options={[{ value: "ORIGINAL", label: "Original" }, { value: "TEACHER_AUTHORED", label: "Teacher-authored" }, { value: "LICENSED", label: "Licensed" }, { value: "AUTHORIZED", label: "Legally authorised" }]} />

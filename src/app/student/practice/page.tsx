@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { requireStudentPage } from "@/server/http";
 import { getAccessState } from "@/server/services/access";
 import { listStudentExams } from "@/server/services/exams";
-import { ExamGrid } from "@/components/student/exam-list";
+import { ExamBrowser } from "@/components/student/exam-browser";
 import { PageHeader } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Practice" };
@@ -13,7 +13,7 @@ export default async function PracticePage() {
   return (
     <>
       <PageHeader eyebrow="Practise" title="Practice tests" description="Short, timed tests to build speed and accuracy. Every attempt draws a fresh set of questions." />
-      <ExamGrid exams={exams} hasAccess={access.status === "ACTIVE"} empty="Practice tests will appear here." />
+      <ExamBrowser exams={exams} hasAccess={access.status === "ACTIVE"} empty="Practice tests will appear here." />
     </>
   );
 }

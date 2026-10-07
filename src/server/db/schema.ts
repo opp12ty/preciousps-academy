@@ -74,6 +74,10 @@ export const examTypeEnum = pgEnum("exam_type", [
   "NECO",
   "CUSTOM",
   "BECE",
+  "IELTS",
+  "TOEFL",
+  "SAT",
+  "CHECKPOINT",
 ]);
 export const resultVisibilityEnum = pgEnum("result_visibility", ["IMMEDIATE", "AFTER_RELEASE", "HIDDEN"]);
 export const attemptStatusEnum = pgEnum("attempt_status", ["IN_PROGRESS", "SUBMITTED", "AUTO_SUBMITTED", "VOIDED"]);
@@ -135,6 +139,8 @@ export const users = pgTable(
     lastLoginAt: ts("last_login_at"),
     passwordChangedAt: ts("password_changed_at"),
     locale: text("locale").notNull().default("en"),
+    /** Parents registered before parent access codes were introduced keep the portal until this moment. */
+    parentGraceUntil: ts("parent_grace_until"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: ts("deleted_at"),
@@ -655,6 +661,8 @@ export const examinations = pgTable(
     startsAt: ts("starts_at"),
     endsAt: ts("ends_at"),
     maxAttempts: integer("max_attempts").notNull().default(1),
+    /** Premium examinations (international and advanced) need a Premium access code. */
+    isPremium: boolean("is_premium").notNull().default(false),
     requiresAccess: boolean("requires_access").notNull().default(true),
     resultVisibility: resultVisibilityEnum("result_visibility").notNull().default("IMMEDIATE"),
     showExplanations: boolean("show_explanations").notNull().default(true),
@@ -925,6 +933,16 @@ export const activationCodes = pgTable(
     codeSuffix: text("code_suffix").notNull(),
     status: codeStatusEnum("status").notNull().default("UNUSED"),
     durationDays: integer("duration_days").notNull(),
+    /** STANDARD | PREMIUM — Premium also opens the international and advanced programmes. */
+    tier: text("tier").notNull().default("STANDARD"),
+    /** STUDENT | PARENT — who may activate the code. A parent code opens the parent portal and nothing else. */
+    audience: text("audience").notNull().default("STUDENT"),
+    /** Feature keys this code opens (src/core/features.ts). Null = the standard set, so older codes keep working. */
+    features: jsonb("features").$type<string[]>(),
+    /** Knowledge Hub limits for this code; null = the school's default. */
+    hubSessionMinutes: integer("hub_session_minutes"),
+    hubCooldownMinutes: integer("hub_cooldown_minutes"),
+    hubUnlimited: boolean("hub_unlimited").notNull().default(false),
     batchId: uuid("batch_id"),
     note: text("note"),
     createdBy: uuid("created_by").notNull(),
@@ -1004,6 +1022,8 @@ export const resourceLinks = pgTable(
     platform: text("platform"),
     durationMinutes: integer("duration_minutes"),
     isRecommended: boolean("is_recommended").notNull().default(false),
+    /** Premium materials need a Premium access code. */
+    isPremium: boolean("is_premium").notNull().default(false),
     status: contentStatusEnum("status").notNull().default("DRAFT"),
     createdBy: uuid("created_by"),
     createdAt: createdAt(),
@@ -1193,3 +1213,407 @@ export const exportHistory = pgTable("export_history", {
   createdBy: uuid("created_by").notNull(),
   createdAt: createdAt(),
 });
+
+/* ------------------------------------------------------------------ forum */
+
+/** Discussion rooms. A room is open to one section (JSS / SS) or to a single class. */
+export const forumRooms = pgTable(
+  "forum_rooms",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    name: text("name").notNull(),
+    description: text("description"),
+    /** ADMISSIONS | EXAMINATIONS | SUBJECTS | STUDY_HELP | GENERAL */
+    topic: text("topic").notNull().default("GENERAL"),
+    /** Section (JUNIOR_SECONDARY | SENIOR_SECONDARY); null = every section. */
+    level: text("level"),
+    classId: uuid("class_id").references(() => classes.id),
+    isLocked: boolean("is_locked").notNull().default(false),
+    /** STUDENT or PARENT: the two communities never mix. */
+    audience: text("audience").notNull().default("STUDENT"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    archivedAt: ts("archived_at"),
+    createdBy: uuid("created_by"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("forum_rooms_school_idx").on(t.schoolId, t.archivedAt)],
+);
+
+export const forumMessages = pgTable(
+  "forum_messages",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    roomId: uuid("room_id")
+      .notNull()
+      .references(() => forumRooms.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    /** VISIBLE | DELETED (removed by staff) | BLOCKED (refused by the safety filter; staff only). */
+    status: text("status").notNull().default("VISIBLE"),
+    /** Filter reason for BLOCKED, or the moderator's note for DELETED. */
+    reason: text("reason"),
+    moderatedBy: uuid("moderated_by"),
+    moderatedAt: ts("moderated_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("forum_messages_room_idx").on(t.roomId, t.createdAt), index("forum_messages_user_idx").on(t.userId, t.createdAt)],
+);
+
+/** A student barred from the forum. `until` null = until a moderator lifts it. */
+export const forumSuspensions = pgTable(
+  "forum_suspensions",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    reason: text("reason").notNull(),
+    until: ts("until"),
+    /** Null when the system suspended the student automatically. */
+    createdBy: uuid("created_by"),
+    createdAt: createdAt(),
+    liftedAt: ts("lifted_at"),
+    liftedBy: uuid("lifted_by"),
+  },
+  (t) => [index("forum_suspensions_user_idx").on(t.userId, t.liftedAt)],
+);
+
+/** Seconds a student has spent in the forum on one calendar day (school time zone). */
+export const forumUsage = pgTable(
+  "forum_usage",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    day: text("day").notNull(),
+    seconds: integer("seconds").notNull().default(0),
+    lastSeenAt: ts("last_seen_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.day] })],
+);
+
+/* ------------------------------------------------------------ learning hub */
+
+/** Picture Dictionary, idioms, clichés and phrasal verbs shown under Study Materials. */
+export const wordEntries = pgTable(
+  "word_entries",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    /** WORD | IDIOM | CLICHE | PHRASAL_VERB */
+    kind: text("kind").notNull(),
+    term: text("term").notNull(),
+    partOfSpeech: text("part_of_speech"),
+    meaning: text("meaning").notNull(),
+    example: text("example"),
+    /** Picture symbol (emoji) shown with the entry. */
+    picture: text("picture"),
+    imageAssetId: uuid("image_asset_id"),
+    /** Section; null = every section. */
+    level: text("level"),
+    /** One class only; null = every class in the section. */
+    classId: uuid("class_id").references(() => classes.id),
+    status: contentStatusEnum("status").notNull().default("PUBLISHED"),
+    createdBy: uuid("created_by"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("word_entries_term_uq").on(t.schoolId, t.kind, sql`lower(${t.term})`), index("word_entries_kind_idx").on(t.schoolId, t.kind, t.status)],
+);
+
+/* ------------------------------------------------------ parents / guardians */
+
+/** One-time code staff give a parent or guardian to link one child to their account. */
+export const guardianCodes = pgTable(
+  "guardian_codes",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    code: text("code").notNull().unique(),
+    studentUserId: uuid("student_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdBy: uuid("created_by").notNull(),
+    createdAt: createdAt(),
+    expiresAt: ts("expires_at").notNull(),
+    usedBy: uuid("used_by").references(() => users.id),
+    usedAt: ts("used_at"),
+    revokedAt: ts("revoked_at"),
+  },
+  (t) => [index("guardian_codes_student_idx").on(t.studentUserId)],
+);
+
+/* ------------------------------------------------- parent ↔ child link requests */
+
+/**
+ * A parent asks to be linked to a student. Nothing about the student is shown to the parent until
+ * the request is ACCEPTED under the school's policy (child consent and/or school verification);
+ * only then is a row written to guardian_links.
+ */
+export const guardianRequests = pgTable(
+  "guardian_requests",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    parentUserId: uuid("parent_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    studentUserId: uuid("student_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    relationship: text("relationship"),
+    /** PENDING | ACCEPTED | REJECTED | REVOKED | EXPIRED | BLOCKED */
+    status: text("status").notNull().default("PENDING"),
+    /** Null until the student decides. */
+    childAccepted: boolean("child_accepted"),
+    childRespondedAt: ts("child_responded_at"),
+    /** Null until a school administrator decides. */
+    adminApproved: boolean("admin_approved"),
+    adminId: uuid("admin_id"),
+    adminAt: ts("admin_at"),
+    requestedAt: ts("requested_at").notNull().defaultNow(),
+    respondedAt: ts("responded_at"),
+    revokedAt: ts("revoked_at"),
+    revokedBy: uuid("revoked_by"),
+    reason: text("reason"),
+    expiresAt: ts("expires_at").notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("guardian_requests_parent_idx").on(t.parentUserId, t.status), index("guardian_requests_student_idx").on(t.studentUserId, t.status)],
+);
+
+/* --------------------------------------------------- knowledge and learning hubs */
+
+/** One content engine for the student Knowledge Hub and the parent Learning Hub and Psychology Library. */
+export const hubArticles = pgTable(
+  "hub_articles",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    /** STUDENT | PARENT */
+    audience: text("audience").notNull(),
+    /** KNOWLEDGE (students) · LEARNING | PSYCHOLOGY | TEMPERAMENT (parents) */
+    section: text("section").notNull(),
+    category: text("category").notNull(),
+    title: text("title").notNull(),
+    summary: text("summary").notNull(),
+    body: text("body").notNull(),
+    keyPoints: text("key_points"),
+    /** Parent activity or learner task. */
+    activity: text("activity"),
+    sources: text("sources"),
+    /** Section of the school the article suits; null = everyone. */
+    level: text("level"),
+    /** SCIENCE | COMMERCIAL | ARTS; null = general. */
+    stream: text("stream"),
+    imageAssetId: uuid("image_asset_id"),
+    /** DRAFT | REVIEW | APPROVED | PUBLISHED | ARCHIVED */
+    status: text("status").notNull().default("DRAFT"),
+    version: integer("version").notNull().default(1),
+    authorId: uuid("author_id"),
+    reviewerId: uuid("reviewer_id"),
+    publishedAt: ts("published_at"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("hub_articles_title_uq").on(t.schoolId, t.audience, sql`lower(${t.title})`), index("hub_articles_list_idx").on(t.schoolId, t.audience, t.status)],
+);
+
+export const hubArticleVersions = pgTable(
+  "hub_article_versions",
+  {
+    id: id(),
+    articleId: uuid("article_id")
+      .notNull()
+      .references(() => hubArticles.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    title: text("title").notNull(),
+    summary: text("summary").notNull(),
+    body: text("body").notNull(),
+    editorId: uuid("editor_id"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("hub_article_versions_idx").on(t.articleId, t.version)],
+);
+
+/** A timed Knowledge Hub visit. The server alone decides when it ends and when the next may begin. */
+export const hubSessions = pgTable(
+  "hub_sessions",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    startedAt: ts("started_at").notNull().defaultNow(),
+    endsAt: ts("ends_at").notNull(),
+    /** When the next session may start. */
+    nextAt: ts("next_at").notNull(),
+  },
+  (t) => [index("hub_sessions_user_idx").on(t.userId, t.endsAt)],
+);
+
+/** Questions for Quiz Arena, Daily Challenge, Culture Challenge and the parent games. */
+export const hubQuestions = pgTable(
+  "hub_questions",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    audience: text("audience").notNull(),
+    category: text("category").notNull(),
+    level: text("level"),
+    stream: text("stream"),
+    difficulty: text("difficulty").notNull().default("MEDIUM"),
+    stem: text("stem").notNull(),
+    options: jsonb("options").$type<string[]>().notNull(),
+    /** Index of the correct option. */
+    answer: integer("answer").notNull(),
+    explanation: text("explanation"),
+    status: text("status").notNull().default("PUBLISHED"),
+    createdBy: uuid("created_by"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("hub_questions_stem_uq").on(t.schoolId, t.audience, sql`md5(lower(${t.stem}))`), index("hub_questions_pick_idx").on(t.schoolId, t.audience, t.status, t.category)],
+);
+
+export const quizAttempts = pgTable(
+  "quiz_attempts",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    mode: text("mode").notNull(),
+    /** Question ids in the order asked. */
+    questionIds: jsonb("question_ids").$type<string[]>().notNull(),
+    /** The option chosen for each question; null = not yet answered. */
+    answers: jsonb("answers").$type<(number | null)[]>().notNull(),
+    score: integer("score").notNull().default(0),
+    day: text("day"),
+    startedAt: ts("started_at").notNull().defaultNow(),
+    finishedAt: ts("finished_at"),
+  },
+  (t) => [index("quiz_attempts_user_idx").on(t.userId, t.mode, t.startedAt)],
+);
+
+/* ------------------------------------------------------ parent study timetable */
+
+export const studySchedules = pgTable(
+  "study_schedules",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    parentUserId: uuid("parent_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    studentUserId: uuid("student_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** ACTIVITY (timetable entry) | FLAG (supportive academic flag) */
+    kind: text("kind").notNull().default("ACTIVITY"),
+    title: text("title").notNull(),
+    note: text("note"),
+    /** YYYY-MM-DD in school time. */
+    date: text("date").notNull(),
+    startTime: text("start_time"),
+    endTime: text("end_time"),
+    /** LOW | NORMAL | HIGH */
+    priority: text("priority").notNull().default("NORMAL"),
+    /** ONCE | DAILY | WEEKLY */
+    repeat: text("repeat").notNull().default("ONCE"),
+    /** SCHEDULED | ACKNOWLEDGED | COMPLETED */
+    status: text("status").notNull().default("SCHEDULED"),
+    acknowledgedAt: ts("acknowledged_at"),
+    completedAt: ts("completed_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("study_schedules_student_idx").on(t.studentUserId, t.date), index("study_schedules_parent_idx").on(t.parentUserId, t.studentUserId)],
+);
+
+/* -------------------------------------------------------------- community reports */
+
+export const forumReports = pgTable(
+  "forum_reports",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => forumMessages.id, { onDelete: "cascade" }),
+    reporterId: uuid("reporter_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    reason: text("reason").notNull(),
+    detail: text("detail"),
+    /** OPEN | RESOLVED | DISMISSED */
+    status: text("status").notNull().default("OPEN"),
+    resolvedBy: uuid("resolved_by"),
+    resolvedAt: ts("resolved_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("forum_reports_once_uq").on(t.messageId, t.reporterId), index("forum_reports_status_idx").on(t.schoolId, t.status)],
+);
+
+/* ------------------------------------------------------------------ promotion */
+
+/** One row per student per academic session: the move to the next class, or the decision to repeat. */
+export const promotions = pgTable(
+  "promotions",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    fromClassId: uuid("from_class_id")
+      .notNull()
+      .references(() => classes.id),
+    toClassId: uuid("to_class_id")
+      .notNull()
+      .references(() => classes.id),
+    toDepartmentId: uuid("to_department_id").references(() => departments.id),
+    /** Academic session, e.g. "2026/2027". */
+    session: text("session").notNull(),
+    /** PENDING | APPROVED | REJECTED | REPEAT */
+    status: text("status").notNull().default("PENDING"),
+    /** REQUEST (student asked) | SELF (self-promotion allowed) | BULK (staff promoted the class) */
+    method: text("method").notNull().default("REQUEST"),
+    note: text("note"),
+    requestedAt: ts("requested_at").notNull().defaultNow(),
+    decidedBy: uuid("decided_by"),
+    decidedAt: ts("decided_at"),
+  },
+  (t) => [uniqueIndex("promotions_once_uq").on(t.userId, t.session), index("promotions_status_idx").on(t.schoolId, t.status)],
+);
+
+/* -------------------------------------------------------------- result appeals */
+
+/** A student's request to have one released result looked at again. One appeal per result. */
+export const resultAppeals = pgTable(
+  "result_appeals",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    resultId: uuid("result_id")
+      .notNull()
+      .references(() => results.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Question numbers the student is unhappy with, as typed (optional). */
+    questions: text("questions"),
+    reason: text("reason").notNull(),
+    /** OPEN | UPHELD | REJECTED */
+    status: text("status").notNull().default("OPEN"),
+    response: text("response"),
+    decidedBy: uuid("decided_by"),
+    decidedAt: ts("decided_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("result_appeals_once_uq").on(t.resultId), index("result_appeals_status_idx").on(t.schoolId, t.status)],
+);

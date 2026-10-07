@@ -5,7 +5,7 @@ import { getDb } from "../db";
 import { assignmentAttempts, assignmentQuestions, assignments, classes, departments, questions, subjects, topics, users } from "../db/schema";
 import { audit, securityEvent, type Actor, type ReqCtx } from "../audit";
 import { AppError } from "../errors";
-import { requireActiveAccess } from "./access";
+import { requireFeature } from "./access";
 import { broadcast } from "./notifications";
 import { resolveSection, sectionCond, studentScope } from "./scope";
 import { SECTIONS, sectionAllows } from "@/core/sections";
@@ -168,7 +168,7 @@ async function loadForStudent(actor: Actor, id: string, ctx: ReqCtx) {
 }
 
 export async function openAssignment(actor: Actor, id: string, ctx: ReqCtx) {
-  await requireActiveAccess(actor.id);
+  await requireFeature(actor.id, "ASSIGNMENTS");
   const a = await loadForStudent(actor, id, ctx);
   const db = getDb();
   const qids = await db.select({ id: assignmentQuestions.questionId }).from(assignmentQuestions).where(eq(assignmentQuestions.assignmentId, id)).orderBy(asc(assignmentQuestions.sortOrder));
@@ -183,7 +183,7 @@ export async function openAssignment(actor: Actor, id: string, ctx: ReqCtx) {
 }
 
 export async function submitAssignment(actor: Actor, id: string, raw: unknown, ctx: ReqCtx) {
-  await requireActiveAccess(actor.id);
+  await requireFeature(actor.id, "ASSIGNMENTS");
   const input = z.object({ answers: z.record(z.string().uuid(), z.unknown()) }).parse(raw);
   const a = await loadForStudent(actor, id, ctx);
   const now = new Date();

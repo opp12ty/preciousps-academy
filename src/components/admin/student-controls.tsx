@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   adjustAccessAction,
   assignAccessAction,
+  transferAccessAction,
   forcePasswordChangeAction,
   issueResetLinkAction,
   removeStudentAction,
@@ -164,6 +165,21 @@ export function AdjustAccessButton({ periodId, label = "Adjust access", defaultA
         </div>
       </Modal>
     </>
+  );
+}
+
+/** Moves running access to another student, for a code that was activated on the wrong account. */
+export function TransferAccessButton({ periodId }: { periodId: string }) {
+  return (
+    <ConfirmAction
+      label="Transfer"
+      title="Transfer this access to another student?"
+      description="Use this when a code was activated on the wrong account. The remaining time moves to the other student exactly as it is, and this student loses access at once. It is refused if the other student already has running access."
+      confirmLabel="Transfer access"
+      reason
+      extra={{ label: "Student ID, username or e-mail of the student who should receive it", placeholder: "e.g. PPS/2026/0042" }}
+      run={({ reason, extra }) => transferAccessAction(periodId, extra, reason)}
+    />
   );
 }
 

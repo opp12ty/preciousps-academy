@@ -17,13 +17,14 @@ export default async function SubjectsPage() {
         {cat.departments.map((d) => {
           const subs = cat.subjects.filter((s) => s.departmentIds.includes(d.id));
           const junior = d.level === "JUNIOR_SECONDARY";
+          const primary = d.level === "PRIMARY";
           return (
             <section key={d.id} aria-labelledby={`dept-${d.code}`}>
               <div className="flex items-baseline justify-between gap-3 border-b border-line pb-3">
                 <h2 id={`dept-${d.code}`} className="text-2xl font-extrabold text-navy-800">
-                  {junior ? `${d.name} (Basic Education)` : `${d.name} Department`}
+                  {primary ? `${d.name} (Basic 1–Basic 6)` : junior ? `${d.name} (Basic Education)` : `${d.name} Department`}
                 </h2>
-                <p className="text-sm text-muted">{subs.length} subjects · {junior ? "JSS 1–JSS 3" : d.level === "SENIOR_SECONDARY" ? "SSS 1–SSS 3" : "All classes"}</p>
+                <p className="text-sm text-muted">{subs.length} subjects · {primary ? "Basic 1–Basic 6" : junior ? "JSS 1–JSS 3" : d.level === "SENIOR_SECONDARY" ? "SSS 1–SSS 3" : "All classes"}</p>
               </div>
               <ul className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {subs.map((s) => (

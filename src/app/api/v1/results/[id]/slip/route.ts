@@ -6,6 +6,8 @@ import { results } from "@/server/db/schema";
 import { AppError } from "@/server/errors";
 import { securityEvent } from "@/server/audit";
 import { resultSlipPdf } from "@/server/services/exports";
+import { featureWithheld } from "@/server/services/access";
+import { FEATURE_DENIED } from "@/core/features";
 
 /** Result slip PDF: the owning student (once released) or staff with results.view. */
 export const GET = api<{ id: string }>({ auth: "any" }, async ({ params, actor, ctx }) => {
@@ -17,6 +19,7 @@ export const GET = api<{ id: string }>({ auth: "any" }, async ({ params, actor, 
     throw new AppError("NOT_FOUND", "Result not found.");
   }
   if (isOwner && (!r.releasedAt || r.isVoided)) throw new AppError("FORBIDDEN", "This result has not been released.");
+  if (isOwner && (await featureWithheld(actor!.id, "RESULTS"))) throw new AppError("FORBIDDEN", FEATURE_DENIED);
   const { pdf, fileName } = await resultSlipPdf(r.id, actor!.schoolId);
   return fileResponse(pdf, "application/pdf", fileName, true);
 });

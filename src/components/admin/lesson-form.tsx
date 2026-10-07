@@ -7,6 +7,7 @@ import { renderBlocksPreview } from "./preview";
 import { ActionForm, CheckboxField, SelectField, SubmitButton, TextAreaField, TextField } from "../ui/form";
 import { buttonClass, cx } from "../ui/primitives";
 import { QuestionPicker } from "./question-picker";
+import { PictureTools } from "./picture-tools";
 
 interface Lesson {
   id: string;
@@ -71,8 +72,9 @@ export function LessonForm({
           </div>
         </div>
         <textarea name="body" value={body} onChange={(e) => setBody(e.target.value)} rows={16} className={cx("block w-full rounded-xl border border-line px-3.5 py-2.5 font-mono text-sm", tab === "preview" && "hidden")} placeholder={"## Heading\nText with $x^2$ maths and **bold**.\n- bullet"} />
-        {tab === "preview" && <div className="prose-pps min-h-40 rounded-xl border border-line bg-card p-4" dangerouslySetInnerHTML={{ __html: renderBlocksPreview(body) }} />}
-        <p className="mt-1 text-xs text-muted">Markdown-style: ## headings, - lists, **bold**, *italic*, $inline maths$, $$display maths$$ (KaTeX).</p>
+        {tab === "preview" && <div className="prose-pps min-h-40 rounded-xl border border-line bg-white p-4" dangerouslySetInnerHTML={{ __html: renderBlocksPreview(body) }} />}
+        <PictureTools onInsert={(line) => setBody((b) => `${b.replace(/\s+$/, "")}${b.trim() ? "\n\n" : ""}${line}\n`)} />
+        <p className="mt-1 text-xs text-muted">Markdown-style: ## headings, - lists, **bold**, *italic*, $inline maths$, $$display maths$$ (KaTeX). Pictures and diagrams go on a line of their own; the same lines also work in Worked examples and in questions.</p>
       </div>
       <TextAreaField label="Worked examples" name="examples" rows={6} defaultValue={lesson?.examples ?? ""} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

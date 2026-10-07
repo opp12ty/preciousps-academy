@@ -6,6 +6,7 @@ import { requireStaffPage } from "@/server/http";
 import { listQuestions } from "@/server/services/questions";
 import { getCatalog } from "@/server/services/curriculum";
 import { getSetting } from "@/server/settings";
+import { SECTION_FILTER_OPTIONS } from "@/core/sections";
 import { QuestionTable } from "@/components/admin/question-bulk";
 import { FilterBar, qs, spRecord } from "@/components/admin/filters";
 import { buttonClass, Card, cx, EmptyState, PageHeader, Pagination } from "@/components/ui/primitives";
@@ -51,7 +52,7 @@ export default async function QuestionsPage({ searchParams }: PageProps<"/admin/
         filters={[
           { type: "search", name: "search", placeholder: "Question text or reference" },
           { type: "select", name: "subjectId", label: "Subject", options: cat.subjects.map((x) => ({ value: x.id, label: x.name })) },
-          { type: "select", name: "level", label: "Section", options: [{ value: "JUNIOR_SECONDARY", label: "JSS" }, { value: "SENIOR_SECONDARY", label: "SS" }, { value: "ALL", label: "All sections" }] },
+          { type: "select", name: "level", label: "Section", options: SECTION_FILTER_OPTIONS },
           { type: "select", name: "classId", label: "Class", options: cat.classes.map((x) => ({ value: x.id, label: x.name })) },
           { type: "select", name: "difficulty", label: "Difficulty", options: ["EASY", "MEDIUM", "HARD"].map((v) => ({ value: v, label: v.toLowerCase() })) },
           { type: "select", name: "year", label: "Year", options: cal.years.map((y) => ({ value: String(y), label: String(y) })) },

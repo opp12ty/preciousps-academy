@@ -113,10 +113,17 @@ async function schemePdf(pack: SubjectPack) {
   return pdf.save();
 }
 
-const wanted = process.argv.slice(2).map((s) => s.toUpperCase());
-const packs = wanted.length ? ALL_PACKS.filter((p) => wanted.includes(p.code)) : ALL_PACKS;
+const args = process.argv.slice(2).map((s) => s.toUpperCase());
+// --class=SS3 builds a single-class workbook (e.g. PreciousPS_Mathematics_SS3_Content_Pack.xlsx)
+const only = args.find((a) => a.startsWith("--CLASS="))?.slice(8) as SubjectPack["classes"][number] | undefined;
+const wanted = args.filter((a) => !a.startsWith("--"));
+const packs = (wanted.length ? ALL_PACKS.filter((p) => wanted.includes(p.code)) : ALL_PACKS)
+  .filter((p) => !only || p.classes.includes(only))
+  .map((p): SubjectPack =>
+    only ? { ...p, classes: [only], bece: only === "JSS3" ? p.bece : undefined, terms: p.terms.filter((t) => t.classCode === only) } : p,
+  );
 for (const pack of packs) {
-  const base = packFileBase(pack);
+  const base = only ? `${packFileBase(pack)}_${only}` : packFileBase(pack);
   const xlsx = XLSX.write(packWorkbook(pack), { type: "buffer", bookType: "xlsx" }) as Buffer;
   fs.writeFileSync(path.join(OUT, `${base}_Content_Pack.xlsx`), xlsx);
   fs.writeFileSync(path.join(OUT, `${base}_Scheme_of_Work.pdf`), await schemePdf(pack));

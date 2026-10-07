@@ -9,6 +9,7 @@ import { listStudentExams, listStudentResults } from "@/server/services/exams";
 import { learningSummary } from "@/server/services/study";
 import { listStudentAssignments } from "@/server/services/assignments";
 import { recommendedPractice, studentPerformance } from "@/server/services/analytics";
+import { studentIdentity } from "@/server/services/auth";
 import { studyActivity } from "@/server/services/engagement";
 import { listNotifications } from "@/server/services/notifications";
 import { AccessCard } from "@/components/student/access-card";
@@ -53,6 +54,7 @@ export default async function StudentDashboard({ searchParams }: PageProps<"/stu
     listNotifications(s.user.id, s.user.schoolId, 5),
     studyActivity(s.user.id, learningCfg.weeklyGoalDays),
   ]);
+  const ident = await studentIdentity(s.user.id);
   const hour = Number(new Intl.DateTimeFormat("en-NG", { timeZone: "Africa/Lagos", hour: "numeric", hour12: false }).format(new Date()));
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const available = exams.filter((e) => e.canStart);
@@ -64,7 +66,7 @@ export default async function StudentDashboard({ searchParams }: PageProps<"/stu
     <div className="space-y-6">
       {sp.welcome && (
         <Alert tone="success" title="Welcome to Precious PS Academy!">
-          Your account is ready. Activate your access code below to unlock CBT, the Study Centre and more.
+          Your account is ready.{ident ? <> Your Student ID is <strong>{ident.studentNumber}</strong> — write it down. You can sign in with it{ident.username ? <>, your username <strong>{ident.username}</strong></> : null} or your e-mail.</> : null} Activate your access code below to unlock CBT, the Study Centre and more.
         </Alert>
       )}
 

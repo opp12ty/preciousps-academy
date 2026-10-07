@@ -1,7 +1,7 @@
-import { and, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../db";
-import { classes, departments, resourceLinks, subjects, topics } from "../db/schema";
+import { assets, classes, departments, resourceLinks, subjects, topics } from "../db/schema";
 import { audit, type Actor, type ReqCtx } from "../audit";
 import { resolveSection, sectionCond, studentScope } from "./scope";
 import { SECTIONS } from "@/core/sections";
@@ -54,6 +54,7 @@ export const resourceSchema = z.object({
   platform: z.string().trim().max(60).nullish(),
   durationMinutes: z.coerce.number().int().min(0).max(10_000).nullish(),
   isRecommended: z.boolean().default(false),
+  isPremium: z.boolean().default(false),
   status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]).default("DRAFT"),
 });
 
@@ -61,6 +62,10 @@ export async function upsertResource(actor: Actor, id: string | null, raw: unkno
   const d = resourceSchema.parse(raw);
   if (!d.url && !d.assetId) throw new AppError("VALIDATION", "Provide a link or upload a file.");
   const url = d.url ? validateExternalUrl(d.url) : null;
+  if (d.assetId) {
+    const [a] = await getDb().select({ kind: assets.kind }).from(assets).where(and(eq(assets.id, d.assetId), eq(assets.schoolId, actor.schoolId)));
+    if (!a || a.kind !== "DOCUMENT") throw new AppError("VALIDATION", "Upload the study material again.");
+  }
   const thumbnailUrl = d.thumbnailUrl ? validateExternalUrl(d.thumbnailUrl) : null;
   const level = await resolveSection(actor.schoolId, d.classId, d.level);
   const values = { ...d, level, url, thumbnailUrl, platform: d.platform || (url ? detectPlatform(url) : "Upload") };
@@ -73,7 +78,20 @@ export async function upsertResource(actor: Actor, id: string | null, raw: unkno
   return row;
 }
 
-export async function listResources(schoolId: string, f: { search?: string; subjectId?: string; type?: string; status?: string; forUserId?: string }) {
+/** File families offered as study materials, matched on the stored file's extension. */
+export const MATERIAL_TYPES = {
+  pdf: { label: "PDF", ext: ["pdf"] },
+  word: { label: "Word (DOCX)", ext: ["docx", "doc"] },
+  powerpoint: { label: "PowerPoint (PPTX)", ext: ["pptx", "ppt"] },
+  excel: { label: "Excel (XLSX)", ext: ["xlsx", "xls"] },
+} as const;
+export type MaterialType = keyof typeof MATERIAL_TYPES;
+export const materialType = (fileName: string | null): MaterialType | null => {
+  const ext = fileName?.split(".").pop()?.toLowerCase() ?? "";
+  return (Object.keys(MATERIAL_TYPES) as MaterialType[]).find((k) => (MATERIAL_TYPES[k].ext as readonly string[]).includes(ext)) ?? null;
+};
+
+export async function listResources(schoolId: string, f: { search?: string; subjectId?: string; type?: string; status?: string; forUserId?: string; kind?: "LINK" | "FILE"; fileType?: string }) {
   const db = getDb();
   const scope = f.forUserId ? await studentScope(f.forUserId, db) : undefined;
   const conds = [eq(resourceLinks.schoolId, schoolId)];
@@ -81,6 +99,10 @@ export async function listResources(schoolId: string, f: { search?: string; subj
   else if (f.status) conds.push(eq(resourceLinks.status, f.status as "DRAFT"));
   if (f.subjectId) conds.push(eq(resourceLinks.subjectId, f.subjectId));
   if (f.type) conds.push(eq(resourceLinks.resourceType, f.type as "VIDEO"));
+  // Uploaded files are "study materials"; everything else is a link in the Resource Centre.
+  if (f.kind === "FILE") conds.push(isNotNull(resourceLinks.assetId));
+  if (f.kind === "LINK") conds.push(isNull(resourceLinks.assetId));
+  if (f.fileType && f.fileType in MATERIAL_TYPES) conds.push(or(...MATERIAL_TYPES[f.fileType as MaterialType].ext.map((x) => ilike(assets.fileName, `%.${x}`)))!);
   if (f.search?.trim()) conds.push(or(ilike(resourceLinks.title, `%${f.search.trim()}%`), ilike(resourceLinks.description, `%${f.search.trim()}%`))!);
   if (scope) {
     conds.push(or(isNull(resourceLinks.classId), scope.classId ? eq(resourceLinks.classId, scope.classId) : sql`false`)!);
@@ -88,8 +110,9 @@ export async function listResources(schoolId: string, f: { search?: string; subj
     conds.push(sectionCond(resourceLinks.level, scope.level));
   }
   return db
-    .select({ r: resourceLinks, subject: subjects.name, topic: topics.title, className: classes.name, department: departments.name })
+    .select({ r: resourceLinks, subject: subjects.name, topic: topics.title, className: classes.name, department: departments.name, fileName: assets.fileName, fileSize: assets.size })
     .from(resourceLinks)
+    .leftJoin(assets, eq(assets.id, resourceLinks.assetId))
     .leftJoin(subjects, eq(subjects.id, resourceLinks.subjectId))
     .leftJoin(topics, eq(topics.id, resourceLinks.topicId))
     .leftJoin(classes, eq(classes.id, resourceLinks.classId))

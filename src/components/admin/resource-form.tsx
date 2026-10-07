@@ -20,6 +20,7 @@ export interface ResourceData {
   platform: string | null;
   durationMinutes: number | null;
   isRecommended: boolean;
+  isPremium?: boolean;
   status: string;
 }
 
@@ -39,6 +40,7 @@ export function ResourceForm({ r, subjects, classes, departments }: { r?: Resour
       <SelectField label="Status" name="status" defaultValue={r?.status ?? "PUBLISHED"} options={[{ value: "PUBLISHED", label: "Published" }, { value: "DRAFT", label: "Draft" }, { value: "ARCHIVED", label: "Archived" }]} />
       <TextAreaField className="sm:col-span-2" label="Description" name="description" rows={2} defaultValue={r?.description ?? ""} />
       <div className="flex items-end"><CheckboxField name="isRecommended" label="Recommended" defaultChecked={r?.isRecommended} /></div>
+      <div className="flex items-end"><CheckboxField name="isPremium" label="Premium only (International & Advanced)" defaultChecked={r?.isPremium} /></div>
       <input type="hidden" name="assetId" value={r?.assetId ?? ""} />
       <div className="sm:col-span-2 lg:col-span-3"><SubmitButton size="sm">{r ? "Save" : "Add resource"}</SubmitButton></div>
     </ActionForm>

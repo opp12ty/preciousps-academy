@@ -174,12 +174,19 @@ ${link ? `<p><a href="${esc(base + link)}" style="display:inline-block;backgroun
 </table></td></tr></table></body></html>`;
 }
 
+/** True when e-mail can really leave the system: switched on in settings and a provider key is present. */
+export async function emailReady(schoolId: string) {
+  return (await getSetting(schoolId, "notifications")).emailEnabled && Boolean(process.env.RESEND_API_KEY);
+}
+
 /**
  * Queues an e-mail. Delivery runs through the configured provider (Resend or SMTP);
  * without one, messages are HELD in the outbox for Super Admin review — never
  * silently dropped and never claimed as sent.
  */
 export async function queueEmail(schoolId: string, to: string, subject: string, html: string, db: Executor = getDb()) {
+  // Pupils imported without an e-mail carry a placeholder address; nothing is ever sent to it.
+  if (to.toLowerCase().endsWith(".invalid")) return;
   const cfg = await getSetting(schoolId, "notifications", db);
   const status = cfg.emailEnabled && emailProvider() ? "QUEUED" : "HELD";
   const [row] = await db.insert(emailOutbox).values({ schoolId, toEmail: to, subject, html, status }).returning({ id: emailOutbox.id });

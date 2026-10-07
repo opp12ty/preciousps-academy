@@ -8,7 +8,7 @@ import { getCatalog } from "@/server/services/curriculum";
 import { getSetting } from "@/server/settings";
 import { toPublicError } from "@/server/errors";
 import { updateStudentAction } from "../../actions";
-import { AdjustAccessButton, AssignAccessButton, StudentSecurityControls } from "@/components/admin/student-controls";
+import { AdjustAccessButton, AssignAccessButton, StudentSecurityControls, TransferAccessButton } from "@/components/admin/student-controls";
 import { ActionForm, CheckboxField, SelectField, SubmitButton, TextField } from "@/components/ui/form";
 import { Badge, Card, CardHeader, EmptyState, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui/primitives";
 
@@ -100,7 +100,7 @@ export default async function StudentDetail({ params }: PageProps<"/admin/studen
                       <span className="font-mono text-xs">Code …{h.codeSuffix}</span>
                       <StatusBadge status={h.effective} />
                       <span className="text-xs text-muted">{h.durationDays} days</span>
-                      <span className="ml-auto">{canCodes && <AdjustAccessButton periodId={h.id} />}</span>
+                      <span className="ml-auto flex flex-wrap justify-end gap-1.5">{canCodes && h.effective === "ACTIVE" && <TransferAccessButton periodId={h.id} />}{canCodes && <AdjustAccessButton periodId={h.id} />}</span>
                     </div>
                     <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
                       <div><dt className="text-muted">Activated</dt><dd className="font-semibold">{fmt(h.activatedAt)}</dd></div>

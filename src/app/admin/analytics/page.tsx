@@ -10,7 +10,10 @@ export const metadata: Metadata = { title: "Analytics & Reports" };
 
 export default async function AnalyticsPage() {
   const s = await requireStaffPage("analytics.view");
-  const [dash, subjects, questionsLow] = await Promise.all([adminDashboard(s.user.schoolId), runReport(s.user.schoolId, "subject-performance"), questionAnalytics(s.user.schoolId, 12)]);
+  const [dash, subjects, questionsLow, byClass, signups, topics] = await Promise.all([adminDashboard(s.user.schoolId), runReport(s.user.schoolId, "subject-performance"), questionAnalytics(s.user.schoolId, 12), runReport(s.user.schoolId, "class-performance"), runReport(s.user.schoolId, "registrations"), runReport(s.user.schoolId, "topic-performance")]);
+  const classes = byClass as { class: string; students: number; results: number; average: number | null }[];
+  const weeks = (signups as { "week starting": string; students: number; parents: number }[]).slice(-12);
+  const weakTopics = (topics as { subject: string; topic: string; answers: number; "accuracy %": number | null }[]).slice(0, 8);
   const reports = REPORTS.filter((r) => !["admin-activity", "security-activity"].includes(r.kind) || can(s.actor, "super.audit"));
   return (
     <div className="space-y-6">
@@ -51,6 +54,30 @@ export default async function AnalyticsPage() {
           </Table>
         </Card>
       </div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader title="New registrations (12 weeks)" description="Student and parent accounts created each week." />
+          <div className="p-5"><ColumnChart label="Accounts per week" data={weeks.map((w) => ({ x: w["week starting"], y: w.students + w.parents }))} /></div>
+        </Card>
+        <Card>
+          <CardHeader title="Class performance" description="Average score of each class that has results." />
+          <div className="p-5">
+            {classes.some((c) => c.average !== null) ? <BarList items={classes.filter((c) => c.average !== null).map((c) => ({ label: c.class, value: c.average!, hint: `${c.students} students · ${c.results} results` }))} /> : <p className="text-sm text-muted">No results yet.</p>}
+          </div>
+        </Card>
+      </div>
+      <Card>
+        <CardHeader title="Topics students find hardest" description="Lowest accuracy across all examinations, for topics answered at least five times." />
+        <Table>
+          <thead><tr><Th>Subject</Th><Th>Topic</Th><Th>Answers</Th><Th>Accuracy</Th></tr></thead>
+          <tbody>
+            {weakTopics.map((t) => (
+              <tr key={`${t.subject}-${t.topic}`}><Td className="text-xs">{t.subject}</Td><Td className="font-semibold text-navy-800">{t.topic}</Td><Td>{t.answers}</Td><Td><Badge tone={(t["accuracy %"] ?? 0) < 40 ? "red" : (t["accuracy %"] ?? 0) < 60 ? "amber" : "green"}>{t["accuracy %"] ?? 0}%</Badge></Td></tr>
+            ))}
+            {!weakTopics.length && <tr><Td colSpan={4} className="text-center text-sm text-muted">Not enough answers yet.</Td></tr>}
+          </tbody>
+        </Table>
+      </Card>
       <Card>
         <CardHeader title="Reports" description="Generated from live data at the moment of export." />
         <ul className="grid gap-px bg-line sm:grid-cols-2 lg:grid-cols-3">

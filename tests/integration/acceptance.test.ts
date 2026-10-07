@@ -29,7 +29,7 @@ import {
 import { activateCode, adjustAccess, generateCodes, getAccessState, listCodes, requireActiveAccess } from "@/server/services/access";
 import { createAdmin, listRoles, revokeOtherOwnSessions, setAdminRoles, studentProfileAdmin, updateStudentAdmin, upsertRole } from "@/server/services/people";
 import { createQuestion, reviewQuestions } from "@/server/services/questions";
-import { createExam, getAttemptView, getStudentResult, listResults, listStudentExams, saveAnswers, setExamStatus, startAttempt, submitAttempt } from "@/server/services/exams";
+import { createExam, getAttemptView, getStudentResult, listStudentResults, jambOverview, listResults, listStudentExams, saveAnswers, setExamStatus, setupJambTests, startAttempt, submitAttempt, updateExam } from "@/server/services/exams";
 import { upsertTopic } from "@/server/services/curriculum";
 import { completeReading, mySubjects, openLesson, subjectOutline, submitClasswork } from "@/server/services/study";
 import { broadcast, listNotifications } from "@/server/services/notifications";
@@ -39,6 +39,24 @@ import { commitImport, previewImport } from "@/server/services/imports";
 import { approvePackQuestions, commitPack, previewPack, publishPack } from "@/server/services/content-packs";
 import { resultSlipPdf, toCsv } from "@/server/services/exports";
 import { can } from "@/core/permissions";
+import { getDefaultSchoolId, putSetting, SETTING_DEFAULTS } from "@/server/settings";
+import { createDefaultRooms, forumState, liftSuspension, listMessagesAdmin, listStudentRooms, moderateMessage, postMessage, roomFeed, suspendStudent } from "@/server/services/forum";
+import { recordAttemptEvent } from "@/server/services/exams";
+import { registerParent } from "@/server/services/auth";
+import { bulkPromote, decidePromotion, listPromotionsAdmin, promotionOverview, promotionState, requestPromotion, sessionFor } from "@/server/services/promotions";
+import { adminDecideLinkRequest, childReport, generateGuardianCode, linkChild, listChildren, listLinkRequestsAdmin, listParentRequests, listStudentConnections, requestChildLink, respondToLinkRequest, revokeLink } from "@/server/services/guardians";
+import { assignAccessToClass, assignAccessToParent, getParentAccess, requireFeature, requireParentAccess, transferAccess, updateCodeEntitlements } from "@/server/services/access";
+import { importStudentRows, previewStudentImport, STUDENT_IMPORT_COLUMNS, studentImportTemplate } from "@/server/services/student-import";
+import { appealOfResult, decideAppeal, listAppeals, openAppealCount, submitAppeal } from "@/server/services/appeals";
+import { REPORTS, runReport } from "@/server/services/analytics";
+import { sendDailyReminders } from "@/server/services/reminders";
+import { featureWithheld } from "@/server/services/access";
+import { answerQuiz, getStudentArticle, hubState, listParentArticles, listStudentArticles, restoreArticleVersion, startHubSession, startQuiz, upsertArticle } from "@/server/services/hub";
+import { createParentRooms, listParentRooms, listReports, parentPost, parentRoomFeed, reportMessage } from "@/server/services/community";
+import { createSchedule, listSchedulesForStudent, respondToSchedule } from "@/server/services/schedules";
+import { gameData, gradeOf, listEntriesForStudent, loadStarterEntries, upsertEntry } from "@/server/services/wordbank";
+import { setupInternational } from "@/server/services/international";
+import { CENTRAL_COLUMNS, centralTemplateWorkbook, importCentralExtras, previewCentral, RESOURCE_COLUMNS, WORD_COLUMNS } from "@/server/services/central";
 import type { AttemptQuestionSnapshot } from "@/core/exam-engine";
 
 const ctx = { ip: "127.0.0.1", userAgent: "vitest" };
@@ -56,7 +74,7 @@ async function expectCode(p: Promise<unknown>, code: string) {
   await expect(p).rejects.toSatisfy((e: unknown) => e instanceof AppError && e.code === code);
 }
 
-async function register(tag: string, classCode = "SS2", deptCode = "SCI") {
+async function register(tag: string, classCode = "SS2", deptCode = "SCI", rctx = ctx) {
   const [cls] = await db.select().from(S.classes).where(eq(S.classes.code, classCode));
   const [dep] = await db.select().from(S.departments).where(eq(S.departments.code, deptCode));
   const email = `${tag}@students.test`;
@@ -74,10 +92,16 @@ async function register(tag: string, classCode = "SS2", deptCode = "SCI") {
       confirmPassword: STRONG,
       acceptTerms: true,
     },
-    ctx,
+    rctx,
   );
-  const l = await login({ identifier: email, password: STRONG }, "student", ctx);
+  const l = await login({ identifier: email, password: STRONG }, "student", rctx);
   return (await session(l.token)).actor;
+}
+
+/** Opens the parent portal for a test parent, the way the school does: a parent access code, activated. */
+async function openPortal(parent: Actor, rctx = ctx) {
+  const [code] = (await generateCodes(superAdmin, { count: 1, audience: "PARENT" }, rctx)).codes;
+  await activateCode(parent, code, rctx);
 }
 
 let superAdmin: Actor;
@@ -94,7 +118,9 @@ beforeAll(async () => {
   ({ db, close } = await freshDb());
   process.env.SETUP_TOKEN = "test-setup-token-0123456789";
   process.env.SUPERADMIN_EMAIL = "super@preciousps.test";
-  await seedPlatform({ sampleContent: true });
+  await seedPlatform({ sampleContent: true, primarySchool: true });
+  // Most scenarios register students with chosen IDs; automatic IDs have their own test below.
+  await putSetting(await getDefaultSchoolId(), "examination", { ...SETTING_DEFAULTS.examination, studentIdAuto: false }, crypto.randomUUID());
 }, 180_000);
 
 afterAll(async () => close());
@@ -557,10 +583,48 @@ describe("Junior Secondary (JSS1–JSS3)", () => {
     const { attemptId } = await startAttempt(jss2, exam.id, crypto.randomUUID(), jssCtx);
     const picked = await db.select({ level: S.questions.level }).from(S.attemptQuestions).innerJoin(S.questions, eq(S.questions.id, S.attemptQuestions.questionId)).where(eq(S.attemptQuestions.attemptId, attemptId));
     expect(picked).toHaveLength(15);
-    expect(picked.every((q) => q.level === "JUNIOR_SECONDARY" || q.level === null)).toBe(true); // "all sections" questions are allowed; Senior Secondary ones never are
+    // Questions open to every section (no level) may be drawn too; Senior Secondary ones never are.
+    expect(picked.every((q) => q.level === "JUNIOR_SECONDARY" || q.level === null)).toBe(true);
     const [ssExam] = await db.select().from(S.examinations).where(eq(S.examinations.title, "Mathematics Mock Examination (2025)"));
     await expectCode(startAttempt(jss2, ssExam.id, crypto.randomUUID(), jssCtx), "FORBIDDEN");
     await expectCode(startAttempt(ss, exam.id, crypto.randomUUID(), jssCtx), "FORBIDDEN");
+  });
+
+  it("offers JAMB-only tests of 50 questions that draw nothing but JAMB questions", async () => {
+    const row = (await jambOverview(superAdmin)).filter((r) => r.approved >= 5).sort((a, b) => b.approved - a.approved)[0];
+    expect(row).toBeTruthy();
+    const first = await setupJambTests(superAdmin, [row.id], ctx);
+    expect(first.created).toBe(1);
+    const find = async () => (await db.select().from(S.examinations).where(and(eq(S.examinations.subjectId, row.id), eq(S.examinations.title, `JAMB ${row.name}`))))[0];
+    let test = await find();
+    expect(test.questionCount).toBe(50);
+    expect(test.examType).toBe("JAMB");
+    // Too few approved JAMB questions: the test waits as a draft instead of padding with other questions.
+    if (row.approved < 50) {
+      expect(first.waiting).toHaveLength(1);
+      expect(test.status).toBe("DRAFT");
+      expect((await listStudentExams(ss, { jambOnly: true })).map((e) => e.title)).not.toContain(test.title);
+    }
+    await db.update(S.examinations).set({ questionCount: 5 }).where(eq(S.examinations.id, test.id));
+    const again = await setupJambTests(superAdmin, [row.id], ctx);
+    expect(again.created).toBe(0);
+    expect((await find()).status).toBe("PUBLISHED");
+    // Editing through the ordinary exam form must not drop the JAMB-only restriction.
+    await updateExam(superAdmin, test.id, { title: test.title, subjectId: row.id, level: "SENIOR_SECONDARY", examType: "JAMB", questionCount: 5, durationMinutes: 10, maxAttempts: 100, poolFilter: null }, ctx);
+    test = await find();
+    expect(test.poolFilter).toEqual({ examTypes: ["JAMB"] });
+
+    const ssTitles = (await listStudentExams(ss, { jambOnly: true })).map((e) => e.title);
+    expect(ssTitles).toContain(test.title);
+    expect(ssTitles).not.toContain("JAMB UTME Mathematics Practice"); // typed JAMB, but drawn from the whole bank
+    expect(await listStudentExams(jss2, { jambOnly: true })).toHaveLength(0);
+
+    const [code] = (await generateCodes(superAdmin, { count: 1 }, ctx)).codes;
+    await activateCode(ss, code, jssCtx);
+    const { attemptId } = await startAttempt(ss, test.id, crypto.randomUUID(), jssCtx);
+    const picked = await db.select({ examType: S.questions.examType }).from(S.attemptQuestions).innerJoin(S.questions, eq(S.questions.id, S.attemptQuestions.questionId)).where(eq(S.attemptQuestions.attemptId, attemptId));
+    expect(picked).toHaveLength(5);
+    expect(picked.every((q) => q.examType === "JAMB")).toBe(true);
   });
 
   it("keeps the Study Centre, assignments and resources within the student's section", async () => {
@@ -673,5 +737,893 @@ describe("Content packs", () => {
     const c = await commitPack(superAdmin, again.importId, packCtx);
     expect(c).toMatchObject({ topicIds: [], questionIds: [], reusedTopics: 2, skippedDuplicates: 3 });
     expect(c.skippedExisting).toBe(3);
+  });
+});
+
+describe("Student forum", () => {
+  const fctx = { ip: "10.50.0.1", userAgent: "vitest" };
+  let ss: Actor;
+  let jss: Actor;
+  let roomId: string;
+  const always = { enabled: true, classBased: false, openHour: 0, closeHour: 24, dailyMinutes: 120, maxMessageLength: 500, slowModeSeconds: 0, blockLinks: true, blockedWords: "nude, betting", autoSuspendAfter: 3, autoSuspendDays: 2, rules: "Keep to school work." };
+
+  beforeAll(async () => {
+    await putSetting(superAdmin.schoolId, "forum", always, superAdmin.id);
+    ss = await register("forumss", "SS2", "SCI", { ...fctx, ip: "10.50.0.2" });
+    jss = await register("forumjs", "JSS1", "JSS", { ...fctx, ip: "10.50.0.3" });
+    const [code] = (await generateCodes(superAdmin, { count: 1 }, fctx)).codes;
+    await activateCode(ss, code, fctx);
+  });
+
+  it("gives each section its own rooms", async () => {
+    expect((await createDefaultRooms(superAdmin, fctx)).created).toBeGreaterThan(8);
+    expect((await createDefaultRooms(superAdmin, fctx)).created).toBe(0); // safe to press twice
+    const ssRooms = (await listStudentRooms(ss)).map((r) => r.name);
+    const jssRooms = (await listStudentRooms(jss)).map((r) => r.name);
+    expect(ssRooms).toContain("JAMB (UTME)");
+    expect(ssRooms).not.toContain("BECE");
+    expect(jssRooms).toContain("BECE");
+    expect(jssRooms).not.toContain("JAMB (UTME)");
+    roomId = (await listStudentRooms(ss)).find((r) => r.name === "Teach each other")!.id;
+    const jssOnly = (await listStudentRooms(jss)).find((r) => r.name === "BECE")!.id;
+    await expectCode(roomFeed(ss, jssOnly), "NOT_FOUND");
+  });
+
+  it("posts school talk and refuses personal details, keeping the attempts for staff", async () => {
+    await postMessage(ss, roomId, "Can someone explain the quadratic formula?", fctx);
+    await expectCode(postMessage(ss, roomId, "call me 0803 123 4567", fctx), "VALIDATION");
+    await expectCode(postMessage(ss, roomId, "where do you live?", fctx), "VALIDATION");
+    const feed = await roomFeed(ss, roomId);
+    expect(feed.messages.map((m) => m.body)).toEqual(["Can someone explain the quadratic formula?"]);
+    expect(feed.messages[0].author).toBe("Student F."); // first name and initial only
+    const staffView = await listMessagesAdmin(superAdmin.schoolId, { roomId });
+    expect(staffView.filter((m) => m.m.status === "BLOCKED")).toHaveLength(2);
+    // A student without active access cannot read or post.
+    await expectCode(roomFeed(jss, (await listStudentRooms(jss))[0].id), "ACCESS_REQUIRED");
+  });
+
+  it("lets moderators delete messages and suspend students", async () => {
+    const [mine] = (await roomFeed(ss, roomId)).messages;
+    await moderateMessage(superAdmin, mine.id, "DELETE", "Off topic", fctx);
+    expect((await roomFeed(ss, roomId)).messages).toHaveLength(0);
+    const sus = await suspendStudent(superAdmin, { userId: ss.id, reason: "Repeated off-topic posts", days: 1 }, fctx);
+    expect((await forumState(ss)).suspended).toBe(true);
+    await expectCode(postMessage(ss, roomId, "hello again", fctx), "FORBIDDEN");
+    await liftSuspension(superAdmin, sus.id, fctx);
+    await postMessage(ss, roomId, "Thank you, I will keep to school work.", fctx);
+  });
+
+  it("suspends automatically after repeated blocked messages", async () => {
+    await expectCode(postMessage(ss, roomId, "any betting tips", fctx), "VALIDATION"); // third blocked message today
+    const st = await forumState(ss);
+    expect(st.suspended).toBe(true);
+    expect(st.blocked).toMatch(/Automatic/);
+  });
+
+  it("opens only within the set hours and the daily allowance", async () => {
+    await putSetting(superAdmin.schoolId, "forum", { ...always, openHour: 10, closeHour: 22 }, superAdmin.id);
+    const other = await register("forumhrs", "SS2", "SCI", { ...fctx, ip: "10.50.0.4" });
+    expect((await forumState(other, { now: new Date("2026-10-05T22:30:00Z") })).blocked).toMatch(/10am to 10pm/); // 11:30pm in Lagos
+    expect((await forumState(other, { now: new Date("2026-10-05T08:30:00Z") })).canUse).toBe(false); // 9:30am
+    const noon = new Date("2026-10-05T11:00:00Z");
+    expect((await forumState(other, { now: noon })).canUse).toBe(true);
+    await db.insert(S.forumUsage).values({ userId: other.id, day: "2026-10-05", seconds: 2 * 3600, lastSeenAt: noon });
+    expect((await forumState(other, { now: new Date("2026-10-05T11:00:05Z") })).blocked).toMatch(/2 hours/);
+    await putSetting(superAdmin.schoolId, "forum", always, superAdmin.id);
+  });
+});
+
+describe("Examination lockdown and calculator", () => {
+  it("submits the attempt when the student leaves the screen too often, and shows the calculator for Mathematics", async () => {
+    const lctx = { ip: "10.60.0.1", userAgent: "vitest" };
+    await putSetting(superAdmin.schoolId, "examination", { ...SETTING_DEFAULTS.examination, studentIdAuto: false, maxScreenLeaves: 3, calculatorSubjectCodes: "MTH, PHY" }, superAdmin.id);
+    const st = await register("lockdown", "SS2", "SCI", lctx);
+    const [code] = (await generateCodes(superAdmin, { count: 1 }, lctx)).codes;
+    await activateCode(st, code, lctx);
+    const [mth] = await db.select().from(S.subjects).where(eq(S.subjects.code, "MTH"));
+    const exam = await createExam(superAdmin, { title: "Lockdown Maths Check", subjectId: mth.id, level: "SENIOR_SECONDARY", examType: "PRACTICE", questionCount: 5, durationMinutes: 10, maxAttempts: 3 }, lctx);
+    await setExamStatus(superAdmin, exam.id, "PUBLISHED", lctx);
+    const { attemptId } = await startAttempt(st, exam.id, crypto.randomUUID(), lctx);
+    const view = await getAttemptView(st, attemptId, lctx);
+    expect(view.status).toBe("IN_PROGRESS");
+    if (view.status === "IN_PROGRESS") {
+      expect(view.calculator).toBe(true);
+      expect(view.lockdown).toBe(true);
+    }
+    expect(await recordAttemptEvent(st, attemptId, "SCREEN_LEFT", lctx)).toMatchObject({ leaves: 1, submitted: false });
+    expect(await recordAttemptEvent(st, attemptId, "SCREEN_LEFT", lctx)).toMatchObject({ leaves: 2, submitted: false });
+    const last = await recordAttemptEvent(st, attemptId, "SCREEN_LEFT", lctx);
+    expect(last).toMatchObject({ leaves: 3, submitted: true });
+    const [a] = await db.select().from(S.examinationAttempts).where(eq(S.examinationAttempts.id, attemptId));
+    expect(a.status).toBe("AUTO_SUBMITTED");
+  });
+
+  it("submits the attempt when the student does not return before the countdown ends", async () => {
+    const lctx = { ip: "10.60.0.9", userAgent: "vitest" };
+    await putSetting(superAdmin.schoolId, "examination", { ...SETTING_DEFAULTS.examination, studentIdAuto: false, maxScreenLeaves: 5, returnCountdownSeconds: 10 }, superAdmin.id);
+    const st = await register("countdown", "SS2", "SCI", lctx);
+    const [code] = (await generateCodes(superAdmin, { count: 1 }, lctx)).codes;
+    await activateCode(st, code, lctx);
+    const [exam] = await db.select().from(S.examinations).where(eq(S.examinations.title, "Lockdown Maths Check"));
+    const sit = async () => (await startAttempt(st, exam.id, crypto.randomUUID(), lctx)).attemptId;
+    const status = async (id: string) => (await db.select().from(S.examinationAttempts).where(eq(S.examinationAttempts.id, id)))[0].status;
+
+    // Back in time: carries on.
+    const first = await sit();
+    await recordAttemptEvent(st, first, "SCREEN_LEFT", lctx);
+    expect(await recordAttemptEvent(st, first, "SCREEN_RETURNED", lctx)).toMatchObject({ submitted: false });
+    // A browser claiming the countdown ran out too early is ignored.
+    await recordAttemptEvent(st, first, "SCREEN_LEFT", lctx);
+    expect(await recordAttemptEvent(st, first, "AWAY_TIMEOUT", lctx)).toMatchObject({ submitted: false });
+    // Away for longer than the countdown (the server's own record is backdated here): submitted on return.
+    await db.update(S.attemptEvents).set({ createdAt: new Date(Date.now() - 30_000) }).where(and(eq(S.attemptEvents.attemptId, first), eq(S.attemptEvents.type, "SCREEN_RETURNED")));
+    await db.update(S.attemptEvents).set({ createdAt: new Date(Date.now() - 20_000) }).where(and(eq(S.attemptEvents.attemptId, first), eq(S.attemptEvents.type, "SCREEN_LEFT")));
+    expect(await recordAttemptEvent(st, first, "SCREEN_RETURNED", lctx)).toMatchObject({ submitted: true });
+    expect(await status(first)).toBe("AUTO_SUBMITTED");
+
+    // Countdown reaches 0 while away: submitted.
+    const second = await sit();
+    await recordAttemptEvent(st, second, "SCREEN_LEFT", lctx);
+    await db.update(S.attemptEvents).set({ createdAt: new Date(Date.now() - 10_500) }).where(and(eq(S.attemptEvents.attemptId, second), eq(S.attemptEvents.type, "SCREEN_LEFT")));
+    expect(await recordAttemptEvent(st, second, "AWAY_TIMEOUT", lctx)).toMatchObject({ submitted: true });
+    expect(await status(second)).toBe("AUTO_SUBMITTED");
+  });
+});
+
+describe("Automatic Student IDs", () => {
+  it("issues sequential Student IDs at registration that work for signing in, with the username too", async () => {
+    const ictx = { ip: "10.70.0.1", userAgent: "vitest" };
+    await putSetting(superAdmin.schoolId, "examination", { ...SETTING_DEFAULTS.examination, studentIdAuto: true, studentIdPrefix: "PPS", studentIdIncludeYear: true, studentIdDigits: 4 }, superAdmin.id);
+    const [cls] = await db.select().from(S.classes).where(eq(S.classes.code, "SS1"));
+    const [dep] = await db.select().from(S.departments).where(eq(S.departments.code, "ART"));
+    const year = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos", year: "numeric" }).format(new Date());
+    const base = { lastName: "Auto", phone: "08030000123", classId: cls.id, departmentId: dep.id, password: STRONG, confirmPassword: STRONG, acceptTerms: true };
+    // A typed ID is ignored when IDs are automatic.
+    const a = await registerStudent({ ...base, firstName: "Ade", email: "auto1@students.test", studentNumber: "MY-OWN-ID", username: "ade.auto" }, ictx);
+    const b = await registerStudent({ ...base, firstName: "Bisi", email: "auto2@students.test" }, { ...ictx, ip: "10.70.0.2" });
+    expect(a.studentNumber).toMatch(new RegExp(`^PPS/${year}/\\d{4}$`));
+    expect(Number(b.studentNumber.slice(-4))).toBe(Number(a.studentNumber.slice(-4)) + 1);
+    for (const id of [a.studentNumber, a.studentNumber.toLowerCase(), "ade.auto", "auto1@students.test"]) {
+      const l = await login({ identifier: id, password: STRONG }, "student", { ...ictx, ip: "10.70.0.3" });
+      expect((await session(l.token)).user.id).toBe(a.userId);
+    }
+    await putSetting(superAdmin.schoolId, "examination", { ...SETTING_DEFAULTS.examination, studentIdAuto: false }, superAdmin.id);
+    await expectCode(registerStudent({ ...base, firstName: "Chi", email: "auto3@students.test" }, { ...ictx, ip: "10.70.0.4" }), "VALIDATION"); // ID required again
+  });
+});
+
+describe("Primary school, parents, Premium and the learning hub", () => {
+  const at = (n: number) => ({ ip: `10.80.0.${n}`, userAgent: "vitest" });
+  let pupil: Actor;
+
+  it("places a Basic 4 pupil in the Primary section with the primary subjects", async () => {
+    pupil = await register("primarykid", "BASIC4", "PRY", at(1));
+    const subs = (await mySubjects(pupil)).map((x) => x.code);
+    expect(subs).toEqual(expect.arrayContaining(["QRE", "VRE", "MTH", "ENG", "BST", "SCS"]));
+    expect(subs).not.toContain("PHY");
+    const names = (await db.select().from(S.classes).orderBy(S.classes.sortOrder)).map((c) => c.name);
+    expect(names.slice(0, 7)).toEqual(["Basic 1", "Basic 2", "Basic 3", "Basic 4", "Basic 5", "Basic 6", "JSS 1"]);
+  });
+
+  it("keeps a class-based forum to the pupil's own class", async () => {
+    const [code] = (await generateCodes(superAdmin, { count: 1 }, at(2))).codes;
+    await activateCode(pupil, code, at(2));
+    await createDefaultRooms(superAdmin, at(2));
+    await putSetting(superAdmin.schoolId, "forum", { ...SETTING_DEFAULTS.forum, openHour: 0, closeHour: 24, classBased: true }, superAdmin.id);
+    const rooms = await listStudentRooms(pupil);
+    expect(rooms.length).toBe(4);
+    expect(rooms.every((r) => r.name.startsWith("Basic 4 — "))).toBe(true);
+    const other = await register("primaryfive", "BASIC5", "PRY", at(3));
+    const [code2] = (await generateCodes(superAdmin, { count: 1 }, at(3))).codes;
+    await activateCode(other, code2, at(3));
+    await expectCode(roomFeed(other, rooms[0].id), "NOT_FOUND");
+    await putSetting(superAdmin.schoolId, "forum", { ...SETTING_DEFAULTS.forum, openHour: 0, closeHour: 24, classBased: false }, superAdmin.id);
+    expect((await listStudentRooms(pupil)).map((r) => r.name)).toContain("Common Entrance");
+  });
+
+  it("shows dictionary entries by class and builds games from them", async () => {
+    expect((await loadStarterEntries(superAdmin.schoolId, superAdmin.id)).created).toBe(0); // seeded already
+    const [b5] = await db.select().from(S.classes).where(eq(S.classes.code, "BASIC5"));
+    await upsertEntry(superAdmin, null, { kind: "WORD", term: "harvest", partOfSpeech: "noun", meaning: "The time when crops are gathered.", picture: "🌾", classId: b5.id }, at(4));
+    await expectCode(upsertEntry(superAdmin, null, { kind: "WORD", term: "Harvest", meaning: "Again." }, at(4)), "DUPLICATE");
+    const mine = await listEntriesForStudent(pupil, { kind: "WORD" });
+    expect(mine.length).toBeGreaterThan(100);
+    expect(mine.map((e) => e.term)).not.toContain("harvest"); // Basic 5 only
+    const game = await gameData(pupil);
+    expect(game.grade).toBe(4);
+    expect(game.words.length).toBeGreaterThan(50);
+    expect(game.phrases.length).toBeGreaterThan(100);
+    expect(gradeOf("SS2", null)).toBe(11);
+  });
+
+  it("never links a parent on the strength of a code or an ID alone", async () => {
+    const r = await registerParent({ firstName: "Grace", lastName: "Parent", email: "grace@parents.test", phone: "08031112222", password: STRONG, confirmPassword: STRONG, acceptTerms: true }, at(5));
+    expect(r.linked).toBe(false);
+    const l = await login({ identifier: "grace@parents.test", password: STRONG }, "student", at(5));
+    const parent = (await session(l.token)).actor;
+    expect(parent.userType).toBe("PARENT");
+    await openPortal(parent, at(5));
+    await expectCode(login({ identifier: "grace@parents.test", password: STRONG }, "backend", at(5)), "INVALID_CREDENTIALS");
+    expect(can(parent, "students.view")).toBe(false);
+    // A school link code counts as school verification, but the child must still agree.
+    const { code } = await generateGuardianCode(superAdmin, pupil.id, at(5));
+    expect(code).toMatch(/^PG-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    await linkChild(parent, code.toLowerCase(), "Mother", at(5));
+    expect(await listChildren(parent.id)).toHaveLength(0);
+    await expectCode(childReport(parent, pupil.id, at(5)), "NOT_FOUND");
+    const [req] = (await listStudentConnections(pupil.id)).pending;
+    await respondToLinkRequest(pupil, req.id, true, at(5));
+    expect((await listChildren(parent.id)).map((k) => k.className)).toEqual(["Basic 4"]);
+    expect((await childReport(parent, pupil.id, at(5))).summary.examsTaken).toBe(0);
+    await expectCode(startAttempt(parent, examId, crypto.randomUUID(), at(6)), "FORBIDDEN");
+  });
+
+  it("opens international practice only to Premium codes", async () => {
+    const st = await register("premiumss", "SS3", "SCI", at(7));
+    const [standard] = (await generateCodes(superAdmin, { count: 1 }, at(7))).codes;
+    await activateCode(st, standard, at(7));
+    const setup = await setupInternational(superAdmin, at(7));
+    expect(setup.exams).toBe(7);
+    expect(setup.questions).toBeGreaterThan(100);
+    expect((await setupInternational(superAdmin, at(7))).exams).toBe(0); // safe to run again
+    expect((await listStudentExams(st)).some((e) => e.examType === "IELTS")).toBe(false); // never in the ordinary lists
+    const intl = await listStudentExams(st, { premium: true });
+    expect(intl.map((e) => e.examType).sort()).toEqual(["IELTS", "SAT", "TOEFL"]); // SS section
+    const ielts = intl.find((e) => e.examType === "IELTS")!;
+    await expectCode(startAttempt(st, ielts.id, crypto.randomUUID(), at(7)), "ACCESS_REQUIRED");
+    expect((await getAccessState(st.id)).premium).toBe(false);
+    await expectCode(generateCodes(resultAdmin, { count: 1, tier: "PREMIUM" }, at(7)), "FORBIDDEN");
+    const [premium] = (await generateCodes(superAdmin, { count: 1, tier: "PREMIUM" }, at(7))).codes;
+    await activateCode(st, premium, at(7)); // an upgrade on top of standard access
+    expect((await getAccessState(st.id)).premium).toBe(true);
+    const { attemptId } = await startAttempt(st, ielts.id, crypto.randomUUID(), at(7));
+    expect(attemptId).toBeTruthy();
+    const primaryIntl = await listStudentExams(pupil, { premium: true });
+    expect(primaryIntl.every((e) => e.examType === "CHECKPOINT")).toBe(true);
+    expect(primaryIntl).toHaveLength(2);
+  });
+});
+
+describe("Central upload workbook", () => {
+  const cctx = { ip: "10.90.0.1", userAgent: "vitest" };
+  const xlsx = (wb: XLSX.WorkBook) => ({ name: "central.xlsx", bytes: XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer });
+  const question = (subject: string, cls: string, topic: string, n: number) => [subject, cls, "", "", "PRACTICE", topic, "", `Central question ${subject} ${n}: what is ${n} + ${n}?`, String(n * 2), String(n * 2 + 1), String(n * 2 + 2), String(n * 2 + 3), "A", `Adding ${n} and ${n} gives ${n * 2}.`, "1", "EASY", "Precious PS original", "ORIGINAL"];
+
+  it("offers a template that lists every Primary subject", async () => {
+    const wb = XLSX.read(await centralTemplateWorkbook(superAdmin.schoolId), { type: "buffer" });
+    expect(wb.SheetNames).toEqual(["Read Me", "Subjects", "Classes", "Scheme of Work", "Lessons", "Questions", "Exams", "Assignments", "Dictionary", "Idioms", "Cliches", "Phrasal Verbs", "Resources", "Articles", "Quiz Questions"]);
+    const scheme = XLSX.utils.sheet_to_json<Record<string, string>>(wb.Sheets["Scheme of Work"], { defval: "" });
+    const codes = new Set(scheme.map((r) => r.Subject));
+    for (const code of ["MTH", "ENG", "QRE", "VRE", "BST", "SCS", "PHE", "CRS", "IRS", "HIS", "CCA", "BDL", "PVS", "FRE", "ARB", "YOR", "IGB", "HAU"]) expect(codes.has(code), code).toBe(true);
+    expect(scheme.filter((r) => r.Subject === "BST")).toHaveLength(18); // 6 classes × 3 terms
+    expect(scheme.filter((r) => r.Subject === "BDL").map((r) => r.Class)).not.toContain("Basic 1"); // starts in Basic 4
+    expect(Object.keys(scheme[0])).toEqual(CENTRAL_COLUMNS.scheme);
+    const words = XLSX.read(await centralTemplateWorkbook(superAdmin.schoolId, "words"), { type: "buffer" });
+    expect(words.SheetNames).toEqual(["Read Me", "Dictionary", "Idioms", "Cliches", "Phrasal Verbs"]);
+  });
+
+  it("sends each row of one workbook to the section it belongs to", async () => {
+    const wb = XLSX.utils.book_new();
+    const add = (name: string, rows: unknown[][]) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), name);
+    add("Scheme of Work", [
+      CENTRAL_COLUMNS.scheme,
+      ["BST", "Basic 4", "1", "1", "Central living things", "Plants; Animals", "Name living things; Group living things; Describe a plant", "Y"],
+      ["SCS", "Basic 4", "1", "1", "Central family life", "Members; Duties", "Name family members; State duties; Draw a family tree", "Y"],
+      ["SCS", "Basic 4", "2", "1", "", "", "", "Y"], // template row never filled in: ignored
+      ["NOPE", "Basic 4", "1", "1", "Unknown subject topic", "A; B", "Do one; Do two; Do three", "Y"],
+    ]);
+    add("Questions", [CENTRAL_COLUMNS.questions, ...[1, 2, 3].map((n) => question("BST", "Basic 4", "Central living things", n)), ...[4, 5].map((n) => question("SCS", "Basic 4", "Central family life", n))]);
+    add("Dictionary", [WORD_COLUMNS, ["lantern", "noun", "A lamp that can be carried.", "He lit the lantern.", "🏮", "Primary", "Basic 4", "Published"], ["apple", "noun", "A round fruit that grows on a tree.", "", "🍎", "All", "", ""], ["broken", "", "", "", "", "", "", ""]]);
+    add("Idioms", [WORD_COLUMNS, ["Central idiom of the day", "", "An idiom added from the central sheet.", "", "", "Everywhere", "", ""]]);
+    add("Resources", [RESOURCE_COLUMNS, ["Central reading list", "Books for Basic 4", "ENG", "Basic 4", "", "website", "https://example.org/reading", "Yes", "No", "Published"], ["Bad link", "", "", "", "", "", "http://example.org", "", "", ""]]);
+
+    const report = await previewCentral(superAdmin, xlsx(wb), cctx);
+    expect(report.subjects.map((x) => x.ref).sort()).toEqual(["BST", "NOPE", "SCS"]);
+    const bst = report.subjects.find((x) => x.ref === "BST")!;
+    expect(bst.errors).toEqual([]);
+    expect(bst.counts).toMatchObject({ topics: 1, questions: 3 });
+    expect(report.subjects.find((x) => x.ref === "SCS")!.counts).toMatchObject({ topics: 1, questions: 2 });
+    expect(report.subjects.find((x) => x.ref === "NOPE")!.errors.length).toBeGreaterThan(0);
+    expect(report.words.counts).toMatchObject({ WORD: 2, IDIOM: 0 });
+    expect(report.words.issues.map((x) => x.sheet).sort()).toEqual(["Dictionary", "Idioms"]);
+    expect(report.resources).toMatchObject({ count: 1 });
+    expect(report.resources.issues).toHaveLength(1);
+
+    // The subjects that passed are imported exactly like content packs.
+    for (const sub of report.subjects.filter((x) => !x.errors.length)) await commitPack(superAdmin, sub.importId!, cctx);
+    const [topic] = await db.select().from(S.topics).where(eq(S.topics.title, "Central living things"));
+    const [bstSubject] = await db.select().from(S.subjects).where(eq(S.subjects.code, "BST"));
+    expect(topic.subjectId).toBe(bstSubject.id);
+    expect(topic.level).toBe("PRIMARY");
+    expect(await db.select().from(S.questions).where(eq(S.questions.topicId, topic.id))).toHaveLength(3);
+
+    const extras = await importCentralExtras(superAdmin, xlsx(wb), cctx);
+    expect(extras).toMatchObject({ wordsAdded: 1, wordsUpdated: 1, resourcesAdded: 1 }); // "apple" was in the starter set
+    const [lantern] = await db.select().from(S.wordEntries).where(eq(S.wordEntries.term, "lantern"));
+    expect(lantern).toMatchObject({ kind: "WORD", level: "PRIMARY", status: "PUBLISHED" });
+    expect((await importCentralExtras(superAdmin, xlsx(wb), cctx)).resourcesSkipped).toBe(1); // not added twice
+
+    // An administrator without those permissions has the sheets skipped, not imported.
+    const limited = await previewCentral(resultAdmin, xlsx(wb), cctx);
+    expect(limited.curriculumAllowed).toBe(false);
+    expect(limited.subjects).toEqual([]);
+    expect(limited.words.allowed).toBe(false);
+    expect(await importCentralExtras(resultAdmin, xlsx(wb), cctx)).toMatchObject({ wordsAdded: 0, wordsUpdated: 0, resourcesAdded: 0 });
+  });
+
+  it("creates the default administrator roles, which stay editable", async () => {
+    const all = await listRoles(superAdmin.schoolId);
+    const keys = all.map((r) => r.key);
+    for (const k of ["primary_school_admin", "content_upload_admin", "study_materials_admin", "homepage_content_admin", "parents_admin", "access_code_admin", "premium_admin", "reports_officer"]) expect(keys, k).toContain(k);
+    const officer = all.find((r) => r.key === "reports_officer")!;
+    await upsertRole(superAdmin, officer.id, { name: "Reports Officer", description: "Edited by the Super Admin.", permissions: ["analytics.view", "results.view"] }, cctx);
+    const after = (await listRoles(superAdmin.schoolId)).find((r) => r.key === "reports_officer")!;
+    expect(after.name).toBe("Reports Officer");
+    expect(after.permissions.sort()).toEqual(["analytics.view", "results.view"]);
+  });
+});
+
+describe("Secure family linking, entitlements, hubs and communities", () => {
+  const at = (n: number) => ({ ip: `10.95.0.${n}`, userAgent: "vitest" });
+  const policy = (linkPolicy: "CHILD" | "CHILD_AND_SCHOOL" | "SCHOOL", extra = {}) => putSetting(superAdmin.schoolId, "parents", { ...SETTING_DEFAULTS.parents, linkPolicy, ...extra }, superAdmin.id);
+  let childA: Actor;
+  let childB: Actor;
+  let mum: Actor;
+  let stranger: Actor;
+  const parent = async (tag: string, n: number) => {
+    await registerParent({ firstName: "Pat", lastName: tag, email: `${tag}@parents.test`, phone: "08031110000", password: STRONG, confirmPassword: STRONG, acceptTerms: true }, at(n));
+    const a = (await session((await login({ identifier: `${tag}@parents.test`, password: STRONG }, "student", at(n))).token)).actor;
+    await openPortal(a, at(n));
+    return a;
+  };
+  const withCode = async (st: Actor, opts: Parameters<typeof generateCodes>[1], n: number) => {
+    const [code] = (await generateCodes(superAdmin, opts, at(n))).codes;
+    await activateCode(st, code, at(n));
+  };
+
+  beforeAll(async () => {
+    childA = await register("linkchilda", "JSS2", "JSS", at(1));
+    childB = await register("linkchildb", "SS2", "SCI", at(2));
+    mum = await parent("mum", 3);
+    stranger = await parent("stranger", 4);
+    await policy("CHILD");
+  });
+
+  it("holds a request as pending and shows the parent nothing", async () => {
+    const sent = await requestChildLink(mum, "PPS/linkchilda", "Mother", at(3));
+    const unknown = await requestChildLink(mum, "PPS/nobody-here", "Mother", at(3));
+    expect(unknown).toEqual(sent); // the form cannot be used to find out who is a student
+    expect(await listChildren(mum.id)).toHaveLength(0);
+    await expectCode(childReport(mum, childA.id, at(3)), "NOT_FOUND");
+    const mine = await listParentRequests(mum.id);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ status: "PENDING", studentNumber: "PPS/linkchilda" });
+    await requestChildLink(mum, "PPS/linkchilda", "Mother", at(3));
+    expect(await listParentRequests(mum.id)).toHaveLength(1); // asking again does not pile up requests
+  });
+
+  it("lets only the addressed, signed-in student decide", async () => {
+    const { pending } = await listStudentConnections(childA.id);
+    expect(pending).toHaveLength(1);
+    expect(pending[0].firstName).toBe("Pat");
+    expect(pending[0].email).not.toContain("mum@"); // masked
+    await expectCode(respondToLinkRequest(childB, pending[0].id, true, at(2)), "NOT_FOUND"); // another student
+    await expectCode(respondToLinkRequest(mum, pending[0].id, true, at(3)), "FORBIDDEN"); // the parent cannot accept for the child
+    await expectCode(respondToLinkRequest(superAdmin, pending[0].id, true, at(3)), "FORBIDDEN");
+    expect(await listChildren(mum.id)).toHaveLength(0);
+    // The student rejects: nothing is shared and the request is closed.
+    expect((await respondToLinkRequest(childA, pending[0].id, false, at(1))).status).toBe("REJECTED");
+    await expectCode(childReport(mum, childA.id, at(3)), "NOT_FOUND");
+    await expectCode(respondToLinkRequest(childA, pending[0].id, true, at(1)), "CONFLICT"); // cannot be reopened
+    await requestChildLink(mum, "PPS/linkchilda", "Mother", at(3)); // too soon after a rejection
+    expect((await listStudentConnections(childA.id)).pending).toHaveLength(0);
+  });
+
+  it("activates the right relationship on acceptance and removes it at once on revocation", async () => {
+    await requestChildLink(mum, "linkchildb@students.test", "Mother", at(3));
+    const [req] = (await listStudentConnections(childB.id)).pending;
+    expect((await respondToLinkRequest(childB, req.id, true, at(2))).status).toBe("ACCEPTED");
+    expect((await listChildren(mum.id)).map((k) => k.id)).toEqual([childB.id]);
+    expect((await childReport(mum, childB.id, at(3))).child.id).toBe(childB.id);
+    await expectCode(childReport(mum, childA.id, at(3)), "NOT_FOUND"); // not the other child
+    await expectCode(childReport(stranger, childB.id, at(4)), "NOT_FOUND"); // not another parent
+    expect((await listStudentConnections(childB.id)).active).toHaveLength(1);
+    // Timetable: only for a linked child, and the child answers it.
+    const sched = await createSchedule(mum, childB.id, { title: "Mathematics revision", date: "2026-10-06", startTime: "17:00", endTime: "17:45", priority: "HIGH" }, at(3));
+    await expectCode(createSchedule(stranger, childB.id, { title: "Reading", date: "2026-10-06" }, at(4)), "NOT_FOUND");
+    await expectCode(createSchedule(mum, childA.id, { title: "Reading", date: "2026-10-06" }, at(3)), "NOT_FOUND");
+    expect(await listSchedulesForStudent(childB.id, "2026-10-04")).toHaveLength(1);
+    await expectCode(respondToSchedule(childA, sched.id, "COMPLETE", at(1)), "NOT_FOUND");
+    expect((await respondToSchedule(childB, sched.id, "COMPLETE", at(2))).status).toBe("COMPLETED");
+    // The student may not remove the connection unless the school allows it; the parent and staff may.
+    await expectCode(revokeLink(childB, mum.id, childB.id, undefined, at(2)), "FORBIDDEN");
+    await expectCode(revokeLink(stranger, mum.id, childB.id, undefined, at(4)), "FORBIDDEN");
+    await revokeLink(mum, mum.id, childB.id, "No longer needed", at(3));
+    await expectCode(childReport(mum, childB.id, at(3)), "NOT_FOUND");
+    await expectCode(createSchedule(mum, childB.id, { title: "Reading", date: "2026-10-07" }, at(3)), "NOT_FOUND");
+    expect((await listParentRequests(mum.id)).some((r) => r.status === "REVOKED")).toBe(true);
+  });
+
+  it("supports school verification policies and records every step", async () => {
+    await policy("CHILD_AND_SCHOOL");
+    const dad = await parent("dad", 5);
+    await requestChildLink(dad, "PPS/linkchildb", "Father", at(5));
+    const [req] = (await listStudentConnections(childB.id)).pending;
+    expect((await respondToLinkRequest(childB, req.id, true, at(2))).status).toBe("PENDING"); // the school has not verified yet
+    expect(await listChildren(dad.id)).toHaveLength(0);
+    await expectCode(adminDecideLinkRequest(superAdmin, crypto.randomUUID(), true, undefined, at(5)), "NOT_FOUND");
+    expect((await adminDecideLinkRequest(superAdmin, req.id, true, "Seen at the school office", at(5))).status).toBe("ACCEPTED");
+    expect(await listChildren(dad.id)).toHaveLength(1);
+    // School-only policy: verification alone is enough, and a refusal closes the request.
+    await policy("SCHOOL");
+    await requestChildLink(stranger, "PPS/linkchildb", "Uncle", at(4));
+    const waiting = (await listLinkRequestsAdmin(superAdmin.schoolId, "PENDING")).find((x) => x.r.parentUserId === stranger.id)!;
+    expect(waiting.child?.studentNumber).toBe("PPS/linkchildb");
+    expect((await adminDecideLinkRequest(superAdmin, waiting.r.id, false, "Not known to the school", at(5))).status).toBe("REJECTED");
+    expect(await listChildren(stranger.id)).toHaveLength(0);
+    await policy("CHILD", { childCanRemove: true });
+    await revokeLink(childB, dad.id, childB.id, undefined, at(2)); // now allowed by the school
+    expect(await listChildren(dad.id)).toHaveLength(0);
+    const actions = (await db.select({ action: S.auditLogs.action }).from(S.auditLogs).where(sql`${S.auditLogs.action} LIKE 'guardian.%'`)).map((x) => x.action);
+    for (const k of ["guardian.link_requested", "guardian.child_accepted", "guardian.child_rejected", "guardian.admin_approved", "guardian.admin_rejected", "guardian.link_activated", "guardian.unlinked"]) expect(actions, k).toContain(k);
+  });
+
+  it("opens features from the one central access code, enforced on the server", async () => {
+    await withCode(childA, { count: 1, features: ["CBT", "RESULTS"] }, 1);
+    expect((await getAccessState(childA.id)).features.sort()).toEqual(["CBT", "RESULTS"]);
+    await requireFeature(childA.id, "CBT");
+    await expectCode(requireFeature(childA.id, "STUDY_CENTRE"), "ACCESS_REQUIRED");
+    await expectCode(hubState(childA), "ACCESS_REQUIRED");
+    await expectCode(startQuiz(childA, "QUIZ", at(1), "2026-10-04"), "ACCESS_REQUIRED");
+    await expectCode(listStudentRooms(childA).then(() => roomFeed(childA, crypto.randomUUID())), "ACCESS_REQUIRED");
+    // A code made before entitlements existed (no feature list) opens the standard set.
+    await withCode(childB, { count: 1 }, 2);
+    const std = (await getAccessState(childB.id)).features;
+    expect(std).toEqual(expect.arrayContaining(["CBT", "STUDY_CENTRE", "KNOWLEDGE_HUB", "QUIZ_ARENA", "COMMUNITY"]));
+    expect(std).not.toContain("INTERNATIONAL");
+    // Editing the code changes what it opens, and the change is audited.
+    const [row] = await db.select().from(S.activationCodes).where(eq(S.activationCodes.activatedBy, childA.id));
+    await updateCodeEntitlements(superAdmin, row.id, { features: ["CBT", "KNOWLEDGE_HUB", "QUIZ_ARENA"], hubSessionMinutes: 10, hubCooldownMinutes: 20 }, at(1));
+    expect(await hubState(childA)).toMatchObject({ sessionMinutes: 10, cooldownMinutes: 20, active: false });
+    await expectCode(updateCodeEntitlements(resultAdmin, row.id, { features: ["INTERNATIONAL"] }, at(1)), "FORBIDDEN");
+  });
+
+  it("times Knowledge Hub sessions and cooldowns on the server", async () => {
+    const t0 = new Date("2026-10-05T12:00:00Z");
+    const later = (min: number) => new Date(t0.getTime() + min * 60_000);
+    await expectCode(listStudentArticles(childB, {}, t0), "FORBIDDEN"); // no session yet
+    expect(await startHubSession(childB, at(2), t0)).toMatchObject({ active: true, secondsLeft: 1800 });
+    const list = await listStudentArticles(childB, {}, later(10));
+    expect(list.length).toBeGreaterThan(5);
+    expect((await getStudentArticle(childB, list[0].id, later(29))).title).toBe(list[0].title);
+    await expectCode(getStudentArticle(childB, list[0].id, later(31)), "FORBIDDEN"); // session over
+    expect(await hubState(childB, later(31))).toMatchObject({ active: false, cooldownSeconds: 59 * 60 });
+    await expectCode(startHubSession(childB, at(2), later(45)), "FORBIDDEN"); // still cooling down
+    expect((await startHubSession(childB, at(2), later(91))).active).toBe(true);
+    // Unlimited override on the code.
+    const [row] = await db.select().from(S.activationCodes).where(eq(S.activationCodes.activatedBy, childB.id));
+    await updateCodeEntitlements(superAdmin, row.id, { features: null, hubUnlimited: true }, at(2));
+    expect(await hubState(childB, later(300))).toMatchObject({ unlimited: true, active: true });
+    // A JSS student is not shown senior-secondary articles.
+    await startHubSession(childA, at(1), t0);
+    const titles = (await listStudentArticles(childA, {}, later(1))).map((x) => x.title);
+    expect(titles).toContain("The three arms of government");
+    expect(titles).not.toContain("How artificial intelligence works");
+  });
+
+  it("marks quizzes on the server and keeps student and parent games apart", async () => {
+    const quiz = await startQuiz(childB, "QUIZ", at(2), "2026-10-05");
+    expect(quiz.questions).toHaveLength(20);
+    expect(quiz.questions[0]).not.toHaveProperty("correctIndex"); // answers stay on the server
+    const one = await answerQuiz(childB, quiz.attemptId, 0, 0);
+    expect(one.questions[0]).toHaveProperty("correct");
+    expect(one.questions[0].explanation).toBeTruthy();
+    await expectCode(answerQuiz(childB, quiz.attemptId, 0, 1), "CONFLICT"); // no second try
+    await expectCode(answerQuiz(childA, quiz.attemptId, 1, 0), "NOT_FOUND"); // not your quiz
+    let last = one;
+    for (let i = 1; i < 20; i++) last = await answerQuiz(childB, quiz.attemptId, i, 1);
+    expect(last.finished).toBe(true);
+    expect(last.summary).toMatchObject({ total: 20 });
+    const daily = await startQuiz(childB, "DAILY", at(2), "2026-10-05");
+    expect((await startQuiz(childB, "DAILY", at(2), "2026-10-05")).attemptId).toBe(daily.attemptId); // one a day
+    await expectCode(startQuiz(childB, "PARENTING", at(2), "2026-10-05"), "FORBIDDEN");
+    await expectCode(startQuiz(mum, "QUIZ", at(3), "2026-10-05"), "FORBIDDEN");
+    expect((await startQuiz(mum, "PARENTING", at(3), "2026-10-05")).questions.length).toBeGreaterThan(5); // free for parents
+  });
+
+  it("runs parent content through review and keeps earlier versions", async () => {
+    const draft = await upsertArticle(superAdmin, null, { section: "LEARNING", category: "Reading", title: "Reading with your child", summary: "Ten minutes of shared reading a day builds vocabulary.", body: "Read aloud together every evening and talk about the story afterwards. Ask what might happen next." }, at(6));
+    expect(draft.status).toBe("DRAFT");
+    expect((await listParentArticles(mum)).map((x) => x.title)).not.toContain("Reading with your child");
+    await expectCode(listParentArticles(childB), "FORBIDDEN"); // parent learning is not for students
+    const live = await upsertArticle(superAdmin, draft.id, { section: "LEARNING", category: "Reading", title: "Reading with your child", summary: "Ten minutes of shared reading a day builds vocabulary.", body: "Second edition: read aloud together every evening and talk about the story afterwards.", status: "PUBLISHED" }, at(6));
+    expect(live).toMatchObject({ status: "PUBLISHED", version: 2 });
+    expect((await listParentArticles(mum, { section: "LEARNING" })).map((x) => x.title)).toContain("Reading with your child");
+    expect((await listParentArticles(mum, { section: "PSYCHOLOGY" })).length).toBeGreaterThan(3);
+    await restoreArticleVersion(superAdmin, draft.id, 1, at(6));
+    const [back] = await db.select().from(S.hubArticles).where(eq(S.hubArticles.id, draft.id));
+    expect(back).toMatchObject({ version: 3, status: "REVIEW" });
+    expect(back.body).toContain("Read aloud together every evening and talk");
+  });
+
+  it("keeps the parent community and the student forum completely separate", async () => {
+    expect((await createParentRooms(superAdmin, at(6))).created).toBe(4);
+    expect((await createParentRooms(superAdmin, at(6))).created).toBe(0);
+    const { rooms } = await listParentRooms(mum);
+    expect(rooms).toHaveLength(4);
+    await expectCode(listParentRooms(childB), "FORBIDDEN");
+    await expectCode(roomFeed(childB, rooms[0].id), "NOT_FOUND"); // a student cannot open a parent room
+    await expectCode(postMessage(childB, rooms[0].id, "Hello parents", at(2)), "NOT_FOUND");
+    expect((await listStudentRooms(childB)).map((r) => r.id)).not.toContain(rooms[0].id);
+    const [studentRoom] = await db.select().from(S.forumRooms).where(eq(S.forumRooms.audience, "STUDENT"));
+    await expectCode(parentRoomFeed(mum, studentRoom.id), "NOT_FOUND"); // a parent cannot open a student room
+    await expectCode(parentPost(mum, studentRoom.id, "Hello students", at(3)), "NOT_FOUND");
+    const { id } = await parentPost(mum, rooms[0].id, "How do you help a child who dislikes reading?", at(3));
+    await expectCode(parentPost(mum, rooms[0].id, "Call me on 0803 123 4567", at(3)), "VALIDATION");
+    await expectCode(parentPost(mum, rooms[0].id, "Are you single? Let us chat on whatsapp", at(3)), "VALIDATION");
+    const feed = await parentRoomFeed(stranger, rooms[0].id);
+    expect(feed.messages.map((m) => m.body)).toEqual(["How do you help a child who dislikes reading?"]);
+    expect(feed.messages[0].author).toBe("Pat m.");
+    await reportMessage(stranger, id, "SPAM", "Test report", at(4));
+    await expectCode(reportMessage(childB, id, "SPAM", undefined, at(2)), "NOT_FOUND"); // students cannot reach parent messages
+    expect(await listReports(superAdmin.schoolId)).toHaveLength(1);
+  });
+});
+
+describe("Promotion to the next class, and linking by an activated access code", () => {
+  const at = (n: number) => ({ ip: `10.96.0.${n}`, userAgent: "vitest" });
+  const rules = (extra = {}) => putSetting(superAdmin.schoolId, "promotion", { ...SETTING_DEFAULTS.promotion, ...extra }, superAdmin.id);
+  // Students here register "today"; the next promotion period that can apply to them is next year's.
+  const Y = new Date().getUTCFullYear() + 1;
+  const inPeriod = new Date(Date.UTC(Y, 7, 20, 10)); // 20 August
+  const midSession = new Date(Date.UTC(Y, 2, 2, 10)); // 2 March
+  const classOf = async (a: Actor) => {
+    const [r] = await db.select({ code: S.classes.code }).from(S.students).innerJoin(S.classes, eq(S.classes.id, S.students.classId)).where(eq(S.students.userId, a.id));
+    return r.code;
+  };
+  let ss2: Actor;
+  let jss3: Actor;
+
+  beforeAll(async () => {
+    ss2 = await register("promosstwo", "SS2", "SCI", at(1));
+    jss3 = await register("promojssthree", "JSS3", "JSS", at(2));
+    await rules();
+  });
+
+  it("works out the session from the Nigerian school year", () => {
+    expect(sessionFor(new Date("2026-09-14T09:00:00Z"), "08-01", "Africa/Lagos")).toBe("2026/2027");
+    expect(sessionFor(new Date("2027-07-30T09:00:00Z"), "08-01", "Africa/Lagos")).toBe("2026/2027");
+    expect(sessionFor(new Date("2027-08-02T09:00:00Z"), "08-01", "Africa/Lagos")).toBe("2027/2028");
+  });
+
+  it("refuses promotion outside the period, and for a student who registered inside it", async () => {
+    await expectCode(requestPromotion(ss2, {}, at(1), midSession), "FORBIDDEN");
+    expect(await classOf(ss2)).toBe("SS2");
+    await rules({ windowStart: "01-01", windowEnd: "12-31" }); // a period that contains today's registration
+    const st = await promotionState(ss2, new Date());
+    expect(st.canRequest).toBe(false);
+    await expectCode(requestPromotion(ss2, {}, at(1), new Date()), "FORBIDDEN");
+    await rules();
+  });
+
+  it("only raises a request: the class changes when staff approve, and only once in a session", async () => {
+    const r = await requestPromotion(ss2, {}, at(1), inPeriod);
+    expect(r).toMatchObject({ status: "PENDING", to: "SSS 3" });
+    expect(await classOf(ss2)).toBe("SS2"); // nothing has moved yet
+    await expectCode(requestPromotion(ss2, {}, at(1), inPeriod), "FORBIDDEN"); // already waiting
+    const [row] = await listPromotionsAdmin(superAdmin.schoolId, "PENDING");
+    await expectCode(decidePromotion(qbAdmin, "00000000-0000-4000-8000-000000000000", true, undefined, at(9)), "NOT_FOUND");
+    await decidePromotion(superAdmin, row.p.id, true, undefined, at(9));
+    expect(await classOf(ss2)).toBe("SS3");
+    await expectCode(decidePromotion(superAdmin, row.p.id, true, undefined, at(9)), "CONFLICT");
+    // Same session: no second step. SS3 is also the final class.
+    await expectCode(requestPromotion(ss2, {}, at(1), new Date(inPeriod.getTime() + 86_400_000)), "FORBIDDEN");
+    expect(await classOf(ss2)).toBe("SS3");
+  });
+
+  it("a rejected student stays put and may ask again", async () => {
+    await expectCode(requestPromotion(jss3, {}, at(2), inPeriod), "VALIDATION"); // SS1 has several departments: one must be chosen
+    const [sci] = await db.select().from(S.departments).where(eq(S.departments.code, "SCI"));
+    await requestPromotion(jss3, { departmentId: sci.id }, at(2), inPeriod);
+    const [row] = await listPromotionsAdmin(superAdmin.schoolId, "PENDING");
+    await decidePromotion(superAdmin, row.p.id, false, "Result not yet released", at(9));
+    expect(await classOf(jss3)).toBe("JSS3");
+    expect((await promotionState(jss3, inPeriod)).canRequest).toBe(true);
+  });
+
+  it("even with self-promotion on, a student moves one class, once", async () => {
+    await rules({ mode: "AUTO" });
+    const one = await register("promojssone", "JSS1", "JSS", at(3));
+    await requestPromotion(one, {}, at(3), inPeriod);
+    expect(await classOf(one)).toBe("JSS2");
+    await expectCode(requestPromotion(one, {}, at(3), inPeriod), "FORBIDDEN");
+    expect(await classOf(one)).toBe("JSS2");
+    await rules();
+  });
+
+  it("staff promote a whole class, mark repeaters, and cannot promote the same student twice", async () => {
+    const a = await register("promobone", "BASIC4", "PRY", at(4));
+    const b = await register("promobtwo", "BASIC4", "PRY", at(5));
+    const [b4] = await db.select().from(S.classes).where(eq(S.classes.code, "BASIC4"));
+    const [b5] = await db.select().from(S.classes).where(eq(S.classes.code, "BASIC5"));
+    const before = (await promotionOverview(superAdmin.schoolId, inPeriod)).classes.find((c) => c.id === b4.id)!;
+    expect(before.waiting).toBe(before.total);
+    const out = await bulkPromote(superAdmin, b4.id, [b.id], at(9), inPeriod);
+    expect(out).toMatchObject({ repeated: 1, to: "Basic 5" });
+    expect(await classOf(a)).toBe("BASIC5");
+    expect(await classOf(b)).toBe("BASIC4");
+    // Promoting Basic 5 afterwards must not carry the newly promoted pupil on to Basic 6.
+    const again = await bulkPromote(superAdmin, b5.id, [], at(9), inPeriod);
+    expect(again.skipped).toBeGreaterThanOrEqual(1);
+    expect(await classOf(a)).toBe("BASIC5");
+    await expectCode(requestPromotion(b, {}, at(5), inPeriod), "FORBIDDEN"); // marked to repeat this session
+  });
+
+  it("an access code names a child only after that child has activated it, and the child must still accept", async () => {
+    await putSetting(superAdmin.schoolId, "parents", { ...SETTING_DEFAULTS.parents, linkPolicy: "CHILD" }, superAdmin.id);
+    await registerParent({ firstName: "Pat", lastName: "codeparent", email: "codeparent@parents.test", phone: "08031110000", password: STRONG, confirmPassword: STRONG, acceptTerms: true }, at(6));
+    const mum = (await session((await login({ identifier: "codeparent@parents.test", password: STRONG }, "student", at(6))).token)).actor;
+    await openPortal(mum, at(6));
+    const child = await register("promocodechild", "SS1", "SCI", at(7));
+    const [used, unused] = (await generateCodes(superAdmin, { count: 2 }, at(9))).codes;
+    await activateCode(child, used, at(7));
+    const nothing = await requestChildLink(mum, unused, "Mother", at(6));
+    expect(await listParentRequests(mum.id)).toHaveLength(0); // an unused code belongs to nobody
+    const sent = await requestChildLink(mum, used.toLowerCase(), "Mother", at(6));
+    expect(sent).toEqual(nothing); // and the reply does not say which codes are real
+    expect(await listParentRequests(mum.id)).toHaveLength(1);
+    expect(await listChildren(mum.id)).toHaveLength(0); // holding the code is not proof of parenthood
+    await expectCode(childReport(mum, child.id, at(6)), "NOT_FOUND");
+    const [req] = (await listStudentConnections(child.id)).pending;
+    await respondToLinkRequest(child, req.id, true, at(7));
+    expect(await listChildren(mum.id)).toHaveLength(1);
+  });
+});
+
+describe("Parent access codes", () => {
+  const at = (n: number) => ({ ip: `10.97.0.${n}`, userAgent: "vitest" });
+  const DAY = 86_400_000;
+  let dad: Actor;
+  let child: Actor;
+
+  beforeAll(async () => {
+    await putSetting(superAdmin.schoolId, "parents", { ...SETTING_DEFAULTS.parents, linkPolicy: "CHILD" }, superAdmin.id);
+    await registerParent({ firstName: "Dan", lastName: "Locked", email: "locked@parents.test", phone: "08031110000", password: STRONG, confirmPassword: STRONG, acceptTerms: true }, at(1));
+    dad = (await session((await login({ identifier: "locked@parents.test", password: STRONG }, "student", at(1))).token)).actor;
+    child = await register("lockedchild", "JSS1", "JSS", at(2));
+  });
+
+  it("a new parent account is locked until a parent access code is activated", async () => {
+    const a = await getParentAccess(dad.id);
+    expect(a).toMatchObject({ active: false, source: "NONE", status: "NONE" });
+    await expectCode(requireParentAccess(dad.id), "ACCESS_REQUIRED");
+    await expectCode(childReport(dad, child.id, at(1)), "ACCESS_REQUIRED");
+    await expectCode(listParentArticles(dad), "ACCESS_REQUIRED");
+    await expectCode(listParentRooms(dad), "ACCESS_REQUIRED");
+    await expectCode(startQuiz(dad, "PARENTING", at(1), "2026-10-05"), "ACCESS_REQUIRED");
+  });
+
+  it("student and parent codes cannot be swapped", async () => {
+    const [studentCode] = (await generateCodes(superAdmin, { count: 1 }, at(3))).codes;
+    const [parentCode] = (await generateCodes(superAdmin, { count: 1, audience: "PARENT", durationDays: 60 }, at(3))).codes;
+    await expectCode(activateCode(dad, studentCode, at(1)), "INVALID_CODE");
+    await expectCode(activateCode(child, parentCode, at(2)), "INVALID_CODE");
+    expect((await getParentAccess(dad.id)).active).toBe(false);
+    expect((await getAccessState(child.id)).status).toBe("NONE");
+    // Both codes are still unused and work for the right kind of account.
+    await activateCode(child, studentCode, at(2));
+    const period = await activateCode(dad, parentCode, at(1));
+    expect(period.durationDays).toBe(60);
+    const a = await getParentAccess(dad.id);
+    expect(a).toMatchObject({ active: true, source: "CODE" });
+    expect(new Date(a.until!).getTime()).toBeGreaterThan(Date.now() + 59 * DAY);
+    expect(await listParentArticles(dad)).toBeInstanceOf(Array);
+    // A parent's activated code never identifies a student for linking.
+    await requestChildLink(dad, parentCode, "Father", at(1));
+    expect(await listParentRequests(dad.id)).toHaveLength(0);
+  });
+
+  it("the portal locks again when the code runs out or is suspended, and the school can reopen it", async () => {
+    const [p] = await db.select().from(S.studentAccessPeriods).where(eq(S.studentAccessPeriods.userId, dad.id));
+    await adjustAccess(superAdmin, p.id, { action: "SUSPEND", reason: "Fees query" }, at(4));
+    expect(await getParentAccess(dad.id)).toMatchObject({ active: false, status: "SUSPENDED" });
+    await expectCode(listParentRooms(dad), "ACCESS_EXPIRED");
+    await adjustAccess(superAdmin, p.id, { action: "RESTORE", reason: "Resolved" }, at(4));
+    expect((await getParentAccess(dad.id)).active).toBe(true);
+    await adjustAccess(superAdmin, p.id, { action: "END", reason: "Period over" }, at(4));
+    expect((await getParentAccess(dad.id)).active).toBe(false);
+    await expectCode(childReport(dad, child.id, at(1)), "ACCESS_EXPIRED");
+    await assignAccessToParent(superAdmin, dad.id, 30, "Renewed at the office", at(4));
+    expect(await getParentAccess(dad.id)).toMatchObject({ active: true, source: "CODE" });
+    await expectCode(assignAccessToParent(superAdmin, child.id, 30, "Not a parent", at(4)), "NOT_FOUND");
+  });
+
+  it("parents registered before codes were introduced keep the portal for their free period only", async () => {
+    await registerParent({ firstName: "Old", lastName: "Timer", email: "oldtimer@parents.test", phone: "08031110000", password: STRONG, confirmPassword: STRONG, acceptTerms: true }, at(5));
+    const old = (await session((await login({ identifier: "oldtimer@parents.test", password: STRONG }, "student", at(5))).token)).actor;
+    await db.update(S.users).set({ parentGraceUntil: new Date(Date.now() + 30 * DAY) }).where(eq(S.users.id, old.id));
+    const a = await getParentAccess(old.id);
+    expect(a).toMatchObject({ active: true, source: "GRACE", endsSoon: false });
+    expect((await listParentRooms(old)).rooms).toBeInstanceOf(Array);
+    await db.update(S.users).set({ parentGraceUntil: new Date(Date.now() - 1000) }).where(eq(S.users.id, old.id));
+    expect(await getParentAccess(old.id)).toMatchObject({ active: false, source: "NONE" });
+    await expectCode(listParentRooms(old), "ACCESS_REQUIRED");
+    await openPortal(old, at(5));
+    expect((await getParentAccess(old.id)).source).toBe("CODE");
+  });
+
+  it("the code list tells parent codes from student codes", async () => {
+    const parents = await listCodes(superAdmin, { audience: "PARENT", pageSize: 100 });
+    expect(parents.rows.length).toBeGreaterThan(0);
+    expect(parents.rows.every((r) => r.audience === "PARENT")).toBe(true);
+    const students = await listCodes(superAdmin, { audience: "STUDENT", pageSize: 100 });
+    expect(students.rows.every((r) => r.audience === "STUDENT")).toBe(true);
+  });
+});
+
+describe("Launch upgrades: bulk import, class access, transfer, appeals and reports", () => {
+  const at = (n: number) => ({ ip: `10.98.0.${n}`, userAgent: "vitest" });
+  const sheet = (rows: unknown[][]) => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[...STUDENT_IMPORT_COLUMNS], ...rows]), "Students");
+    return { name: "students.xlsx", bytes: XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer };
+  };
+  const asStudent = async (userId: string): Promise<Actor> => {
+    const [u] = await db.select().from(S.users).where(eq(S.users.id, userId));
+    return { id: u.id, schoolId: u.schoolId, userType: "STUDENT", permissions: new Set(), name: `${u.firstName} ${u.lastName}`, email: u.email };
+  };
+
+  it("registers a class from a spreadsheet, with temporary passwords that must be changed", async () => {
+    expect((await studentImportTemplate(superAdmin.schoolId)).length).toBeGreaterThan(1000);
+    const file = sheet([
+      ["Bola", "", "Importone", "Basic 5", "", "bola.import@students.test", "08030000001", "Female", "21/05/2015", "IMP/001", ""],
+      ["Chidi", "", "Importtwo", "BASIC5", "", "", "", "M", "2015-03-02", "IMP/002", ""],
+      ["Dupe", "", "Importthree", "No Such Class", "", "", "", "", "", "IMP/003", ""],
+      ["Efe", "", "Importfour", "Basic 5", "", "not-an-email", "", "", "", "IMP/004", ""],
+      ["Femi", "", "Importfive", "Basic 5", "", "", "", "", "", "IMP/001", ""],
+    ]);
+    const pre = await previewStudentImport(superAdmin, file, at(1));
+    expect(pre.ready.map((r) => r.firstName)).toEqual(["Bola", "Chidi"]);
+    expect(pre.ready[0].dateOfBirth).toBe("2015-05-21");
+    expect(pre.problems.map((x) => x.row)).toEqual([4, 5, 6]);
+    const out = await importStudentRows(superAdmin, pre.ready, at(1));
+    expect(out.failed).toEqual([]);
+    expect(out.created).toHaveLength(2);
+    // The pupil with no e-mail signs in with the Student ID and the temporary password.
+    const chidi = out.created.find((c) => c.name.startsWith("Chidi"))!;
+    expect(chidi.login).toBe("IMP/002");
+    const l = await login({ identifier: "IMP/002", password: chidi.temporaryPassword }, "student", at(2));
+    const sess = await session(l.token);
+    expect(sess.user.mustChangePassword).toBe(true);
+    expect(sess.user.userType).toBe("STUDENT");
+    // Uploading the same file again creates nobody.
+    const again = await previewStudentImport(superAdmin, file, at(1));
+    expect(again.ready).toHaveLength(0);
+    await expect(importStudentRows(superAdmin, [], at(1))).rejects.toThrow();
+  });
+
+  it("gives a whole class access in one go, and only to those without it", async () => {
+    const [cls] = await db.select().from(S.classes).where(eq(S.classes.code, "BASIC5"));
+    const first = await assignAccessToClass(superAdmin, { classId: cls.id, days: 45, reason: "Term fees paid" }, at(3));
+    expect(first.assigned).toBeGreaterThanOrEqual(2);
+    expect(first.failed).toBe(0);
+    const [bola] = await db.select().from(S.users).where(eq(S.users.email, "bola.import@students.test"));
+    const st = await getAccessState(bola.id);
+    expect(st.status).toBe("ACTIVE");
+    expect(st.durationDays).toBe(45);
+    let left = first.remaining;
+    for (let i = 0; i < 20 && left > 0; i++) left = (await assignAccessToClass(superAdmin, { classId: cls.id, days: 45, reason: "Term fees paid" }, at(3))).remaining;
+    const none = await assignAccessToClass(superAdmin, { classId: cls.id, reason: "Run again" }, at(3));
+    expect(none).toMatchObject({ assigned: 0, remaining: 0 });
+    await expect(assignAccessToClass(superAdmin, { classId: cls.id, reason: "" }, at(3))).rejects.toThrow();
+  });
+
+  it("moves a code activated on the wrong account to the right student", async () => {
+    const wrong = await register("transferwrong", "JSS1", "JSS", at(4));
+    const right = await register("transferright", "JSS1", "JSS", at(5));
+    const [code] = (await generateCodes(superAdmin, { count: 1, durationDays: 90 }, at(6))).codes;
+    await activateCode(wrong, code, at(4));
+    const [p] = await db.select().from(S.studentAccessPeriods).where(eq(S.studentAccessPeriods.userId, wrong.id));
+    await expectCode(transferAccess(superAdmin, p.id, "PPS/nobody", "Wrong account", at(6)), "NOT_FOUND");
+    await expectCode(transferAccess(superAdmin, p.id, "PPS/transferwrong", "Wrong account", at(6)), "CONFLICT");
+    const r = await transferAccess(superAdmin, p.id, "pps/transferright", "Activated on a sibling's account", at(6));
+    expect(r.expiresAt.getTime()).toBe(p.currentExpiresAt.getTime()); // no days added or lost
+    expect((await getAccessState(wrong.id)).status).toBe("NONE");
+    expect((await getAccessState(right.id)).status).toBe("ACTIVE");
+    await expectCode(requireActiveAccess(wrong.id), "ACCESS_REQUIRED");
+    // A student who already has access cannot receive a second period.
+    const [code2] = (await generateCodes(superAdmin, { count: 1 }, at(6))).codes;
+    await activateCode(wrong, code2, at(4));
+    const [p2] = await db.select().from(S.studentAccessPeriods).where(eq(S.studentAccessPeriods.userId, wrong.id));
+    await expectCode(transferAccess(superAdmin, p2.id, "PPS/transferright", "Second one", at(6)), "CONFLICT");
+  });
+
+  it("a parent can enter the access code while registering", async () => {
+    const [good] = (await generateCodes(superAdmin, { count: 1, audience: "PARENT" }, at(7))).codes;
+    const ok = await registerParent({ firstName: "Reg", lastName: "Withcode", email: "withcode@parents.test", phone: "08031110000", accessCode: good, password: STRONG, confirmPassword: STRONG, acceptTerms: true }, at(8));
+    expect(ok.accessError).toBeNull();
+    expect((await getParentAccess(ok.userId)).active).toBe(true);
+    const bad = await registerParent({ firstName: "Reg", lastName: "Badcode", email: "badcode@parents.test", phone: "08031110000", accessCode: "PPS-AAAA-BBBB-CCCC", password: STRONG, confirmPassword: STRONG, acceptTerms: true }, at(9));
+    expect(bad.accessError).toBeTruthy(); // the account exists; only the code was refused
+    expect((await getParentAccess(bad.userId)).active).toBe(false);
+  });
+
+  it("a student appeals a released result once, and staff reply without the score changing", async () => {
+    const [r] = await db.select().from(S.results).where(and(eq(S.results.isVoided, false), sql`${S.results.releasedAt} IS NOT NULL`)).limit(1);
+    expect(r).toBeTruthy();
+    await db.update(S.results).set({ releasedAt: new Date() }).where(eq(S.results.id, r.id));
+    const owner = await asStudent(r.userId);
+    const other = await register("appealother", "JSS1", "JSS", at(10));
+    await expectCode(submitAppeal(other, r.id, { reason: "This is not my result but I want to appeal it." }, at(10)), "NOT_FOUND");
+    await expect(submitAppeal(owner, r.id, { reason: "Too short" }, at(11))).rejects.toThrow();
+    const before = await openAppealCount(superAdmin.schoolId);
+    await submitAppeal(owner, r.id, { questions: "3, 7", reason: "Question 3 has two correct options and I chose one of them." }, at(11));
+    expect(await openAppealCount(superAdmin.schoolId)).toBe(before + 1);
+    await expectCode(submitAppeal(owner, r.id, { reason: "I would like to appeal the same result a second time." }, at(11)), "CONFLICT");
+    const mine = await appealOfResult(owner.id, r.id);
+    expect(mine?.status).toBe("OPEN");
+    await expectCode(decideAppeal(superAdmin, mine!.id, "UPHELD", "ok", at(12)), "VALIDATION");
+    await decideAppeal(superAdmin, mine!.id, "UPHELD", "You are right. Question 3 has been corrected and your result will be reviewed.", at(12));
+    await expectCode(decideAppeal(superAdmin, mine!.id, "REJECTED", "Changing my mind after answering.", at(12)), "CONFLICT");
+    const [after] = await db.select().from(S.results).where(eq(S.results.id, r.id));
+    expect(after.percentage).toBe(r.percentage);
+    expect((await listAppeals(superAdmin.schoolId, "UPHELD")).rows.some((x) => x.a.id === mine!.id)).toBe(true);
+    // Outside the appeal period nothing can be sent.
+    const [old] = await db.select().from(S.results).where(and(eq(S.results.isVoided, false), sql`${S.results.id} <> ${r.id}`)).limit(1);
+    if (old) {
+      await db.update(S.results).set({ releasedAt: new Date(Date.now() - 30 * 86_400_000) }).where(eq(S.results.id, old.id));
+      await expectCode(submitAppeal(await asStudent(old.userId), old.id, { reason: "This result is a month old and I only noticed now." }, at(13)), "CONFLICT");
+    }
+  });
+
+  it("every report runs against live data", async () => {
+    for (const r of REPORTS) expect(await runReport(superAdmin.schoolId, r.kind)).toBeInstanceOf(Array);
+    const signups = await runReport(superAdmin.schoolId, "registrations");
+    expect(signups).toHaveLength(26);
+    const parents = await runReport(superAdmin.schoolId, "parent-accounts");
+    expect(parents.length).toBeGreaterThan(0);
+  });
+});
+
+describe("Feature switches for results and resources, and daily reminders", () => {
+  const at = (n: number) => ({ ip: `10.99.0.${n}`, userAgent: "vitest" });
+
+  it("a code set up without Results or Learning Resources keeps those closed", async () => {
+    const limited = await register("featlimited", "JSS1", "JSS", at(1));
+    const full = await register("featfull", "JSS1", "JSS", at(2));
+    // No access at all: past results stay readable, so nothing is withheld.
+    expect(await featureWithheld(limited.id, "RESULTS")).toBe(false);
+    const [narrow] = (await generateCodes(superAdmin, { count: 1, features: ["CBT", "STUDY_CENTRE"] }, at(3))).codes;
+    const [standard] = (await generateCodes(superAdmin, { count: 1 }, at(3))).codes;
+    await activateCode(limited, narrow, at(1));
+    await activateCode(full, standard, at(2));
+    expect(await featureWithheld(limited.id, "RESULTS")).toBe(true);
+    expect(await featureWithheld(full.id, "RESULTS")).toBe(false);
+    expect(await listStudentResults(limited)).toEqual([]);
+    await expectCode(listEntriesForStudent(limited, { kind: "WORD" }), "ACCESS_REQUIRED");
+    expect(await listEntriesForStudent(full, { kind: "WORD" })).toBeInstanceOf(Array);
+  });
+
+  it("reminds a class once about an examination and an assignment, and a student about today's timetable", async () => {
+    const [mth] = await db.select().from(S.subjects).where(eq(S.subjects.code, "MTH"));
+    const [exam] = await db.select().from(S.examinations).where(eq(S.examinations.status, "PUBLISHED")).limit(1);
+    expect(exam).toBeTruthy();
+    await db.update(S.examinations).set({ startsAt: new Date(Date.now() + 6 * 3_600_000), endsAt: new Date(Date.now() + 5 * 86_400_000) }).where(eq(S.examinations.id, exam.id));
+    const [asg] = await db.select().from(S.assignments).where(and(eq(S.assignments.status, "PUBLISHED"), eq(S.assignments.subjectId, mth.id))).limit(1);
+    if (asg) await db.update(S.assignments).set({ dueAt: new Date(Date.now() + 10 * 3_600_000) }).where(eq(S.assignments.id, asg.id));
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
+    const [link] = await db.select().from(S.guardianLinks).limit(1);
+    expect(link).toBeTruthy();
+    await db.insert(S.studySchedules).values({ schoolId: superAdmin.schoolId, parentUserId: link.parentUserId, studentUserId: link.studentUserId, title: "Reminder test reading", date: today, startTime: "16:00" });
+    const first = await sendDailyReminders();
+    expect(first).toBeGreaterThanOrEqual(2);
+    const title = `Examination soon: ${exam.title}`;
+    const count = async () => (await db.select().from(S.notifications).where(eq(S.notifications.title, title))).length;
+    expect(await count()).toBe(1);
+    const mine = await db.select().from(S.notifications).where(and(eq(S.notifications.userId, link.studentUserId), eq(S.notifications.title, "Today on your study timetable")));
+    expect(mine.some((n) => n.body.includes("16:00 Reminder test reading"))).toBe(true);
+    await sendDailyReminders();
+    expect(await count()).toBe(1); // class notices are not repeated
+    await db.update(S.examinations).set({ startsAt: null, endsAt: null }).where(eq(S.examinations.id, exam.id));
   });
 });

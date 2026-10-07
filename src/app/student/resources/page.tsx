@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ExternalLink, Library, Star } from "lucide-react";
 import { requireStudentPage } from "@/server/http";
 import { getAccessState } from "@/server/services/access";
+import { FEATURE_DENIED } from "@/core/features";
 import { listResources } from "@/server/services/resources";
 import { getCatalog } from "@/server/services/curriculum";
 import { Alert, Badge, buttonClass, Card, EmptyState, inputClass, PageHeader } from "@/components/ui/primitives";
@@ -13,12 +14,13 @@ export default async function ResourcesPage({ searchParams }: PageProps<"/studen
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const subjectId = typeof sp.subject === "string" && sp.subject ? sp.subject : undefined;
-  const [access, list, cat] = await Promise.all([getAccessState(s.user.id), listResources(s.user.schoolId, { forUserId: s.user.id, search: q, subjectId }), getCatalog(s.user.schoolId)]);
-  const active = access.status === "ACTIVE";
+  const [access, list, cat] = await Promise.all([getAccessState(s.user.id), listResources(s.user.schoolId, { kind: "LINK", forUserId: s.user.id, search: q, subjectId }).then((l) => l.filter((x) => !x.r.isPremium)), getCatalog(s.user.schoolId)]);
+  // Open only while a code is running and that code includes Learning Resources.
+  const active = access.status === "ACTIVE" && access.features.includes("LEARNING_RESOURCES");
   return (
     <>
       <PageHeader eyebrow="Learn more" title="Resource Centre" description="Curated videos, websites, libraries and documents recommended by your teachers." />
-      {!active && <Alert tone="warning" className="mb-6">{access.message}</Alert>}
+      {!active && <Alert tone="warning" className="mb-6">{access.status === "ACTIVE" ? FEATURE_DENIED : access.message}</Alert>}
       <form className="mb-6 flex flex-col gap-2 sm:flex-row" role="search">
         <input name="q" defaultValue={q} placeholder="Search resources" aria-label="Search resources" className={inputClass} />
         <select name="subject" defaultValue={subjectId ?? ""} aria-label="Filter by subject" className={`${inputClass} sm:max-w-xs`}>

@@ -3,8 +3,9 @@ import { ALL_PACKS } from "@/content/packs";
 import { arrange, examPlans, packWorkbook } from "@/content/packs/build";
 import { parsePackWorkbook } from "@/server/services/content-packs";
 import { renderBlocks, renderInline } from "@/components/rich-text";
+import { brokenFigures } from "@/core/diagrams";
 
-const CLASSES = ["JSS1", "JSS2", "JSS3", "SS1", "SS2", "SS3"].map((code) => ({ code, name: code }));
+const CLASSES = ["BASIC1", "BASIC2", "BASIC3", "BASIC4", "BASIC5", "BASIC6", "JSS1", "JSS2", "JSS3", "SS1", "SS2", "SS3"].map((code) => ({ code, name: code }));
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 const dollarsBalanced = (s: string) => (s.replace(/\\\$/g, "").match(/\$/g)?.length ?? 0) % 2 === 0;
 
@@ -50,7 +51,7 @@ describe.each(ALL_PACKS.map((p) => [p.name, p] as const))("%s content pack", (_,
     const stems = new Set<string>();
     for (const t of topics) {
       expect(t.questions.length, `${t.classCode} ${t.title}`).toBeGreaterThanOrEqual(8);
-      for (const q of t.questions) {
+      for (const q of [...t.questions, ...(t.jamb ?? [])]) {
         const [d, stem, correct, a, b, c, why] = q;
         const where = `${t.classCode} ${t.title}: ${stem}`;
         expect(["E", "M", "H"]).toContain(d);
@@ -76,7 +77,14 @@ describe.each(ALL_PACKS.map((p) => [p.name, p] as const))("%s content pack", (_,
     for (const t of topics) {
       const blocks = [t.lesson.notes, t.lesson.examples];
       for (const b of blocks) expect(renderBlocks(b), `${t.classCode} ${t.title} lesson`).not.toContain("katex-error");
-      for (const q of t.questions) for (const s of q.slice(1)) expect(renderInline(s), `${t.classCode} ${t.title}: ${s}`).not.toContain("katex-error");
+      for (const q of [...t.questions, ...(t.jamb ?? [])]) for (const s of q.slice(1)) expect(renderInline(s), `${t.classCode} ${t.title}: ${s}`).not.toContain("katex-error");
+    }
+  });
+
+  it("draws every diagram it uses", () => {
+    for (const t of topics) {
+      const texts = [t.lesson.notes, t.lesson.examples, ...[...t.questions, ...(t.jamb ?? [])].flatMap((q) => q.slice(1))];
+      for (const s of texts) expect(brokenFigures(s), `${t.classCode} ${t.title}`).toEqual([]);
     }
   });
 
@@ -84,7 +92,7 @@ describe.each(ALL_PACKS.map((p) => [p.name, p] as const))("%s content pack", (_,
     const report = parsePackWorkbook(packWorkbook(pack), { subjects: [{ id: "s", code: pack.code, name: pack.name }], classes: CLASSES });
     expect(report.errors).toEqual([]);
     expect(report.counts.topics).toBe(topics.length);
-    expect(report.counts.questions).toBe(topics.reduce((n, t) => n + t.questions.length, 0));
+    expect(report.counts.questions).toBe(topics.reduce((n, t) => n + t.questions.length + (t.jamb?.length ?? 0), 0));
     expect(report.counts.exams).toBe(examPlans(pack).length);
   });
 });

@@ -36,6 +36,48 @@
       "when": 1790870000000,
       "tag": "0004_family_enquiries",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790979931305,
+      "tag": "0005_forum",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791097933812,
+      "tag": "0006_primary_parents_premium",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791141049090,
+      "tag": "0007_entitlements_linking_hub",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791143362820,
+      "tag": "0008_promotions",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791204334498,
+      "tag": "0009_parent_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791206626659,
+      "tag": "0010_result_appeals",
+      "breakpoints": true
     }
   ]
 }

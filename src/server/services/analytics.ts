@@ -96,8 +96,8 @@ export async function adminDashboard(schoolId: string) {
   const [s] = await rows<Record<string, number>>(sql`
     SELECT
       (SELECT count(*)::int FROM users WHERE school_id = ${schoolId} AND user_type = 'STUDENT' AND deleted_at IS NULL) AS students,
-      (SELECT count(DISTINCT user_id)::int FROM student_access_periods WHERE school_id = ${schoolId} AND status = 'ACTIVE' AND current_expires_at > now()) AS active_students,
-      (SELECT count(DISTINCT p.user_id)::int FROM student_access_periods p WHERE p.school_id = ${schoolId}
+      (SELECT count(DISTINCT p.user_id)::int FROM student_access_periods p JOIN students st ON st.user_id = p.user_id WHERE p.school_id = ${schoolId} AND p.status = 'ACTIVE' AND p.current_expires_at > now()) AS active_students,
+      (SELECT count(DISTINCT p.user_id)::int FROM student_access_periods p JOIN students st ON st.user_id = p.user_id WHERE p.school_id = ${schoolId}
          AND NOT EXISTS (SELECT 1 FROM student_access_periods q WHERE q.user_id = p.user_id AND q.status = 'ACTIVE' AND q.current_expires_at > now())) AS expired_students,
       (SELECT count(*)::int FROM activation_codes WHERE school_id = ${schoolId} AND status = 'ACTIVE') AS active_codes,
       (SELECT count(*)::int FROM activation_codes WHERE school_id = ${schoolId} AND status = 'UNUSED') AS unused_codes,
@@ -153,6 +153,12 @@ export type ReportKind =
   | "code-utilisation"
   | "expired-accounts"
   | "active-students"
+  | "class-performance"
+  | "topic-performance"
+  | "registrations"
+  | "no-access-yet"
+  | "parent-accounts"
+  | "result-appeals"
   | "admin-activity"
   | "security-activity";
 
@@ -167,6 +173,12 @@ export const REPORTS: { kind: ReportKind; title: string; description: string }[]
   { kind: "code-utilisation", title: "Access-code utilisation", description: "Codes by status and batch." },
   { kind: "expired-accounts", title: "Expired accounts", description: "Students whose access has lapsed." },
   { kind: "active-students", title: "Active students", description: "Students with currently valid access." },
+  { kind: "class-performance", title: "Class performance", description: "Students, results, average and pass rate for every class." },
+  { kind: "topic-performance", title: "Topic performance", description: "Accuracy per topic across all examinations: where teaching is needed most." },
+  { kind: "registrations", title: "Registrations", description: "New student and parent accounts per week (last 26 weeks)." },
+  { kind: "no-access-yet", title: "Registered but never activated", description: "Students who have an account but have never entered an access code." },
+  { kind: "parent-accounts", title: "Parent accounts", description: "Parents, children linked and portal access." },
+  { kind: "result-appeals", title: "Result appeals", description: "Every appeal with its outcome and reply." },
   { kind: "admin-activity", title: "Administrative activity", description: "Actions taken by administrators (last 90 days)." },
   { kind: "security-activity", title: "Security activity", description: "Security events by type and severity (last 90 days)." },
 ];
@@ -222,6 +234,40 @@ export async function runReport(schoolId: string, kind: ReportKind): Promise<Rec
       return rows(sql`SELECT u.first_name || ' ' || u.last_name AS student, u.email, st.student_number AS "Student ID", p.activated_at AS activated, p.current_expires_at AS "expires"
         FROM users u JOIN students st ON st.user_id = u.id JOIN student_access_periods p ON p.user_id = u.id AND p.status='ACTIVE' AND p.current_expires_at > now()
         WHERE u.school_id = ${schoolId} ORDER BY p.current_expires_at ASC`);
+    case "class-performance":
+      return rows(sql`SELECT c.name AS class, count(DISTINCT st.user_id)::int AS students, count(r.id)::int AS results, round(avg(r.percentage)::numeric,1)::float AS average,
+        round(100.0*count(*) FILTER (WHERE r.passed)/NULLIF(count(r.id),0),1)::float AS "pass rate %"
+        FROM classes c LEFT JOIN students st ON st.class_id = c.id LEFT JOIN users u ON u.id = st.user_id AND u.deleted_at IS NULL
+        LEFT JOIN results r ON r.user_id = u.id AND NOT r.is_voided
+        WHERE c.school_id = ${schoolId} AND c.archived_at IS NULL GROUP BY c.id ORDER BY c.sort_order, c.name`);
+    case "topic-performance":
+      return rows(sql`SELECT s.name AS subject, t.title AS topic, count(*)::int AS answers,
+        round(100.0 * count(*) FILTER (WHERE aa.is_correct) / NULLIF(count(*),0), 1)::float AS "accuracy %"
+        FROM attempt_answers aa JOIN attempt_questions aq ON aq.id = aa.attempt_question_id
+        JOIN topics t ON t.id = (aq.snapshot->>'topicId')::uuid AND t.school_id = ${schoolId} JOIN subjects s ON s.id = t.subject_id
+        WHERE aa.is_correct IS NOT NULL GROUP BY s.name, t.id, t.title HAVING count(*) >= 5 ORDER BY "accuracy %" ASC LIMIT 2000`);
+    case "registrations":
+      return rows(sql`SELECT to_char(w.week, 'YYYY-MM-DD') AS "week starting",
+        count(u.id) FILTER (WHERE u.user_type = 'STUDENT')::int AS students, count(u.id) FILTER (WHERE u.user_type = 'PARENT')::int AS parents
+        FROM generate_series(date_trunc('week', now()) - interval '25 weeks', date_trunc('week', now()), interval '1 week') AS w(week)
+        LEFT JOIN users u ON date_trunc('week', u.created_at) = w.week AND u.school_id = ${schoolId} AND u.deleted_at IS NULL AND u.user_type IN ('STUDENT','PARENT')
+        GROUP BY w.week ORDER BY w.week`);
+    case "no-access-yet":
+      return rows(sql`SELECT u.first_name || ' ' || u.last_name AS student, st.student_number AS "Student ID", c.name AS class, u.email, u.phone, u.created_at AS registered, u.last_login_at AS "last sign-in"
+        FROM users u JOIN students st ON st.user_id = u.id LEFT JOIN classes c ON c.id = st.class_id
+        WHERE u.school_id = ${schoolId} AND u.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM student_access_periods p WHERE p.user_id = u.id)
+        ORDER BY u.created_at DESC LIMIT 5000`);
+    case "parent-accounts":
+      return rows(sql`SELECT u.first_name || ' ' || u.last_name AS parent, u.email, u.phone, u.created_at AS registered, u.last_login_at AS "last sign-in",
+        (SELECT count(*)::int FROM guardian_links g WHERE g.parent_user_id = u.id) AS children,
+        (SELECT max(p.current_expires_at) FROM student_access_periods p WHERE p.user_id = u.id AND p.status = 'ACTIVE') AS "code access until",
+        u.parent_grace_until AS "free period until"
+        FROM users u WHERE u.school_id = ${schoolId} AND u.user_type = 'PARENT' AND u.deleted_at IS NULL ORDER BY u.created_at DESC LIMIT 5000`);
+    case "result-appeals":
+      return rows(sql`SELECT a.created_at AS sent, u.first_name || ' ' || u.last_name AS student, st.student_number AS "Student ID", e.title AS examination,
+        r.percentage::float AS "score %", a.status, a.questions, a.reason, a.response, a.decided_at AS answered
+        FROM result_appeals a JOIN results r ON r.id = a.result_id JOIN users u ON u.id = a.user_id LEFT JOIN students st ON st.user_id = u.id
+        JOIN examinations e ON e.id = r.examination_id WHERE a.school_id = ${schoolId} ORDER BY a.created_at DESC LIMIT 5000`);
     case "admin-activity":
       return rows(sql`SELECT a.created_at AS "when", u.first_name || ' ' || u.last_name AS administrator, a.action, a.summary, a.ip
         FROM audit_logs a JOIN users u ON u.id = a.actor_id

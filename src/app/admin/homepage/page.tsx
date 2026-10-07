@@ -22,6 +22,9 @@ const LABELS: Record<ContentKey, { label: string; path: string }> = {
   "neco-preparation": { label: "NECO Preparation", path: "/neco-preparation" },
   "study-centre": { label: "Study Centre", path: "/study-centre" },
   "how-it-works": { label: "How It Works", path: "/how-it-works" },
+  "primary-school": { label: "Primary School", path: "/primary-school" },
+  "for-parents": { label: "For Parents", path: "/for-parents" },
+  "get-access": { label: "Get Access", path: "/get-access" },
   faq: { label: "FAQ", path: "/faq" },
   contact: { label: "Contact", path: "/contact" },
   privacy: { label: "Privacy Policy", path: "/privacy" },
@@ -31,7 +34,7 @@ const LABELS: Record<ContentKey, { label: string; path: string }> = {
 };
 
 export default async function HomepageContentPage({ searchParams }: PageProps<"/admin/homepage">) {
-  const s = await requireStaffPage("super.content");
+  const s = await requireStaffPage("content.manage");
   const { block = "home" } = (await searchParams) as { block?: string };
   const key = (block in CONTENT_DEFAULTS ? block : "home") as ContentKey;
   const [value, history] = await Promise.all([getContent(s.user.schoolId, key), contentHistory(s.user.schoolId, key)]);

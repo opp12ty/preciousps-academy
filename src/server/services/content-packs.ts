@@ -240,7 +240,7 @@ export function parsePackWorkbook(
     const cls = classCode(cell(r, "Class"));
     if (!cls) return err(PACK_SHEETS.exams, row, `Class "${cell(r, "Class")}" does not exist.`);
     const examType = cell(r, "Exam Type").toUpperCase().replace(/[\s-]+/g, "_") || "SCHOOL_EXAM";
-    if (!["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "CONTINUOUS_ASSESSMENT", "JAMB", "WAEC", "NECO", "BECE", "CUSTOM"].includes(examType))
+    if (!["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "CONTINUOUS_ASSESSMENT", "JAMB", "WAEC", "NECO", "BECE", "CUSTOM", "IELTS", "TOEFL", "SAT", "CHECKPOINT"].includes(examType))
       return err(PACK_SHEETS.exams, row, `Exam Type "${cell(r, "Exam Type")}" is not recognised.`);
     const covered = splitList(cell(r, "Classes Covered").replace(/,/g, ";")).map((c) => classCode(c));
     if (covered.some((c) => !c)) return err(PACK_SHEETS.exams, row, "Every class in Classes Covered must exist.");
@@ -331,6 +331,12 @@ export async function previewPack(actor: Actor, file: { name: string; bytes: Buf
   } catch {
     throw new AppError("IMPORT_ERROR", "We could not read this workbook. Save it as .xlsx and try again.");
   }
+  return previewPackWorkbook(actor, v.name, wb, v.bytes.length, ctx);
+}
+
+/** Checks a pack workbook already in memory and stores it as a preview (used by the central upload, one subject at a time). */
+export async function previewPackWorkbook(actor: Actor, name: string, wb: XLSX.WorkBook, size: number, ctx: ReqCtx) {
+  requirePackPerms(actor);
   const db = getDb();
   const [subs, cls] = await Promise.all([
     db.select({ id: subjects.id, code: subjects.code, name: subjects.name }).from(subjects).where(eq(subjects.schoolId, actor.schoolId)),
@@ -340,9 +346,9 @@ export async function previewPack(actor: Actor, file: { name: string; bytes: Buf
   const total = report.counts.topics + report.counts.lessons + report.counts.questions + report.counts.exams + report.counts.assignments;
   const [row] = await db
     .insert(questionImports)
-    .values({ schoolId: actor.schoolId, fileName: v.name, fileType: PACK_FILE_TYPE, fileSize: v.bytes.length, status: "PREVIEW", totalItems: total, validItems: report.errors.length ? 0 : total, report, createdBy: actor.id })
+    .values({ schoolId: actor.schoolId, fileName: name.slice(0, 200), fileType: PACK_FILE_TYPE, fileSize: size, status: "PREVIEW", totalItems: total, validItems: report.errors.length ? 0 : total, report, createdBy: actor.id })
     .returning({ id: questionImports.id });
-  await audit({ actor, action: "content_pack.previewed", entityType: "question_import", entityId: row.id, summary: `${v.name}: ${report.subject?.code ?? "?"} · ${total} item(s), ${report.errors.length} error(s)` }, ctx);
+  await audit({ actor, action: "content_pack.previewed", entityType: "question_import", entityId: row.id, summary: `${name}: ${report.subject?.code ?? "?"} · ${total} item(s), ${report.errors.length} error(s)` }, ctx);
   return { importId: row.id, report };
 }
 

@@ -7,6 +7,8 @@ import { getBrand } from "@/server/brand";
 import { getStudentResult } from "@/server/services/exams";
 import { toPublicError } from "@/server/errors";
 import { ResultReview } from "@/components/result-review";
+import { appealOfResult, appealWindow, APPEAL_DAYS } from "@/server/services/appeals";
+import { AppealForm } from "@/components/student/appeal-form";
 import { PrintButton } from "@/components/print-button";
 import { Alert, Badge, buttonClass, Card, PageHeader } from "@/components/ui/primitives";
 
@@ -38,6 +40,7 @@ export default async function ResultPage({ params, searchParams }: PageProps<"/s
     );
   }
   const res = r.result;
+  const [appeal, win] = await Promise.all([appealOfResult(s.user.id, res.id), appealWindow(res)]);
   const minutes = Math.floor(res.timeUsedSec / 60);
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -112,6 +115,26 @@ export default async function ResultPage({ params, searchParams }: PageProps<"/s
         <p className="flex items-center gap-2 border-t border-line px-6 py-3 text-xs text-muted">
           <Clock className="size-3.5" aria-hidden /> Verification code <span className="font-mono font-bold text-navy-800">{res.verificationCode}</span> · verify at /verify/{res.verificationCode}
         </p>
+      </Card>
+      <Card className="no-print p-5">
+        <h2 className="text-base font-extrabold text-navy-800">Appeal this result</h2>
+        {appeal ? (
+          <div className="mt-2 space-y-2 text-sm">
+            <p><Badge tone={appeal.status === "OPEN" ? "amber" : appeal.status === "UPHELD" ? "green" : "red"}>{appeal.status === "OPEN" ? "Waiting for the examination office" : appeal.status === "UPHELD" ? "Appeal accepted" : "Appeal not accepted"}</Badge> <span className="text-xs text-muted">sent {fmt(appeal.createdAt)}</span></p>
+            <p className="text-muted"><span className="font-semibold text-navy-800">You wrote:</span> {appeal.questions ? `(Questions ${appeal.questions}) ` : ""}{appeal.reason}</p>
+            {appeal.response && <p className="rounded-xl bg-surface px-3 py-2"><span className="font-semibold text-navy-800">Reply from the examination office:</span> {appeal.response}</p>}
+          </div>
+        ) : win.open ? (
+          <>
+            <p className="mt-1 text-sm text-muted">If you believe a question was marked wrongly, tell the examination office. You can appeal once, until {fmt(win.closesAt)} ({APPEAL_DAYS} days after the result was released). An appeal does not change your score by itself.</p>
+            <details className="mt-3">
+              <summary className="cursor-pointer text-sm font-semibold text-royal-600">Write an appeal</summary>
+              <div className="mt-3"><AppealForm resultId={res.id} /></div>
+            </details>
+          </>
+        ) : (
+          <p className="mt-1 text-sm text-muted">The {APPEAL_DAYS}-day period for appealing this result has ended. If you still have a concern, speak to the examination office.</p>
+        )}
       </Card>
       <section aria-labelledby="review-h">
         <h2 id="review-h" className="mb-3 text-lg font-extrabold text-navy-800">

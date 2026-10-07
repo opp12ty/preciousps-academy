@@ -29,7 +29,7 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
           <X className="size-5" />
         </button>
       </div>
-      <div className="max-h-[75dvh] overflow-y-auto px-5 py-4">{children}</div>
+      <div className="scroll-75 px-5 py-4">{children}</div>
     </dialog>
   );
 }

@@ -19,7 +19,7 @@ export function AiForm({ subjects, classes, topics, max }: { subjects: Opt[]; cl
       <ActionForm action={aiGenerateAction} onSuccess={(r) => r.ok && setResult(r.data as typeof result)} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <SelectField label="Subject" name="subjectId" required placeholder="Select" options={subjects} value={subjectId} onChange={(e) => setSubjectId(e.target.value)} />
         <SelectField label="Class" name="classId" placeholder="Any class in the section" options={classes} />
-        <SelectField label="Section" name="level" options={SECTION_CHOICES.filter((o) => o.value !== "ALL")} defaultValue="SENIOR_SECONDARY" hint="Sets the difficulty and wording (JSS or SS). A chosen class overrides it." />
+        <SelectField label="Section" name="level" options={SECTION_CHOICES.filter((o) => o.value !== "ALL")} defaultValue="SENIOR_SECONDARY" hint="Sets the difficulty and wording (Primary, JSS or SS). A chosen class overrides it." />
         <SelectField label="Topic" name="topicId" placeholder="Type a topic instead →" options={tps.map((t) => ({ value: t.id, label: t.title }))} key={subjectId} />
         <TextField label="Or topic (free text)" name="topicText" placeholder="e.g. Quadratic equations" />
         <SelectField label="Difficulty" name="difficulty" defaultValue="MEDIUM" options={["EASY", "MEDIUM", "HARD"].map((v) => ({ value: v, label: v.toLowerCase() }))} />

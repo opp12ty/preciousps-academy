@@ -4,6 +4,8 @@ import { BookOpen, ClipboardList, Download, FileQuestion, ListTree, MonitorCheck
 import { requireStaffPage } from "@/server/http";
 import { listPacks, type PackReport } from "@/server/services/content-packs";
 import { PackUpload } from "@/components/admin/content-pack";
+import { DIAGRAM_HELP } from "@/core/diagrams";
+import { RichText } from "@/components/rich-text";
 import { buttonClass, Card, CardHeader, EmptyState, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Content Packs" };
@@ -66,6 +68,19 @@ export default async function ContentPacksPage() {
         ) : (
           <EmptyState icon={<ListTree className="size-6" />} title="No content packs yet" description="Upload a subject pack to build its curriculum in one step." />
         )}
+      </Card>
+      <Card>
+        <CardHeader title="Pictures and diagrams" description="Type any of these on a line of its own in lesson Notes, Worked Examples or a Question (in a pack workbook or in the editors) and it is drawn for the student. Add a caption after two bars: || caption." />
+        <ul className="grid gap-4 p-5 md:grid-cols-2">
+          {DIAGRAM_HELP.filter((d) => d.example.startsWith("[[diagram")).map((d) => (
+            <li key={d.example} className="rounded-xl border border-line p-3">
+              <code className="text-xs font-semibold text-navy-800">{d.example}</code>
+              <p className="text-xs text-muted">{d.shows}</p>
+              <RichText text={d.example} />
+            </li>
+          ))}
+        </ul>
+        <p className="px-5 pb-5 text-xs text-muted">Uploaded pictures: use the Add picture button in the lesson editor; it inserts a line such as [[image: … || caption]].</p>
       </Card>
     </div>
   );

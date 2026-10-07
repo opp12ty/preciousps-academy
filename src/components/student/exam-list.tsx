@@ -4,7 +4,7 @@ import type { listStudentExams } from "@/server/services/exams";
 import { Badge, buttonClass, Card, EmptyState } from "../ui/primitives";
 
 type Exam = Awaited<ReturnType<typeof listStudentExams>>[number];
-const TYPE_LABEL: Record<string, string> = { PRACTICE: "Practice", MOCK: "Mock", SCHOOL_EXAM: "School exam", CLASS_TEST: "Class test", CONTINUOUS_ASSESSMENT: "C.A.", JAMB: "JAMB", WAEC: "WAEC", NECO: "NECO", BECE: "BECE", CUSTOM: "Custom" };
+const TYPE_LABEL: Record<string, string> = { PRACTICE: "Practice", MOCK: "Mock", SCHOOL_EXAM: "School exam", CLASS_TEST: "Class test", CONTINUOUS_ASSESSMENT: "C.A.", JAMB: "JAMB", WAEC: "WAEC", NECO: "NECO", BECE: "BECE", CUSTOM: "Custom", IELTS: "IELTS-style", TOEFL: "TOEFL-style", SAT: "SAT-style", CHECKPOINT: "Checkpoint-style" };
 const fmt = (d: Date | null) => (d ? new Intl.DateTimeFormat("en-NG", { timeZone: "Africa/Lagos", dateStyle: "medium", timeStyle: "short" }).format(d) : "");
 
 export function ExamGrid({ exams, hasAccess, empty }: { exams: Exam[]; hasAccess: boolean; empty: string }) {

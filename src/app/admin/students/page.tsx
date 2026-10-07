@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Users } from "lucide-react";
+import { FileUp, Users } from "lucide-react";
+import { can } from "@/core/permissions";
 import { requireStaffPage } from "@/server/http";
 import { listStudents, type StudentFilter } from "@/server/services/people";
 import { getCatalog } from "@/server/services/curriculum";
 import { FilterBar, qs, spRecord } from "@/components/admin/filters";
-import { Card, EmptyState, PageHeader, Pagination, StatusBadge, Table, Td, Th } from "@/components/ui/primitives";
+import { buttonClass, Card, EmptyState, PageHeader, Pagination, StatusBadge, Table, Td, Th } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Students" };
 const fmt = (d: Date | null) => (d ? new Intl.DateTimeFormat("en-NG", { timeZone: "Africa/Lagos", dateStyle: "medium" }).format(new Date(d)) : "—");
@@ -19,7 +20,7 @@ export default async function StudentsPage({ searchParams }: PageProps<"/admin/s
   ]);
   return (
     <>
-      <PageHeader eyebrow="People" title="Students" description={`${list.total.toLocaleString()} registered students. Passwords are never visible — use the security controls on a student's profile.`} />
+      <PageHeader eyebrow="People" title="Students" description={`${list.total.toLocaleString()} registered students. Passwords are never visible — use the security controls on a student's profile.`} actions={can(s.actor, "students.manage") && <Link href="/admin/students/import" className={buttonClass("primary", "sm")}><FileUp className="size-4" /> Import from Excel</Link>} />
       <FilterBar
         action="/admin/students"
         values={sp}
@@ -72,7 +73,7 @@ export default async function StudentsPage({ searchParams }: PageProps<"/admin/s
             </tbody>
           </Table>
         ) : (
-          <EmptyState icon={<Users className="size-6" />} title="No students match" description="Adjust the filters or share the registration link with students." />
+          <EmptyState icon={<Users className="size-6" />} title="No students match" description="Adjust the filters, share the registration link with students, or import a class list from Excel." />
         )}
         <Pagination page={list.page} pageSize={list.pageSize} total={list.total} href={(p) => `/admin/students${qs(sp, { page: p })}`} />
       </Card>

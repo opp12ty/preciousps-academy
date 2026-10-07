@@ -27,18 +27,22 @@ import { ensureSystemRoles } from "../services/people";
 import { generateMathBank, toOptions } from "./math-bank";
 import { SUBJECT_BANK } from "./subject-bank";
 import { LESSONS } from "./lessons";
+import { seedStarterEntriesIfEmpty } from "../services/wordbank";
+import { seedHubIfEmpty } from "../services/hub";
 import { generateJssMathBank, JSS_LESSONS, JSS_SUBJECT_BANK } from "./jss-bank";
 
 export const SYSTEM_ACTOR_ID = "00000000-0000-0000-0000-000000000000";
 
-type DeptCode = "SCI" | "COM" | "ART" | "JSS";
-const CORE: Record<DeptCode, string[]> = { SCI: ["MTH", "ENG", "CIV"], COM: ["MTH", "ENG", "CIV"], ART: ["MTH", "ENG", "CIV"], JSS: ["MTH", "ENG", "BSC", "BTE", "SOS", "CIV"] };
+type DeptCode = "SCI" | "COM" | "ART" | "JSS" | "PRY";
+const CORE: Record<DeptCode, string[]> = { SCI: ["MTH", "ENG", "CIV"], COM: ["MTH", "ENG", "CIV"], ART: ["MTH", "ENG", "CIV"], JSS: ["MTH", "ENG", "BSC", "BTE", "SOS", "CIV"], PRY: ["MTH", "ENG", "BST", "SCS", "QRE", "VRE"] };
+const PRIMARY = "PRIMARY";
+const PRIMARY_CLASSES = ["BASIC1", "BASIC2", "BASIC3", "BASIC4", "BASIC5", "BASIC6"];
 const JUNIOR = "JUNIOR_SECONDARY";
 const SENIOR = "SENIOR_SECONDARY";
 
 const SUBJECTS: { code: string; name: string; depts: DeptCode[]; description: string }[] = [
-  { code: "MTH", name: "Mathematics", depts: ["SCI", "COM", "ART", "JSS"], description: "Number, algebra, geometry, statistics and calculus." },
-  { code: "ENG", name: "English Language", depts: ["SCI", "COM", "ART", "JSS"], description: "Grammar, vocabulary, comprehension, summary and oral English." },
+  { code: "MTH", name: "Mathematics", depts: ["SCI", "COM", "ART", "JSS", "PRY"], description: "Number, algebra, geometry, statistics and calculus." },
+  { code: "ENG", name: "English Language", depts: ["SCI", "COM", "ART", "JSS", "PRY"], description: "Grammar, vocabulary, comprehension, summary and oral English." },
   { code: "PHY", name: "Physics", depts: ["SCI"], description: "Mechanics, heat, waves, electricity and modern physics." },
   { code: "CHM", name: "Chemistry", depts: ["SCI"], description: "Atomic structure, bonding, reactions and organic chemistry." },
   { code: "BIO", name: "Biology", depts: ["SCI"], description: "Cells, physiology, ecology, genetics and evolution." },
@@ -51,8 +55,8 @@ const SUBJECTS: { code: string; name: string; depts: DeptCode[]; description: st
   { code: "COM", name: "Commerce", depts: ["COM"], description: "Trade, business units, banking, insurance and transport." },
   { code: "GOV", name: "Government", depts: ["COM", "ART"], description: "Political concepts, constitutions and Nigerian government." },
   { code: "LIT", name: "Literature in English", depts: ["ART"], description: "Prose, drama, poetry and literary appreciation." },
-  { code: "CRS", name: "Christian Religious Studies", depts: ["ART", "JSS"], description: "Biblical themes, teachings and moral lessons." },
-  { code: "IRS", name: "Islamic Religious Studies", depts: ["ART", "JSS"], description: "Qur'an, Hadith, Tawhid and Islamic history." },
+  { code: "CRS", name: "Christian Religious Studies", depts: ["ART", "JSS", "PRY"], description: "Biblical themes, teachings and moral lessons." },
+  { code: "IRS", name: "Islamic Religious Studies", depts: ["ART", "JSS", "PRY"], description: "Qur'an, Hadith, Tawhid and Islamic history." },
   { code: "CIV", name: "Civic Education", depts: ["ART", "SCI", "COM", "JSS"], description: "Values, citizenship, rights and national consciousness." },
   // Junior Secondary (Basic Education) subjects
   { code: "BSC", name: "Basic Science", depts: ["JSS"], description: "Living things, matter, energy, the human body and the environment." },
@@ -61,16 +65,29 @@ const SUBJECTS: { code: string; name: string; depts: DeptCode[]; description: st
   { code: "SEC", name: "Security Education", depts: ["JSS"], description: "Personal safety, security awareness and emergency responses." },
   { code: "BUS", name: "Business Studies", depts: ["JSS"], description: "Office practice, commerce, book-keeping and keyboarding basics." },
   { code: "HEC", name: "Home Economics", depts: ["JSS"], description: "Food and nutrition, clothing, home management and family living." },
-  { code: "PHE", name: "Physical and Health Education", depts: ["JSS"], description: "Fitness, sports, safety and personal and community health." },
-  { code: "CCA", name: "Cultural and Creative Arts", depts: ["JSS"], description: "Fine art, music, drama and Nigerian arts and crafts." },
-  { code: "FRE", name: "French", depts: ["JSS"], description: "Everyday French: greetings, vocabulary, grammar and comprehension." },
-  { code: "YOR", name: "Yoruba", depts: ["JSS"], description: "Yoruba language, literature and culture." },
-  { code: "IGB", name: "Igbo", depts: ["JSS"], description: "Igbo language, literature and culture." },
-  { code: "HAU", name: "Hausa", depts: ["JSS"], description: "Hausa language, literature and culture." },
-  { code: "HIS", name: "History", depts: ["ART", "JSS"], description: "Nigerian, African and world history." },
+  { code: "PHE", name: "Physical and Health Education", depts: ["JSS", "PRY"], description: "Fitness, sports, safety and personal and community health." },
+  { code: "CCA", name: "Cultural and Creative Arts", depts: ["JSS", "PRY"], description: "Fine art, music, drama and Nigerian arts and crafts." },
+  { code: "FRE", name: "French", depts: ["JSS", "PRY"], description: "Everyday French: greetings, vocabulary, grammar and comprehension." },
+  { code: "YOR", name: "Yoruba", depts: ["JSS", "PRY"], description: "Yoruba language, literature and culture." },
+  { code: "IGB", name: "Igbo", depts: ["JSS", "PRY"], description: "Igbo language, literature and culture." },
+  { code: "HAU", name: "Hausa", depts: ["JSS", "PRY"], description: "Hausa language, literature and culture." },
+  { code: "HIS", name: "History", depts: ["ART", "JSS", "PRY"], description: "Nigerian, African and world history." },
+  // Primary (Basic 1–Basic 6) subjects — NERDC 2025 Basic Education structure
+  { code: "QRE", name: "Quantitative Reasoning", depts: ["PRY"], description: "Number patterns, puzzles and logical thinking with numbers and shapes." },
+  { code: "VRE", name: "Verbal Reasoning", depts: ["PRY"], description: "Word patterns, letter codes, analogies and logical thinking with words." },
+  { code: "BST", name: "Basic Science and Technology", depts: ["PRY"], description: "Living and non-living things, the body, energy, simple machines and the environment (Basic Science in Basic 1–3)." },
+  { code: "SCS", name: "Social and Citizenship Studies", depts: ["PRY"], description: "Family, community, culture, values, rights and duties of a good citizen." },
+  { code: "BDL", name: "Basic Digital Literacy", depts: ["PRY"], description: "Using computers and devices safely, typing, the internet and first steps in coding (Basic 4–6)." },
+  { code: "PVS", name: "Pre-vocational Studies", depts: ["PRY"], description: "Agriculture and home economics: simple farming, food, clothing and care of the home (Basic 4–6)." },
+  { code: "ARB", name: "Arabic Language", depts: ["PRY"], description: "Arabic letters, reading, everyday words and simple sentences (optional)." },
 ];
 
-export async function seedPlatform(opts: { sampleContent?: boolean; log?: (m: string) => void } = {}) {
+/**
+ * `primarySchool`: Basic 1–6 and the Primary department are always created, but start ARCHIVED (hidden from
+ * registration and pickers) unless this is true. A Super Admin switches Primary School on later by restoring
+ * them in Admin → Classes and Departments. Precious PS Academy launches with JSS 1 – SSS 3 only.
+ */
+export async function seedPlatform(opts: { sampleContent?: boolean; primarySchool?: boolean; log?: (m: string) => void } = {}) {
   const log = opts.log ?? (() => {});
   const db = getDb();
 
@@ -88,6 +105,7 @@ export async function seedPlatform(opts: { sampleContent?: boolean; log?: (m: st
 
   // 3. Departments, classes, terms
   const deptDefs: { code: DeptCode; name: string; sortOrder: number; level: string; description?: string }[] = [
+    { code: "PRY", name: "Primary", sortOrder: -1, level: PRIMARY, description: "All Basic 1–Basic 6 pupils (Basic Education curriculum)." },
     { code: "JSS", name: "Junior Secondary", sortOrder: 0, level: JUNIOR, description: "All JSS 1–JSS 3 students (Basic Education curriculum)." },
     { code: "SCI", name: "Science", sortOrder: 1, level: SENIOR },
     { code: "COM", name: "Commercial", sortOrder: 2, level: SENIOR },
@@ -96,8 +114,14 @@ export async function seedPlatform(opts: { sampleContent?: boolean; log?: (m: st
   // Departments created in this run get their subject links; existing links stay as the admin set them.
   const newDepts = new Set<DeptCode>();
   for (const d of deptDefs) {
-    const [row] = await db.insert(departments).values({ ...d, schoolId }).onConflictDoNothing().returning({ id: departments.id });
+    const dormant = d.code === "PRY" && !opts.primarySchool;
+    const [row] = await db.insert(departments).values({ ...d, schoolId, ...(dormant ? { archivedAt: new Date() } : {}) }).onConflictDoNothing().returning({ id: departments.id });
     if (row) newDepts.add(d.code);
+  }
+  let addedPrimary = false;
+  for (const [i, c] of PRIMARY_CLASSES.entries()) {
+    const [row] = await db.insert(classes).values({ schoolId, code: c, name: `Basic ${i + 1}`, level: PRIMARY, sortOrder: i + 1, ...(opts.primarySchool ? {} : { archivedAt: new Date() }) }).onConflictDoNothing().returning({ id: classes.id });
+    if (row) addedPrimary = true;
   }
   let addedJunior = false;
   for (const [i, c] of ["JSS1", "JSS2", "JSS3"].entries()) {
@@ -106,8 +130,10 @@ export async function seedPlatform(opts: { sampleContent?: boolean; log?: (m: st
   }
   for (const [i, c] of ["SS1", "SS2", "SS3"].entries())
     await db.insert(classes).values({ schoolId, code: c, name: c.replace(/^SS(\d)$/, "SSS $1"), level: SENIOR, sortOrder: i + 4 }).onConflictDoNothing();
-  // Upgrading an SS-only school: list JSS1–JSS3 before SS1–SS3.
+  // Upgrading an SS-only school: list JSS 1–JSS 3 before SSS 1–SSS 3.
   if (addedJunior) await db.execute(sql`UPDATE classes SET sort_order = sort_order + 3 WHERE school_id = ${schoolId} AND code IN ('SS1', 'SS2', 'SS3') AND sort_order < 4`);
+  // Basic 1–Basic 6 are listed before JSSS 1–SSS 3.
+  if (addedPrimary) await db.execute(sql`UPDATE classes SET sort_order = sort_order + 6 WHERE school_id = ${schoolId} AND level <> 'PRIMARY'`);
   for (const [i, t] of ["First Term", "Second Term", "Third Term"].entries()) await db.insert(terms).values({ schoolId, name: t, sortOrder: i + 1 }).onConflictDoNothing();
 
   const depts = Object.fromEntries((await db.select().from(departments).where(eq(departments.schoolId, schoolId))).map((d) => [d.code, d.id]));
@@ -129,6 +155,10 @@ export async function seedPlatform(opts: { sampleContent?: boolean; log?: (m: st
     }
   }
   const subj = Object.fromEntries((await db.select().from(subjects).where(eq(subjects.schoolId, schoolId))).map((s) => [s.code, s.id]));
+  const starter = await seedStarterEntriesIfEmpty(schoolId);
+  if (starter.created) log(`${starter.created} dictionary, idiom and phrasal-verb entries added`);
+  const hub = await seedHubIfEmpty(schoolId);
+  if (hub.articles || hub.questions) log(`${hub.articles} hub articles and ${hub.questions} quiz questions added`);
   log("academic structure ready");
 
   if (!opts.sampleContent) return { schoolId };
@@ -305,7 +335,7 @@ export async function seedPlatform(opts: { sampleContent?: boolean; log?: (m: st
   ];
   for (const e of exams) e.level = SENIOR;
   exams.push(
-    { title: "JSS Mathematics Practice Test", subjectId: subj.MTH, level: JUNIOR, examType: "PRACTICE", questionCount: 15, durationMinutes: 20, passMark: 50, maxAttempts: 5, description: "Whole numbers, fractions, percentages, equations and more for JSS1–JSS3." },
+    { title: "JSS Mathematics Practice Test", subjectId: subj.MTH, level: JUNIOR, examType: "PRACTICE", questionCount: 15, durationMinutes: 20, passMark: 50, maxAttempts: 5, description: "Whole numbers, fractions, percentages, equations and more for JSS 1–JSS 3." },
     { title: "BECE Mathematics Mock (JSS3)", subjectId: subj.MTH, classId: cls.JSS3, examType: "BECE", year: 2026, questionCount: 30, durationMinutes: 45, passMark: 50, maxAttempts: 2, description: "Full BECE-style mock drawn from the JSS Mathematics bank." },
     { title: "Basic Science Practice Test", subjectId: subj.BSC, level: JUNIOR, examType: "PRACTICE", questionCount: 8, durationMinutes: 12, passMark: 50, maxAttempts: 5 },
     { title: "Social Studies Class Test", subjectId: subj.SOS, level: JUNIOR, examType: "CLASS_TEST", questionCount: 6, durationMinutes: 10, passMark: 50, maxAttempts: 2 },

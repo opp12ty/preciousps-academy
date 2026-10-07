@@ -74,11 +74,98 @@ export const SETTING_SCHEMAS = {
     fullscreenGuidance: z.boolean(),
     singleActiveSession: z.boolean(),
     suspiciousThreshold: z.number().int().min(1).max(100),
+    /** Lockdown: the exam must stay full screen and in front; each time the student leaves counts. */
+    lockdown: z.boolean(),
+    /** The attempt is submitted on this screen-leave (2 = one warning, then submitted). */
+    maxScreenLeaves: z.number().int().min(1).max(10),
+    /** Seconds the student has to come back after leaving before the attempt is submitted. */
+    returnCountdownSeconds: z.number().int().min(1).max(10),
+    /** Rules pop-up the student must accept before the exam starts (one rule per line). */
+    lockdownRulesPopup: z.boolean(),
+    lockdownRules: z.string().max(3000),
+    /** Student IDs generated at registration: PREFIX/YEAR/0001. */
+    studentIdAuto: z.boolean(),
+    studentIdPrefix: z.string().trim().min(1).max(12).regex(/^[A-Za-z0-9]+$/, "Student ID prefix: letters and numbers only"),
+    studentIdIncludeYear: z.boolean(),
+    studentIdDigits: z.number().int().min(3).max(8),
+    calculatorEnabled: z.boolean(),
+    /** Subject codes whose examinations show the on-screen calculator. */
+    calculatorSubjectCodes: z.string().max(600),
   }),
+  forum: z
+    .object({
+      enabled: z.boolean(),
+      /** Students see only the rooms made for their own class. */
+      classBased: z.boolean(),
+      openHour: z.number().int().min(0).max(23),
+      closeHour: z.number().int().min(1).max(24),
+      dailyMinutes: z.number().int().min(5).max(1440),
+      maxMessageLength: z.number().int().min(50).max(2000),
+      slowModeSeconds: z.number().int().min(0).max(300),
+      blockLinks: z.boolean(),
+      blockedWords: z.string().max(8000),
+      /** Blocked messages in one day that trigger an automatic suspension (0 = never). */
+      autoSuspendAfter: z.number().int().min(0).max(100),
+      autoSuspendDays: z.number().int().min(1).max(365),
+      rules: z.string().max(2000),
+    })
+    .refine((f) => f.closeHour > f.openHour, { message: "Closing hour must be after opening hour" }),
   grading: z.object({
     scale: z
       .array(z.object({ grade: z.string().min(1).max(4), min: z.number().min(0).max(100), remark: z.string().max(40).optional() }))
       .refine((s) => validateGradingScale(s).length === 0, { message: "Invalid grading scale" }),
+  }),
+  learningHub: z.object({
+    dictionaryEnabled: z.boolean(),
+    idiomsEnabled: z.boolean(),
+    clichesEnabled: z.boolean(),
+    phrasalVerbsEnabled: z.boolean(),
+    gamesEnabled: z.boolean(),
+    wordScramble: z.boolean(),
+    memoryMatch: z.boolean(),
+    meaningMatch: z.boolean(),
+    mathsSprint: z.boolean(),
+    numberPatterns: z.boolean(),
+    roundQuestions: z.number().int().min(5).max(30),
+    secondsPerRound: z.number().int().min(30).max(900),
+  }),
+  premium: z.object({
+    enabled: z.boolean(),
+    title: z.string().trim().min(2).max(80),
+    intro: z.string().max(1000),
+    lockedMessage: z.string().max(600),
+    disclaimer: z.string().max(600),
+  }),
+  parents: z.object({
+    registrationOpen: z.boolean(),
+    showResults: z.boolean(),
+    showStudyProgress: z.boolean(),
+    welcome: z.string().max(600),
+    /** Who must agree before a parent is linked to a student: CHILD, CHILD_AND_SCHOOL or SCHOOL. */
+    linkPolicy: z.enum(["CHILD", "CHILD_AND_SCHOOL", "SCHOOL"]),
+    /** Students may remove a parent connection themselves. */
+    childCanRemove: z.boolean(),
+    communityEnabled: z.boolean(),
+    communityRules: z.string().max(2000),
+  }),
+  promotion: z
+    .object({
+      enabled: z.boolean(),
+      /** REQUEST: the student asks and staff approve. AUTO: the student promotes themself. ADMIN: staff only. */
+      mode: z.enum(["REQUEST", "AUTO", "ADMIN"]),
+      /** Month-day the yearly promotion window opens and closes, in school time (MM-DD). */
+      windowStart: z.string().regex(/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, "Use MM-DD, for example 08-01"),
+      windowEnd: z.string().regex(/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, "Use MM-DD, for example 10-31"),
+    })
+    .refine((p) => p.windowEnd > p.windowStart, { message: "The window must close after it opens, within the same year" }),
+  knowledgeHub: z.object({
+    enabled: z.boolean(),
+    /** Default length of one student session and the wait before the next (a code may override both). */
+    sessionMinutes: z.number().int().min(5).max(600),
+    cooldownMinutes: z.number().int().min(0).max(1440),
+    quizQuestions: z.number().int().min(5).max(50),
+    dailyQuestions: z.number().int().min(3).max(20),
+    showCorrectAnswer: z.boolean(),
   }),
   learning: z.object({
     masteryThreshold: z.number().min(1).max(100),
@@ -193,8 +280,48 @@ export const SETTING_DEFAULTS: { [K in SettingKey]: SettingValue<K> } = {
     fullscreenGuidance: true,
     singleActiveSession: true,
     suspiciousThreshold: 5,
+    lockdown: true,
+    maxScreenLeaves: 2,
+    returnCountdownSeconds: 10,
+    lockdownRulesPopup: true,
+    lockdownRules:
+      "Stay on this examination screen until you submit.\nDo not open another tab, app, window or website, and do not leave full screen.\nDo not use a phone, notes, books or any other person's help.\nThe first time you leave the screen you will be warned; after that your examination is submitted automatically.\nThe timer keeps running even if you leave, so stay focused on your paper.",
+    studentIdAuto: true,
+    studentIdPrefix: "PPS",
+    studentIdIncludeYear: true,
+    studentIdDigits: 4,
+    calculatorEnabled: true,
+    calculatorSubjectCodes: "MTH, FMT, PHY, CHM, ACC, ECO, GEO, BSC, BTE, AGR, TDR, SPV",
+  },
+  forum: {
+    enabled: true,
+    classBased: true,
+    openHour: 10,
+    closeHour: 22,
+    dailyMinutes: 120,
+    maxMessageLength: 500,
+    slowModeSeconds: 5,
+    blockLinks: true,
+    blockedWords:
+      "sex, sexy, porn, porno, nude, nudes, naked, xxx, boobs, dick, penis, vagina, pussy, fuck, fucking, bitch, bastard, asshole, slut, whore, horny, hook up, hookup, sugar daddy, sugar mummy, runs girl, olosho, ashawo, betting, bet9ja, sportybet, gamble, yahoo boy, expo, runz, weed, cocaine, codeine, tramadol, kill you, beat you, idiot, stupid fool, mumu, werey",
+    autoSuspendAfter: 5,
+    autoSuspendDays: 3,
+    rules:
+      "Be respectful. Keep to school work: admissions, examinations, subjects and study tips. Never share a phone number, e-mail, home address, location or social-media contact. No adult content, insults, betting or examination malpractice. Staff can read every message.",
   },
   grading: { scale: DEFAULT_GRADING },
+  learningHub: { dictionaryEnabled: true, idiomsEnabled: true, clichesEnabled: true, phrasalVerbsEnabled: true, gamesEnabled: true, wordScramble: true, memoryMatch: true, meaningMatch: true, mathsSprint: true, numberPatterns: true, roundQuestions: 10, secondsPerRound: 120 },
+  premium: {
+    enabled: true,
+    title: "International & Advanced",
+    intro: "Prepare for international examinations with original practice in the style of IELTS, TOEFL, SAT and international checkpoint tests, plus advanced study materials.",
+    lockedMessage: "This area is for Premium students. Ask the school for a Premium access code, then enter it on your dashboard.",
+    disclaimer: "Practice questions are original and written for Precious PS Academy. IELTS, TOEFL, SAT and Cambridge Checkpoint are trademarks of their owners, who are not connected with this platform.",
+  },
+  parents: { registrationOpen: true, showResults: true, showStudyProgress: true, welcome: "Follow your child's learning, results and study timetable. To add a child, send a link request with the child's Student ID; it becomes active once it is confirmed.", linkPolicy: "CHILD", childCanRemove: false, communityEnabled: true, communityRules: "This community is for education and parenting only. Be respectful. Never share a phone number, e-mail, home address, location or social-media contact, and do not invite anyone to talk elsewhere. No flirting, dating, adult content, insults, adverts or money requests. Do not try to contact students here. To reach the school, use Contact School Administration. Moderators can read every message." },
+  // Nigerian school year: third term ends late July, the new session begins in mid-September.
+  promotion: { enabled: true, mode: "REQUEST", windowStart: "08-01", windowEnd: "10-31" },
+  knowledgeHub: { enabled: true, sessionMinutes: 30, cooldownMinutes: 60, quizQuestions: 20, dailyQuestions: 5, showCorrectAnswer: true },
   learning: { masteryThreshold: 70, weeklyGoalDays: 5, enforcePrerequisites: true, allowRetry: true },
   results: { defaultVisibility: "IMMEDIATE", showHistoricalAfterExpiry: true },
   certificates: { enabled: false, numberPrefix: "PPA", minimumPercentage: 50 },

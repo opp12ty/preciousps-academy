@@ -9,7 +9,7 @@ import { seedPlatform, seedSuperAdminFromEnv } from "../src/server/seed";
 
 async function main() {
   const bare = process.argv.includes("--bare");
-  await seedPlatform({ sampleContent: !bare, log: (m) => console.log(`• ${m}`) });
+  await seedPlatform({ sampleContent: !bare, primarySchool: process.env.ENABLE_PRIMARY_SCHOOL === "1", log: (m) => console.log(`• ${m}`) });
   await seedSuperAdminFromEnv((m) => console.log(`• ${m}`));
   console.log("✔ seed complete");
   process.exit(0);

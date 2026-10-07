@@ -3,7 +3,12 @@ import Link from "next/link";
 import { ArrowRight, ArrowUpRight, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, GraduationCap, LineChart, MonitorCheck, Plus, Quote, School, ShieldCheck, Target, UserPlus, Wifi } from "lucide-react";
 import { getBrand } from "@/server/brand";
 import { getContent } from "@/server/services/content";
+import { HomeCarousel } from "@/components/site/home-carousel";
+import { AnnouncementCarousel } from "@/components/site/announcement-carousel";
 import { buttonClass, cx } from "@/components/ui/primitives";
+
+/** Only site paths and web addresses become links; anything else is ignored. */
+const safeLink = (v: string) => (/^(\/(?!\/)|https?:\/\/)/.test(v.trim()) ? v.trim() : "");
 
 const FEATURE_ICONS = { BookOpen, MonitorCheck, Target, ClipboardCheck, LineChart, ShieldCheck } as const;
 const TILE = ["bg-royal-600 text-white", "bg-gold-500 text-navy-900", "bg-navy-800 text-white", "bg-card text-navy-800 ring-1 ring-line"];
@@ -11,9 +16,15 @@ const TILE = ["bg-royal-600 text-white", "bg-gold-500 text-navy-900", "bg-navy-8
 export default async function HomePage() {
   const brand = await getBrand();
   const [home, faq] = await Promise.all([getContent(brand.schoolId, "home"), getContent(brand.schoolId, "faq")]);
+  const slides = home.carousel.slides.filter((x) => x.title.trim()).map((x) => ({ ...x, link: safeLink(x.link) }));
+  const announcements = home.announcements.items.filter((a) => a.text.trim()).map((a) => ({ ...a, link: safeLink(a.link) }));
+  const founder = home.founder;
+  const founderPhoto = /^[0-9a-f-]{36}$/i.test(founder.photoAssetId) ? `/api/v1/assets/${founder.photoAssetId}` : null;
+  const founderLink = safeLink(founder.ctaLink);
   const marquee = [...home.prepCards.map((c) => c.title), ...home.trust, ...home.stats.map((s) => s.label)];
   return (
     <>
+      {home.announcements.enabled && announcements.length > 0 && <AnnouncementCarousel items={announcements} seconds={home.announcements.secondsPerItem} />}
       {home.announcement.enabled && home.announcement.text && (
         <div className="mx-3 mt-3 rounded-xl bg-gold-500 px-4 py-2 text-center text-sm font-bold text-navy-900 sm:mx-5">
           {home.announcement.link ? (
@@ -78,6 +89,8 @@ export default async function HomePage() {
           </aside>
         </div>
       </section>
+
+      {home.carousel.enabled && slides.length > 0 && <HomeCarousel slides={slides} seconds={home.carousel.secondsPerSlide} dark />}
 
       {/* TICKER */}
       <div className="overflow-hidden border-y border-line bg-card py-3" aria-hidden>
@@ -163,6 +176,42 @@ export default async function HomePage() {
               <p className="text-sm text-muted">{home.principal.title}</p>
             </div>
           </figure>
+        </section>
+      )}
+
+      {founder.enabled && (
+        <section className="mx-auto max-w-6xl px-4 pb-4 sm:px-6">
+          <div className={cx("grid items-center gap-8 rounded-3xl border border-line bg-card p-8 sm:p-12", founderPhoto && "lg:grid-cols-[0.7fr_1.3fr]")}>
+            {founderPhoto && <img src={founderPhoto} alt={founder.name ? `${founder.name}, ${founder.role}` : founder.role} loading="lazy" decoding="async" className="mx-auto aspect-[4/5] w-full max-w-xs rounded-2xl object-cover object-top" />}
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-gold-600">{founder.eyebrow}</p>
+              <h2 className="mt-2 text-3xl font-bold tracking-tight text-navy-800">{founder.heading}</h2>
+              <div className="mt-4 space-y-3 leading-relaxed text-muted">
+                {founder.message.split(/\n\s*\n/).filter((x) => x.trim()).map((x, i) => (
+                  <p key={i}>{x.trim()}</p>
+                ))}
+              </div>
+              <div className="mt-5 border-l-4 border-gold-500 pl-4">
+                {founder.name && <p className="text-lg font-bold text-navy-800">{founder.name}</p>}
+                <p className="text-sm font-semibold text-royal-600">{founder.role}</p>
+              </div>
+              {founder.highlights.length > 0 && (
+                <ul className="mt-5 grid gap-2 text-sm text-muted">
+                  {founder.highlights.map((h) => (
+                    <li key={h} className="flex items-start gap-2">
+                      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-royal-600" aria-hidden />
+                      {h}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {founderLink && founder.ctaLabel && (
+                <Link href={founderLink} className={buttonClass("primary", "md", "mt-6")}>
+                  {founder.ctaLabel} <ArrowRight className="size-4" aria-hidden />
+                </Link>
+              )}
+            </div>
+          </div>
         </section>
       )}
 

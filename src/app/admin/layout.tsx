@@ -36,6 +36,9 @@ import {
   Users,
   Inbox,
   UsersRound,
+  FileText,
+  MessagesSquare,
+  Scale,
 } from "lucide-react";
 import { AppShell, type NavGroup, type NavItem } from "@/components/shell/app-shell";
 import { can, type Permission, type SuperCapability } from "@/core/permissions";
@@ -44,6 +47,7 @@ import { redirect } from "next/navigation";
 import { getBrand } from "@/server/brand";
 import { unreadCount } from "@/server/services/notifications";
 import { newEnquiryCount } from "@/server/services/engagement";
+import { openAppealCount } from "@/server/services/appeals";
 import { logoutAction } from "../(auth)/actions";
 
 type Item = NavItem & { perm?: Permission | SuperCapability };
@@ -53,7 +57,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (!s) redirect("/backend");
   if (s.mfaPending) redirect("/backend/verify");
   if (s.user.userType === "STUDENT") redirect("/student");
-  const [brand, unread, enquiries] = await Promise.all([getBrand(), unreadCount(s.user.id, s.user.schoolId), newEnquiryCount(s.user.schoolId)]);
+  if (s.user.userType === "PARENT") redirect("/parent");
+  const [brand, unread, openAppeals, enquiries] = await Promise.all([getBrand(), unreadCount(s.user.id, s.user.schoolId), openAppealCount(s.user.schoolId), newEnquiryCount(s.user.schoolId)]);
   const a = s.actor;
   const groups: { title?: string; items: Item[] }[] = [
     { items: [{ href: "/admin", label: "Dashboard", icon: <LayoutDashboard />, mobile: true }] },
@@ -62,6 +67,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       items: [
         { href: "/admin/students", label: "Students", icon: <Users />, mobile: true, perm: "students.view" },
         { href: "/admin/enquiries", label: "Enquiries", icon: <Inbox />, badge: enquiries, perm: "students.view" },
+        { href: "/admin/promotions", label: "Promotion", icon: <GraduationCap />, perm: "students.manage" },
+        { href: "/admin/parents", label: "Parents & Guardians", icon: <Users />, perm: "parents.manage" },
         { href: "/admin/administrators", label: "Administrators", icon: <UserCog />, perm: "super.admins" },
         { href: "/admin/roles", label: "Roles & Permissions", icon: <ShieldCheck />, perm: "super.roles" },
       ],
@@ -73,10 +80,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         { href: "/admin/departments", label: "Departments", icon: <Building2 />, perm: "curriculum.manage" },
         { href: "/admin/classes", label: "Classes", icon: <School />, perm: "curriculum.manage" },
         { href: "/admin/terms", label: "Terms", icon: <CalendarRange />, perm: "curriculum.manage" },
+        { href: "/admin/central-upload", label: "Central Upload (Excel)", icon: <FileUp /> },
         { href: "/admin/content-packs", label: "Content Packs", icon: <PackageOpen />, perm: "curriculum.manage" },
         { href: "/admin/curriculum", label: "Curriculum · Topics", icon: <ListTree />, perm: "curriculum.manage" },
         { href: "/admin/lessons", label: "Lessons", icon: <BookOpen />, perm: "curriculum.manage" },
         { href: "/admin/resources", label: "Resources", icon: <Library />, perm: "resources.manage" },
+        { href: "/admin/materials", label: "Study Materials", icon: <FileText />, perm: "resources.manage" },
+        { href: "/admin/learning", label: "Dictionary & Games", icon: <BookOpen />, perm: "learning.manage" },
+        { href: "/admin/knowledge", label: "Knowledge & Parent Learning", icon: <BookOpen />, perm: "learning.manage" },
       ],
     },
     {
@@ -86,8 +97,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         { href: "/admin/imports", label: "Question Imports", icon: <FileUp />, perm: "questions.import" },
         { href: "/admin/ai", label: "AI Question Generator", icon: <Bot />, perm: "questions.ai" },
         { href: "/admin/examinations", label: "Examinations", icon: <MonitorCheck />, perm: "exams.view" },
+        { href: "/admin/jamb", label: "JAMB Tests", icon: <GraduationCap />, perm: "exams.view" },
+        { href: "/admin/international", label: "International (Premium)", icon: <Trophy />, perm: "premium.manage" },
         { href: "/admin/attempts", label: "Attempts", icon: <Timer />, perm: "exams.attempts" },
         { href: "/admin/results", label: "Results", icon: <Trophy />, mobile: true, perm: "results.view" },
+        { href: "/admin/appeals", label: "Result Appeals", icon: <Scale />, perm: "results.view", badge: openAppeals },
         { href: "/admin/assignments", label: "Assignments", icon: <ClipboardList />, perm: "assignments.manage" },
         { href: "/admin/classwork", label: "Classwork", icon: <NotebookPen />, perm: "assignments.manage" },
       ],
@@ -104,6 +118,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       items: [
         { href: "/admin/analytics", label: "Analytics & Reports", icon: <BarChart3 />, perm: "analytics.view" },
         { href: "/admin/notifications", label: "Notifications", icon: <Bell />, badge: unread },
+        { href: "/admin/forum", label: "Student Forum", icon: <MessagesSquare />, perm: "forum.manage" },
         { href: "/admin/certificates", label: "Certificates", icon: <BadgeCheck />, perm: "super.settings" },
       ],
     },
@@ -111,7 +126,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       title: "Platform",
       items: [
         { href: "/admin/branding", label: "Branding", icon: <Palette />, perm: "super.branding" },
-        { href: "/admin/homepage", label: "Homepage & Content", icon: <Home />, perm: "super.content" },
+        { href: "/admin/homepage", label: "Homepage & Content", icon: <Home />, perm: "content.manage" },
         { href: "/admin/school", label: "School Settings", icon: <GraduationCap />, perm: "super.settings" },
         { href: "/admin/settings", label: "System Settings", icon: <Settings />, perm: "super.settings" },
         { href: "/admin/feature-flags", label: "Feature Flags", icon: <Flag />, perm: "super.settings" },

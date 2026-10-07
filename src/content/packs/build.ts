@@ -27,13 +27,16 @@ export function arrange(q: Q): { options: string[]; correct: "A" | "B" | "C" | "
   return { options, correct: (["A", "B", "C", "D"] as const)[pos] };
 }
 
+/** "BASIC4" → "Basic 4"; JSS and SS codes are already how the classes are named. */
+export const classLabel = (c: ClassCode) => (c.startsWith("BASIC") ? `Basic ${c.slice(5)}` : c);
+
 const ordered = (pack: SubjectPack) =>
   [...pack.terms].sort((a, b) => pack.classes.indexOf(a.classCode) - pack.classes.indexOf(b.classCode) || a.term - b.term);
 
 const topicsOf = (pack: SubjectPack, classes: ClassCode[], terms: number[]) =>
   pack.terms.filter((t) => classes.includes(t.classCode) && terms.includes(t.term)).flatMap((t) => t.topics);
 
-const questionCount = (topics: PackTopic[]) => topics.reduce((n, t) => n + t.questions.length, 0);
+const questionCount = (topics: PackTopic[]) => topics.reduce((n, t) => n + t.questions.length + (t.jamb?.length ?? 0), 0);
 const minutesFor = (q: number, perQ: number) => Math.max(15, Math.round((q * perQ) / 5) * 5);
 
 export interface ExamPlan {
@@ -57,7 +60,7 @@ export function examPlans(pack: SubjectPack): ExamPlan[] {
     const n = Math.min(40, questionCount(plan.topics));
     if (!n) continue;
     out.push({
-      title: `${plan.classCode} ${pack.name} — ${TERM_NAMES[plan.term - 1]} Examination`,
+      title: `${classLabel(plan.classCode)} ${pack.name} — ${TERM_NAMES[plan.term - 1]} Examination`,
       classCode: plan.classCode,
       examType: "SCHOOL_EXAM",
       classesCovered: [plan.classCode],
@@ -73,7 +76,12 @@ export function examPlans(pack: SubjectPack): ExamPlan[] {
   for (const c of pack.classes) {
     const n = Math.min(20, questionCount(topicsOf(pack, [c], [1, 2, 3])));
     if (!n) continue;
-    out.push({ title: `${c} ${pack.name} — Practice Test`, classCode: c, examType: "PRACTICE", classesCovered: [c], termsCovered: [1, 2, 3], questions: n, minutes: minutesFor(n, 1.25), passMark: 50, maxAttempts: 10, year: "", description: `Timed practice across all ${c} topics. A fresh random set every attempt.` });
+    out.push({ title: `${classLabel(c)} ${pack.name} — Practice Test`, classCode: c, examType: "PRACTICE", classesCovered: [c], termsCovered: [1, 2, 3], questions: n, minutes: minutesFor(n, 1.25), passMark: 50, maxAttempts: 10, year: "", description: `Timed practice across all ${classLabel(c)} topics. A fresh random set every attempt.` });
+  }
+  const upperPrimary = pack.classes.filter((c) => ["BASIC4", "BASIC5", "BASIC6"].includes(c));
+  if (pack.entrance && upperPrimary.includes("BASIC6")) {
+    const n = Math.min(40, questionCount(topicsOf(pack, upperPrimary, [1, 2, 3])));
+    out.push({ title: `Common Entrance ${pack.name} Practice (Basic 6)`, classCode: "BASIC6", examType: "MOCK", classesCovered: upperPrimary, termsCovered: [1, 2, 3], questions: n, minutes: minutesFor(n, 1), passMark: 50, maxAttempts: 5, year: YEAR, description: `Common Entrance-style practice covering Basic 4–Basic 6 ${pack.name}. Original questions; a fresh set every attempt.` });
   }
   const junior = pack.classes.filter((c) => c.startsWith("JSS"));
   if (pack.bece && junior.includes("JSS3")) {
@@ -117,7 +125,7 @@ export function assignmentPlans(pack: SubjectPack): AssignmentPlan[] {
     const half = Math.ceil(plan.topics.length / 2);
     [plan.topics.slice(0, half), plan.topics.slice(half)].forEach((part, i) => {
       if (!part.length) return;
-      out.push({ title: `${plan.classCode} ${pack.name} — ${TERM_NAMES[plan.term - 1]} Homework ${i + 1}`, classCode: plan.classCode, topics: part.map((t) => t.title), questions: Math.min(10, questionCount(part)) });
+      out.push({ title: `${classLabel(plan.classCode)} ${pack.name} — ${TERM_NAMES[plan.term - 1]} Homework ${i + 1}`, classCode: plan.classCode, topics: part.map((t) => t.title), questions: Math.min(10, questionCount(part)) });
     });
   }
   return out;
@@ -162,6 +170,7 @@ export function packWorkbook(pack: SubjectPack): XLSX.WorkBook {
         ["4. Review the questions in the Question Bank, then click Approve on the pack page."],
         ["5. Click Publish lessons, exams & assignments."],
         [""],
+        ["Pictures: a line such as [[diagram: fraction 3/4]] or [[diagram: numberline 0 10 mark 4]] in Notes, Worked Examples or a Question draws a diagram. The full list is on the Content Packs page."],
         ["You may edit any sheet before uploading (for example to add your own questions or change exam settings)."],
         ["Originality: every topic description, lesson note and question in this pack was written for Precious PS Academy."],
         ["No past BECE, WAEC, NECO or JAMB questions are reproduced. Topics follow the standard Nigerian curriculum structure."],
@@ -206,9 +215,9 @@ export function packWorkbook(pack: SubjectPack): XLSX.WorkBook {
         [...PACK_COLUMNS.questions],
         ...plans.flatMap((p) =>
           p.topics.flatMap((t) =>
-            t.questions.map((q) => {
+            [...t.questions.map((q) => ["PRACTICE", q] as const), ...(t.jamb ?? []).map((q) => ["JAMB", q] as const)].map(([examType, q]) => {
               const { options, correct } = arrange(q);
-              return [pack.code, p.classCode, "", "", "PRACTICE", t.title, "", q[1], ...options, correct, q[6], "1", DIFF[q[0]], "Precious PS Academy original", "ORIGINAL"];
+              return [pack.code, p.classCode, "", "", examType, t.title, "", q[1], ...options, correct, q[6], "1", DIFF[q[0]], "Precious PS Academy original", "ORIGINAL"];
             }),
           ),
         ),

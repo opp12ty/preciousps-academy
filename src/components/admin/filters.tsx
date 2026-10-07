@@ -8,9 +8,12 @@ export type FilterDef =
   | { type: "date"; name: string; label: string };
 
 /** GET-form filter bar: shareable URLs, works without JavaScript (§106 advanced filters). */
-export function FilterBar({ filters, values, action, exportHref }: { filters: FilterDef[]; values: Record<string, string | undefined>; action: string; exportHref?: string }) {
+export function FilterBar({ filters, values, action, exportHref, hidden }: { filters: FilterDef[]; values: Record<string, string | undefined>; action: string; exportHref?: string; hidden?: Record<string, string> }) {
   return (
-    <form action={action} method="get" className="mb-4 flex flex-col gap-2 rounded-2xl border border-line bg-card p-3 shadow-card lg:flex-row lg:flex-wrap lg:items-end">
+    <form action={action} method="get" className="mb-4 flex flex-col gap-2 rounded-2xl border border-line bg-white p-3 shadow-card lg:flex-row lg:flex-wrap lg:items-end">
+      {Object.entries(hidden ?? {}).map(([k, v]) => (
+        <input key={k} type="hidden" name={k} value={v} />
+      ))}
       {filters.map((f) =>
         f.type === "search" ? (
           <label key={f.name} className="relative min-w-[14rem] flex-1">

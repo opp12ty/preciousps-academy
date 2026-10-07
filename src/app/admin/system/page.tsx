@@ -3,6 +3,7 @@ import { emailProvider } from "@/server/email-provider";
 import { sql } from "drizzle-orm";
 import { CheckCircle2, CircleAlert, XCircle } from "lucide-react";
 import { requireStaffPage } from "@/server/http";
+import { getSetting } from "@/server/settings";
 import { getDb } from "@/server/db";
 import { aiConfigured } from "@/server/services/ai";
 import { listExportHistory } from "@/server/services/exports";
@@ -33,12 +34,21 @@ export default async function SystemPage() {
     (SELECT count(*)::int FROM examination_attempts WHERE status = 'IN_PROGRESS' AND deadline_at < now() - interval '1 minute') AS overdue`);
   const c = counts.rows[0];
   const env = (k: string) => Boolean(process.env[k]);
+  const mail = await getSetting(s.user.schoolId, "notifications");
   const rows: Row[] = [
     { label: "Database", state: dbOk ? (latency > 500 ? "warn" : "ok") : "off", detail: dbOk ? `${version} · ${latency} ms` : "Unreachable" },
     { label: "Secrets (AUTH_SECRET / ENCRYPTION_KEY)", state: env("AUTH_SECRET") && env("ENCRYPTION_KEY") ? "ok" : "warn", detail: env("AUTH_SECRET") && env("ENCRYPTION_KEY") ? "Configured" : "Using development fallbacks — set in production" },
     { label: "Scheduled maintenance (CRON_SECRET)", state: env("CRON_SECRET") ? "ok" : "warn", detail: env("CRON_SECRET") ? "Configured (auto-submit, expiry sync, reminders)" : "Not configured — lazy expiry still runs on every request" },
     { label: "Overdue exam attempts", state: c.overdue ? "warn" : "ok", detail: c.overdue ? `${c.overdue} awaiting auto-submit (processed on next access or cron)` : "None" },
-    { label: "E-mail delivery", state: emailProvider() ? "ok" : "off", detail: emailProvider() ? `Provider configured (${emailProvider()})` : "Not configured — messages held in outbox" },
+    {
+      label: "E-mail delivery",
+      state: emailProvider() && mail.emailEnabled ? "ok" : "warn",
+      detail: !emailProvider()
+        ? "No e-mail provider is configured (RESEND_API_KEY or SMTP_*). Nothing is sent: 'Forgot password' tells users to contact the school, and you reset passwords from each profile with a temporary password."
+        : mail.emailEnabled
+          ? `Provider configured (${emailProvider()}) and switched on. Password-reset links and notices are sent.`
+          : "Provider present, but e-mail is switched off in System Settings → Notifications. Switch it on to send password-reset links.",
+    },
     { label: "AI provider", state: aiConfigured() ? "ok" : "off", detail: aiConfigured() ? "Anthropic API key present" : "Not configured" },
     { label: "Backups", state: "warn", detail: "Managed by your PostgreSQL provider. Verify point-in-time recovery is enabled there — this app cannot confirm it." },
   ];

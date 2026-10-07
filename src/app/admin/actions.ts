@@ -27,6 +27,17 @@ import * as engagement from "@/server/services/engagement";
 import * as ai from "@/server/services/ai";
 import * as study from "@/server/services/study";
 import * as packs from "@/server/services/content-packs";
+import * as forum from "@/server/services/forum";
+import * as wordbank from "@/server/services/wordbank";
+import * as guardians from "@/server/services/guardians";
+import { setupInternational } from "@/server/services/international";
+import * as central from "@/server/services/central";
+import * as hub from "@/server/services/hub";
+import * as community from "@/server/services/community";
+import * as promo from "@/server/services/promotions";
+import * as studentImport from "@/server/services/student-import";
+import * as appeals from "@/server/services/appeals";
+import type { Permission } from "@/core/permissions";
 import { revokeSession } from "@/server/auth/session";
 import { getDb } from "@/server/db";
 import { securityEvents, sessions } from "@/server/db/schema";
@@ -95,8 +106,21 @@ export async function overrideProgressAction(userId: string, lessonId: string, s
 
 /* -------------------------------------------------------- access codes */
 
+/** Feature ticks and Knowledge Hub limits from a code form. "Standard set" leaves the features unset. */
+const entitlements = (f: FormData) => ({
+  features: bool(f, "customFeatures") ? f.getAll("features").map(String) : null,
+  hubSessionMinutes: num(f, "hubSessionMinutes") ?? null,
+  hubCooldownMinutes: num(f, "hubCooldownMinutes") ?? null,
+  hubUnlimited: bool(f, "hubUnlimited"),
+});
+export async function codeEntitlementsAction(codeId: string, _: ActionResult | null, f: FormData) {
+  return action({ role: "staff", perm: "codes.manage" }, async (a, ctx) => {
+    await access.updateCodeEntitlements(a, codeId, entitlements(f), ctx);
+    revalidatePath("/admin/access-codes");
+  }, "Features updated.");
+}
 export async function generateCodesAction(_: ActionResult | null, f: FormData) {
-  return action({ role: "staff", perm: "codes.generate" }, (a, ctx) => access.generateCodes(a, { count: num(f, "count") ?? 1, durationDays: num(f, "durationDays"), note: str(f, "note") || undefined }, ctx));
+  return action({ role: "staff", perm: "codes.generate" }, (a, ctx) => access.generateCodes(a, { count: num(f, "count") ?? 1, durationDays: num(f, "durationDays"), note: str(f, "note") || undefined, tier: str(f, "tier") || undefined, audience: str(f, "audience") || undefined, ...entitlements(f) }, ctx));
 }
 export async function codeStatusAction(codeId: string, op: "SUSPEND" | "REVOKE" | "RESTORE", reason: string) {
   return action({ role: "staff", perm: "codes.manage" }, (a, ctx) => access.setCodeStatus(a, codeId, op, reason, ctx).then(() => undefined), "Code updated.");
@@ -109,6 +133,33 @@ export async function adjustAccessAction(periodId: string, payload: Record<strin
 }
 export async function assignAccessAction(userId: string, days: number | undefined, reason: string) {
   return action({ role: "staff", perm: "codes.generate" }, (a, ctx) => access.assignAccessToStudent(a, userId, days, reason, ctx).then(() => undefined), "Access assigned and activated.");
+}
+export async function transferAccessAction(periodId: string, to: string, reason: string) {
+  return action({ role: "staff", perm: "codes.manage" }, async (a, ctx) => {
+    const r = await access.transferAccess(a, periodId, to, reason, ctx);
+    revalidatePath("/admin", "layout");
+    return r;
+  }, "Access transferred.");
+}
+/** One step of giving a class access. The screen calls it again while students remain. */
+export async function assignClassAccessAction(input: { classId: string; departmentId?: string; days?: number; reason: string }) {
+  return action({ role: "staff", perm: "codes.generate" }, (a, ctx) => access.assignAccessToClass(a, { ...input, departmentId: input.departmentId || null }, ctx));
+}
+export async function appealDecideAction(id: string, outcome: "UPHELD" | "REJECTED", response: string) {
+  return action({ role: "staff", perm: "results.manage" }, async (a, ctx) => {
+    await appeals.decideAppeal(a, id, outcome, response, ctx);
+    revalidatePath("/admin/appeals");
+  }, "Reply sent to the student.");
+}
+/* ------------------------------------------------------ bulk student import */
+export async function studentImportPreviewAction(f: FormData) {
+  return action({ role: "staff", perm: "students.manage" }, async (a, ctx) => studentImport.previewStudentImport(a, await readFormFile(f), ctx));
+}
+export async function studentImportRowsAction(rows: unknown) {
+  return action({ role: "staff", perm: "students.manage" }, (a, ctx) => studentImport.importStudentRows(a, rows, ctx));
+}
+export async function assignParentAccessAction(userId: string, days: number | undefined, reason: string) {
+  return action({ role: "staff", perm: "codes.generate" }, (a, ctx) => access.assignAccessToParent(a, userId, days, reason, ctx).then(() => undefined), "Parent access assigned and activated.");
 }
 export async function updateUnusedDurationAction(days: number) {
   return action({ role: "staff", perm: "super.settings" }, async (a, ctx) => ({ count: await access.updateUnusedCodeDuration(a, "ALL_UNUSED", days, ctx) }), "Unused codes updated.");
@@ -300,6 +351,7 @@ function examPayload(f: FormData) {
     endsAt: str(f, "endsAt") ? new Date(`${str(f, "endsAt")}:00+01:00`) : null,
     maxAttempts: num(f, "maxAttempts") ?? 1,
     requiresAccess: bool(f, "requiresAccess"),
+    isPremium: bool(f, "isPremium"),
     resultVisibility: str(f, "resultVisibility") ?? "IMMEDIATE",
     showExplanations: bool(f, "showExplanations"),
     poolFilter: years.length || topicIds.length || difficulties.length || bool(f, "poolMatchClass") ? { years, topicIds, difficulties, matchClass: bool(f, "poolMatchClass") } : null,
@@ -313,6 +365,13 @@ export async function saveExamAction(id: string | null, _: ActionResult | null, 
 }
 export async function setExamStatusAction(id: string, status: "DRAFT" | "PUBLISHED" | "ARCHIVED") {
   return action({ role: "staff", perm: "exams.publish" }, (a, ctx) => exams.setExamStatus(a, id, status, ctx), status === "PUBLISHED" ? "Examination published." : "Examination updated.");
+}
+export async function setupJambTestsAction(subjectId: string) {
+  return action({ role: "staff", perm: "exams.publish" }, async (a, ctx) => {
+    const r = await exams.setupJambTests(a, subjectId === "ALL" ? "ALL" : [subjectId], ctx);
+    revalidatePath("/admin/jamb");
+    return r;
+  }, "JAMB tests updated.");
 }
 export async function releaseResultsAction(examId: string, release: boolean) {
   return action({ role: "staff", perm: "results.manage" }, async (a, ctx) => ({ count: await exams.releaseResults(a, examId, release, ctx) }), release ? "Results released to students." : "Results withheld.");
@@ -374,6 +433,7 @@ export async function saveResourceAction(id: string | null, _: ActionResult | nu
       platform: str(f, "platform"),
       durationMinutes: num(f, "durationMinutes") ?? null,
       isRecommended: bool(f, "isRecommended"),
+      isPremium: bool(f, "isPremium"),
       status: str(f, "status") ?? "DRAFT",
     }, ctx).then(() => undefined), "Resource saved.");
 }
@@ -390,21 +450,25 @@ export async function broadcastAction(_: ActionResult | null, f: FormData) {
 
 /* ----------------------------------------------- settings, CMS, branding */
 
+/** Settings sections that an assigned administrator may edit; everything else is Super Admin only. */
+const SETTING_PERMS: Partial<Record<SettingKey, Permission>> = { forum: "forum.manage", learningHub: "learning.manage", premium: "premium.manage", parents: "parents.manage", knowledgeHub: "learning.manage", promotion: "students.manage" };
+
 export async function saveSettingAction(key: SettingKey, value: unknown) {
-  return action({ role: "staff", perm: "super.settings" }, async (a, ctx) => {
+  // Forum settings belong to whoever moderates the forum; everything else is Super Admin only.
+  return action({ role: "staff", perm: SETTING_PERMS[key] ?? "super.settings" }, async (a, ctx) => {
     await putSetting(a.schoolId, key, value, a.id);
     await audit({ actor: a, action: "settings.updated", entityType: "setting", entityId: key, metadata: value }, ctx);
     revalidatePath("/", "layout");
   }, "Settings saved.");
 }
 export async function saveContentAction(key: ContentKey, value: unknown) {
-  return action({ role: "staff", perm: "super.content" }, async (a, ctx) => {
+  return action({ role: "staff", perm: "content.manage" }, async (a, ctx) => {
     await content.putContent(a, key, value as never, ctx);
     revalidatePath("/", "layout");
   }, "Content published.");
 }
 export async function restoreContentAction(key: ContentKey, version: number) {
-  return action({ role: "staff", perm: "super.content" }, async (a, ctx) => {
+  return action({ role: "staff", perm: "content.manage" }, async (a, ctx) => {
     await content.restoreContentVersion(a, key, version, ctx);
     revalidatePath("/", "layout");
   }, "Previous version restored.");
@@ -498,4 +562,208 @@ export async function updateEnquiryAction(id: string, status: string, note: stri
     await engagement.updateEnquiry(a, id, { status, note }, ctx);
     revalidatePath("/admin/enquiries");
   });
+}
+/* ---------------------------------------------------------------- forum */
+
+const forumDone = () => revalidatePath("/admin/forum");
+export async function forumRoomAction(id: string | null, _: ActionResult | null, f: FormData) {
+  return action({ role: "staff", perm: "forum.manage" }, async (a, ctx) => {
+    await forum.upsertRoom(a, id, { name: str(f, "name"), description: str(f, "description"), topic: str(f, "topic"), level: section(f), classId: str(f, "classId"), isLocked: bool(f, "isLocked"), sortOrder: num(f, "sortOrder") ?? 0 }, ctx);
+    forumDone();
+  }, "Room saved.");
+}
+export async function forumRoomStateAction(id: string, change: "LOCK" | "UNLOCK" | "ARCHIVE" | "RESTORE") {
+  return action({ role: "staff", perm: "forum.manage" }, async (a, ctx) => {
+    await forum.setRoomState(a, id, change, ctx);
+    forumDone();
+  }, "Room updated.");
+}
+export async function forumDefaultsAction() {
+  return action({ role: "staff", perm: "forum.manage" }, async (a, ctx) => {
+    const r = await forum.createDefaultRooms(a, ctx);
+    forumDone();
+    return r;
+  }, "Starter rooms are ready.");
+}
+export async function forumMessageAction(id: string, change: "DELETE" | "RESTORE") {
+  return action({ role: "staff", perm: "forum.manage" }, async (a, ctx) => {
+    await forum.moderateMessage(a, id, change, null, ctx);
+    forumDone();
+  }, change === "DELETE" ? "Message removed." : "Message restored.");
+}
+export async function forumPurgeAction(userId: string) {
+  return action({ role: "staff", perm: "forum.manage" }, async (a, ctx) => {
+    const r = await forum.deleteAllByStudent(a, userId, ctx);
+    forumDone();
+    return r;
+  }, "All of this student's messages were removed.");
+}
+export async function forumSuspendAction(userId: string, _: ActionResult | null, f: FormData) {
+  return action({ role: "staff", perm: "forum.manage" }, async (a, ctx) => {
+    await forum.suspendStudent(a, { userId, reason: str(f, "reason"), days: num(f, "days") ?? 0 }, ctx);
+    forumDone();
+  }, "Student suspended from the forum.");
+}
+export async function forumLiftAction(id: string) {
+  return action({ role: "staff", perm: "forum.manage" }, async (a, ctx) => {
+    await forum.liftSuspension(a, id, ctx);
+    forumDone();
+  }, "Suspension lifted.");
+}
+export async function forumStaffPostAction(roomId: string, _: ActionResult | null, f: FormData) {
+  return action({ role: "staff", perm: "forum.manage" }, async (a, ctx) => {
+    await forum.postStaffMessage(a, roomId, str(f, "body") ?? "", ctx);
+    forumDone();
+  }, "Posted as Moderator.");
+}
+
+/* ------------------------------------------------------------ learning hub */
+
+export async function wordEntryAction(id: string | null, _: ActionResult | null, f: FormData) {
+  return action({ role: "staff", perm: "learning.manage" }, async (a, ctx) => {
+    await wordbank.upsertEntry(a, id, { kind: str(f, "kind"), term: str(f, "term"), partOfSpeech: str(f, "partOfSpeech"), meaning: str(f, "meaning"), example: str(f, "example"), picture: str(f, "picture"), imageAssetId: str(f, "imageAssetId") ?? "", level: section(f) ?? "", classId: str(f, "classId") ?? "", status: str(f, "status") || "PUBLISHED" }, ctx);
+    revalidatePath("/admin/learning");
+  }, "Saved.");
+}
+export async function wordEntryDeleteAction(id: string) {
+  return action({ role: "staff", perm: "learning.manage" }, async (a, ctx) => {
+    await wordbank.deleteEntry(a, id, ctx);
+    revalidatePath("/admin/learning");
+  }, "Entry deleted.");
+}
+export async function wordStarterAction() {
+  return action({ role: "staff", perm: "learning.manage" }, async (a, ctx) => {
+    const r = await wordbank.loadStarterAction(a, ctx);
+    revalidatePath("/admin/learning");
+    return r;
+  }, "Starter collection added.");
+}
+
+/* ------------------------------------------------------- parents / guardians */
+
+export async function guardianCodeAction(studentUserId: string) {
+  return action({ role: "staff", perm: "parents.manage" }, async (a, ctx) => {
+    const r = await guardians.generateGuardianCode(a, studentUserId, ctx);
+    revalidatePath("/admin/parents");
+    return { code: r.code, student: r.student, expiresAt: r.expiresAt.toISOString() };
+  }, "Link code generated.");
+}
+export async function guardianCodeRevokeAction(id: string) {
+  return action({ role: "staff", perm: "parents.manage" }, async (a, ctx) => {
+    await guardians.revokeGuardianCode(a, id, ctx);
+    revalidatePath("/admin/parents");
+  }, "Code cancelled.");
+}
+export async function guardianUnlinkAction(parentUserId: string, studentUserId: string) {
+  return action({ role: "staff", perm: "parents.manage" }, async (a, ctx) => {
+    await guardians.unlinkChild(a, parentUserId, studentUserId, ctx);
+    revalidatePath("/admin/parents");
+  }, "Child removed from the parent's account.");
+}
+
+/* ------------------------------------------------- international (premium) */
+
+export async function internationalSetupAction() {
+  return action({ role: "staff", perm: "premium.manage" }, async (a, ctx) => {
+    const r = await setupInternational(a, ctx);
+    revalidatePath("/admin/international");
+    return r;
+  }, "International programmes are ready.");
+}
+
+/* ------------------------------------------------------------ central upload */
+
+/** Checks every sheet of a central workbook. Each part is allowed or skipped by the account's own permissions. */
+export async function centralPreviewAction(f: FormData) {
+  return action({ role: "staff" }, async (a, ctx) => central.previewCentral(a, await readFormFile(f), ctx));
+}
+/** Imports the dictionary, idiom, cliché, phrasal-verb and resource rows of a central workbook. */
+export async function centralExtrasAction(f: FormData) {
+  return action({ role: "staff" }, async (a, ctx) => {
+    const r = await central.importCentralExtras(a, await readFormFile(f), ctx);
+    revalidatePath("/admin", "layout");
+    return r;
+  });
+}
+
+/* ------------------------------------------------- parent–child relationships */
+
+export async function linkDecideAction(requestId: string, approve: boolean) {
+  return action({ role: "staff", perm: "parents.manage" }, async (a, ctx) => {
+    const r = await guardians.adminDecideLinkRequest(a, requestId, approve, undefined, ctx);
+    revalidatePath("/admin/parents");
+    return r;
+  }, approve ? "Request verified." : "Request rejected.");
+}
+
+/* ------------------------------------------------------- knowledge and learning */
+
+export async function hubArticleAction(id: string | null, _: ActionResult | null, f: FormData) {
+  return action({ role: "staff", perm: "learning.manage" }, async (a, ctx) => {
+    const row = await hub.upsertArticle(a, id, { section: str(f, "section"), category: str(f, "category"), title: str(f, "title"), summary: str(f, "summary"), body: str(f, "body"), keyPoints: str(f, "keyPoints"), activity: str(f, "activity"), sources: str(f, "sources"), level: section(f) ?? "", stream: str(f, "stream") ?? "", imageAssetId: "", status: str(f, "status") || "DRAFT" }, ctx);
+    revalidatePath("/admin/knowledge");
+    return { id: row.id };
+  }, "Article saved.");
+}
+export async function hubArticleStatusAction(id: string, status: "DRAFT" | "REVIEW" | "APPROVED" | "PUBLISHED" | "ARCHIVED") {
+  return action({ role: "staff", perm: "learning.manage" }, async (a, ctx) => {
+    await hub.setArticleStatus(a, id, status, ctx);
+    revalidatePath("/admin/knowledge");
+  }, "Status updated.");
+}
+export async function hubArticleDeleteAction(id: string) {
+  return action({ role: "staff", perm: "learning.manage" }, async (a, ctx) => {
+    await hub.deleteArticle(a, id, ctx);
+    revalidatePath("/admin/knowledge");
+  }, "Article deleted.");
+}
+export async function hubArticleRestoreAction(id: string, version: number) {
+  return action({ role: "staff", perm: "learning.manage" }, async (a, ctx) => {
+    await hub.restoreArticleVersion(a, id, version, ctx);
+    revalidatePath("/admin/knowledge");
+  }, "Earlier version restored. It is back in Review.");
+}
+export async function hubQuestionAction(id: string | null, _: ActionResult | null, f: FormData) {
+  return action({ role: "staff", perm: "learning.manage" }, async (a, ctx) => {
+    await hub.upsertHubQuestion(a, id, { audience: str(f, "audience"), category: str(f, "category"), level: section(f) ?? "", stream: str(f, "stream") ?? "", difficulty: str(f, "difficulty") || "MEDIUM", stem: str(f, "stem"), options: ["a", "b", "c", "d"].map((k) => str(f, k) ?? ""), answer: "ABCD".indexOf(str(f, "answer") ?? "A"), explanation: str(f, "explanation"), status: str(f, "status") || "PUBLISHED" }, ctx);
+    revalidatePath("/admin/knowledge");
+  }, "Question saved.");
+}
+export async function hubQuestionDeleteAction(id: string) {
+  return action({ role: "staff", perm: "learning.manage" }, async (a, ctx) => {
+    await hub.deleteHubQuestion(a, id, ctx);
+    revalidatePath("/admin/knowledge");
+  }, "Question deleted.");
+}
+
+/* ------------------------------------------------------------- communities */
+
+export async function parentRoomsAction() {
+  return action({ role: "staff", perm: "forum.manage" }, async (a, ctx) => {
+    const r = await community.createParentRooms(a, ctx);
+    revalidatePath("/admin/forum");
+    return r;
+  }, "Parent community rooms are ready.");
+}
+export async function reportResolveAction(id: string, outcome: "RESOLVED" | "DISMISSED") {
+  return action({ role: "staff", perm: "forum.manage" }, async (a, ctx) => {
+    await community.resolveReport(a, id, outcome, ctx);
+    revalidatePath("/admin/forum");
+  }, "Report closed.");
+}
+
+/* ------------------------------------------------------------------ promotion */
+
+export async function promotionDecideAction(id: string, approve: boolean) {
+  return action({ role: "staff", perm: "students.manage" }, async (a, ctx) => {
+    await promo.decidePromotion(a, id, approve, undefined, ctx);
+    revalidatePath("/admin/promotions");
+  }, approve ? "Student promoted." : "Request rejected.");
+}
+export async function promotionBulkAction(classId: string, _: ActionResult | null, f: FormData) {
+  return action({ role: "staff", perm: "students.manage" }, async (a, ctx) => {
+    const r = await promo.bulkPromote(a, classId, f.getAll("repeat").map(String), ctx);
+    revalidatePath("/admin/promotions");
+    return r;
+  }, "Class promoted.");
 }

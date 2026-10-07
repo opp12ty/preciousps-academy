@@ -2,13 +2,23 @@ import type { Metadata } from "next";
 import { Award, Gauge, Timer, TrendingDown, TrendingUp } from "lucide-react";
 import { requireStudentPage } from "@/server/http";
 import { studentPerformance } from "@/server/services/analytics";
+import { featureWithheld } from "@/server/services/access";
+import { FEATURE_DENIED } from "@/core/features";
 import { BarList, TrendChart } from "@/components/charts";
-import { Badge, Card, CardHeader, PageHeader, Stat } from "@/components/ui/primitives";
+import { Alert, Badge, Card, CardHeader, PageHeader, Stat } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Performance" };
 
 export default async function PerformancePage() {
   const s = await requireStudentPage();
+  if (await featureWithheld(s.user.id, "RESULTS")) {
+    return (
+      <div className="space-y-6">
+        <PageHeader eyebrow="Analytics" title="My performance" />
+        <Alert tone="warning">{FEATURE_DENIED}</Alert>
+      </div>
+    );
+  }
   const p = await studentPerformance(s.user.id);
   const secs = p.overall.avgResponseMs ? Math.round(p.overall.avgResponseMs / 1000) : null;
   return (

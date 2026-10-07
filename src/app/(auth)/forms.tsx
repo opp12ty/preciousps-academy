@@ -4,13 +4,13 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { buttonClass, inputClass } from "@/components/ui/primitives";
 import { ActionForm, CheckboxField, NewPasswordPair, PasswordField, SelectField, SubmitButton, TextField } from "@/components/ui/form";
-import { backendLoginAction, forgotAction, mfaAction, ownerCheckAction, registerAction, resetAction, setupAction, studentLoginAction } from "./actions";
+import { backendLoginAction, forgotAction, mfaAction, ownerCheckAction, registerAction, registerParentAction, resetAction, setupAction, studentLoginAction } from "./actions";
 
 export function LoginForm({ portal, next }: { portal: "student" | "backend"; next?: string }) {
   return (
     <ActionForm action={portal === "student" ? studentLoginAction : backendLoginAction} className="space-y-4">
       {next && <input type="hidden" name="next" value={next} />}
-      <TextField label={portal === "student" ? "Email, Student ID or username" : "Email address"} name="identifier" autoComplete="username" required autoFocus />
+      <TextField label={portal === "student" ? "Email, Student ID or username (parents: email)" : "Email address"} name="identifier" autoComplete="username" required autoFocus />
       <PasswordField label="Password" name="password" autoComplete="current-password" />
       <div className="flex justify-end">
         <Link href="/forgot-password" className="text-sm font-semibold text-royal-600 hover:underline">
@@ -70,7 +70,44 @@ function ClassAndDepartment({ classes, departments }: { classes: LevelledOption[
   );
 }
 
-export function RegisterForm({ classes, departments }: { classes: LevelledOption[]; departments: LevelledOption[] }) {
+export function ParentRegisterForm() {
+  const [names, setNames] = useState<string[]>([]);
+  return (
+    <ActionForm action={registerParentAction} className="space-y-5">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <TextField label="First name" name="firstName" autoComplete="given-name" required onBlur={(e) => setNames((n) => [e.target.value, n[1] ?? ""])} />
+        <TextField label="Last name" name="lastName" autoComplete="family-name" required onBlur={(e) => setNames((n) => [n[0] ?? "", e.target.value])} />
+        <TextField label="Email" name="email" type="email" autoComplete="email" required />
+        <TextField label="Phone number" name="phone" type="tel" autoComplete="tel" inputMode="tel" placeholder="0803 000 0000" required />
+        <SelectField label="You are the child's" name="relationship" placeholder="Choose" options={["Father", "Mother", "Guardian", "Other relative"].map((v) => ({ value: v, label: v }))} />
+        <TextField label="Parent access code (optional)" name="accessCode" placeholder="PPS-XXXX-XXXX-XXXX" autoComplete="off" autoCapitalize="characters" spellCheck={false} hint="The parent portal opens only with a parent access code from the school. Enter it now, or after you sign in." />
+        <TextField label="Child's Student ID or activated access code (optional)" name="childCode" placeholder="e.g. PPS/2026/0142" hint="Sends a link request to your child. It becomes active only after your child accepts it. An access code works only after your child has activated it." />
+      </div>
+      <NewPasswordPair context={names} />
+      <CheckboxField
+        name="acceptTerms"
+        label={
+          <>
+            I agree to the{" "}
+            <Link href="/terms" className="text-royal-600 underline" target="_blank">
+              Terms
+            </Link>{" "}
+            and{" "}
+            <Link href="/privacy" className="text-royal-600 underline" target="_blank">
+              Privacy Policy
+            </Link>
+            .
+          </>
+        }
+      />
+      <SubmitButton className="w-full" size="lg" pendingText="Creating your account…">
+        Create parent / guardian account
+      </SubmitButton>
+    </ActionForm>
+  );
+}
+
+export function RegisterForm({ classes, departments, autoStudentId }: { classes: LevelledOption[]; departments: LevelledOption[]; autoStudentId?: boolean }) {
   const [names, setNames] = useState<string[]>([]);
   return (
     <ActionForm action={registerAction} className="space-y-5">
@@ -91,7 +128,14 @@ export function RegisterForm({ classes, departments }: { classes: LevelledOption
       <fieldset className="space-y-4">
         <legend className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-gold-600">School details</legend>
         <div className="grid gap-4 sm:grid-cols-2">
-          <TextField label="Student ID" name="studentNumber" required placeholder="e.g. PPS/2026/0142" />
+          {autoStudentId ? (
+            <div className="rounded-xl border border-royal-100 bg-royal-50 px-3.5 py-3 text-sm text-navy-800">
+              <p className="font-semibold">Student ID</p>
+              <p className="text-xs text-muted">Created for you when you register (e.g. PPS/2026/0142). You can sign in with it.</p>
+            </div>
+          ) : (
+            <TextField label="Student ID" name="studentNumber" required placeholder="e.g. PPS/2026/0142" />
+          )}
           <TextField label="School" name="schoolName" defaultValue="Precious PS Academy" />
           <ClassAndDepartment classes={classes} departments={departments} />
           <TextField label="State" name="state" autoComplete="address-level1" />
@@ -100,7 +144,7 @@ export function RegisterForm({ classes, departments }: { classes: LevelledOption
       </fieldset>
       <fieldset className="space-y-4">
         <legend className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-gold-600">Account security</legend>
-        <TextField label="Username (optional)" name="username" autoComplete="username" hint="You can sign in with your email, Student ID or username." />
+        <TextField label="Username" name="username" autoComplete="username" hint="Optional. Letters, numbers, dot, dash or underscore. You can sign in with your Student ID, username or e-mail." />
         <NewPasswordPair context={names} />
       </fieldset>
       <CheckboxField

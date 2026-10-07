@@ -5,10 +5,12 @@ import {
   BookOpen,
   ClipboardCheck,
   ClipboardList,
+  FileText,
   GraduationCap,
   LayoutDashboard,
   Library,
   LineChart,
+  MessagesSquare,
   MonitorCheck,
   NotebookPen,
   ShieldCheck,
@@ -22,12 +24,16 @@ import { requireStudentPage } from "@/server/http";
 import { getBrand } from "@/server/brand";
 import { getAccessState } from "@/server/services/access";
 import { unreadCount } from "@/server/services/notifications";
+import { listStudentConnections } from "@/server/services/guardians";
+import { promotionState } from "@/server/services/promotions";
 import { logoutAction } from "../(auth)/actions";
 import { t } from "@/i18n";
 
 export default async function StudentLayout({ children }: { children: React.ReactNode }) {
   const s = await requireStudentPage({ allowPasswordChange: true });
-  const [brand, access, unread] = await Promise.all([getBrand(), getAccessState(s.user.id), unreadCount(s.user.id, s.user.schoolId)]);
+  const [brand, access, unread, links] = await Promise.all([getBrand(), getAccessState(s.user.id), unreadCount(s.user.id, s.user.schoolId), listStudentConnections(s.user.id)]);
+  const linkRequests = links.pending.filter((p) => p.childAccepted === null).length;
+  const promo = await promotionState(s.actor);
   const groups: NavGroup[] = [
     { items: [{ href: "/student", label: t("student.dashboard"), icon: <LayoutDashboard />, mobile: true }] },
     {
@@ -38,6 +44,7 @@ export default async function StudentLayout({ children }: { children: React.Reac
         { href: "/student/classwork", label: t("student.classwork"), icon: <NotebookPen /> },
         { href: "/student/assignments", label: t("student.assignments"), icon: <ClipboardList /> },
         { href: "/student/resources", label: t("student.resources"), icon: <Library /> },
+        { href: "/student/materials", label: t("student.materials"), icon: <FileText /> },
       ],
     },
     {
@@ -45,17 +52,30 @@ export default async function StudentLayout({ children }: { children: React.Reac
       items: [
         { href: "/student/practice", label: t("student.practice"), icon: <Target /> },
         { href: "/student/mock", label: t("student.mock"), icon: <MonitorCheck /> },
+        { href: "/student/jamb", label: t("student.jamb"), icon: <GraduationCap /> },
+        { href: "/student/international", label: "International & Advanced", icon: <Trophy /> },
         { href: "/student/exams", label: t("student.exams"), icon: <ClipboardCheck />, mobile: true },
         { href: "/student/results", label: t("student.results"), icon: <Trophy />, mobile: true },
         { href: "/student/performance", label: t("student.performance"), icon: <LineChart /> },
       ],
     },
     {
+      title: "Knowledge & games",
+      items: [
+        { href: "/student/knowledge", label: "Knowledge Hub", icon: <BookOpen /> },
+        { href: "/student/quiz", label: "Quiz Arena", icon: <Trophy /> },
+        { href: "/student/timetable", label: "My Timetable", icon: <ClipboardList /> },
+      ],
+    },
+    { title: "Community", items: [{ href: "/student/forum", label: t("student.forum"), icon: <MessagesSquare /> }] },
+    {
       title: "Account",
       items: [
         { href: "/student/notifications", label: t("student.notifications"), icon: <Bell />, badge: unread },
         { href: "/student/family", label: "Parent report", icon: <Users /> },
         { href: "/student/profile", label: t("student.profile"), icon: <UserRound /> },
+        { href: "/student/connections", label: "Parent Connections", icon: <UserRound />, badge: linkRequests },
+        { href: "/student/promotion", label: "Promotion", icon: <GraduationCap />, badge: promo.canRequest ? 1 : 0 },
         { href: "/student/security", label: t("student.security"), icon: <ShieldCheck /> },
       ],
     },
