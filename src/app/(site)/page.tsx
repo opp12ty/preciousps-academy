@@ -64,6 +64,15 @@ export default async function HomePage() {
                 {home.ctaCbt}
               </Link>
             </div>
+            <p className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-white/80">
+              <span className="font-semibold">{home.parentPrompt}</span>
+              <Link href="/register/parent" className="rounded-lg bg-white/15 px-3 py-1.5 font-bold text-white ring-1 ring-white/25 hover:bg-white/25">
+                {home.ctaParentRegister}
+              </Link>
+              <Link href="/login" className="rounded-lg px-3 py-1.5 font-bold text-gold-400 ring-1 ring-gold-400/60 hover:bg-gold-400/10">
+                {home.ctaParentLogin}
+              </Link>
+            </p>
           </div>
           <aside className="animate-rise rounded-2xl border border-white/15 bg-white/10 p-5 backdrop-blur-md [animation-delay:150ms]" aria-label="Quick start">
             <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-gold-400">{home.journeyHeading}</p>
@@ -149,7 +158,7 @@ export default async function HomePage() {
             <p className="mt-3 text-white/70">{home.levelsIntro}</p>
           </div>
           <div className="mt-10 grid gap-4 md:grid-cols-2">
-            {home.levels.map((l, i) => (
+            {[...(brand.flags.primarySchool ? [{ title: "Primary School", range: "Basic 1 – Basic 6", body: "Lessons with pictures, short notes, Quantitative and Verbal Reasoning, Common Entrance practice and a safe, simple learning space for young pupils.", href: "/primary-school" }] : []), ...home.levels].map((l, i) => (
               <Link key={l.title} href={l.href} className="group relative overflow-hidden rounded-2xl border border-white/15 bg-white/[0.06] p-7 transition hover:bg-white/10">
                 <div className="flex items-start justify-between gap-4">
                   <span className="grid size-12 place-items-center rounded-xl bg-gold-500 text-navy-900">{i === 0 ? <School className="size-6" aria-hidden /> : <GraduationCap className="size-6" aria-hidden />}</span>

@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
-import { ArrowUpRight, Mail, MapPin, MessageCircle, Phone } from "lucide-react";
+import { ArrowUpRight, ChevronDown, Mail, MapPin, MessageCircle, Phone } from "lucide-react";
 import { getBrand } from "@/server/brand";
 import { getContent } from "@/server/services/content";
 import { buttonClass } from "../ui/primitives";
@@ -9,7 +9,8 @@ import { MobileNav } from "./mobile-nav";
 export async function SiteHeader() {
   const brand = await getBrand();
   const nav = await getContent(brand.schoolId, "navigation");
-  const links = nav.primary.filter((l) => l.href !== "/").slice(0, 6);
+  const primaryOn = Boolean(brand.flags.primarySchool);
+  const links = [...nav.primary.filter((l) => l.href !== "/").slice(0, primaryOn ? 5 : 6), ...(primaryOn ? [{ label: "Primary School", href: "/primary-school" }] : [])];
   return (
     <header className="sticky top-0 z-50 px-3 pt-3 sm:px-5">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 rounded-2xl border border-line bg-card/90 pl-2.5 pr-2 shadow-[0_10px_30px_-18px_rgb(10_20_50/0.5)] backdrop-blur-md">
@@ -19,14 +20,30 @@ export async function SiteHeader() {
           </span>
           <span className="min-w-0 truncate font-display text-[0.95rem] font-bold text-navy-800">{brand.platformName}</span>
         </Link>
-        <nav aria-label="Primary" className="hidden items-center gap-0.5 lg:flex">
+        <nav aria-label="Primary" className="hidden items-center gap-0.5 xl:flex">
           {links.map((l) => (
             <Link key={l.href} href={l.href} className="whitespace-nowrap rounded-lg px-3 py-2 text-[0.84rem] font-semibold text-navy-800/80 hover:bg-navy-800/5 hover:text-navy-800">
               {l.label}
             </Link>
           ))}
         </nav>
-        <div className="hidden items-center gap-2 lg:flex">
+        <div className="hidden items-center gap-2 xl:flex">
+          <details className="group relative">
+            <summary className="flex cursor-pointer list-none items-center gap-1 rounded-lg px-3 py-2 text-[0.84rem] font-semibold text-navy-800/80 hover:bg-navy-800/5 [&::-webkit-details-marker]:hidden">
+              {nav.parentsLabel} <ChevronDown className="size-3.5 transition group-open:rotate-180" aria-hidden />
+            </summary>
+            <div className="absolute right-0 top-full z-50 mt-2 w-52 rounded-xl border border-line bg-card p-1.5 shadow-lift">
+              <Link href="/register/parent" className="block rounded-lg px-3 py-2 text-sm font-semibold text-navy-800 hover:bg-gold-50">
+                {nav.parentRegisterLabel}
+              </Link>
+              <Link href="/login" className="block rounded-lg px-3 py-2 text-sm font-semibold text-navy-800 hover:bg-gold-50">
+                {nav.parentLoginLabel}
+              </Link>
+              <Link href="/for-parents" className="block rounded-lg px-3 py-2 text-sm text-muted hover:bg-gold-50">
+                About the parent portal
+              </Link>
+            </div>
+          </details>
           <Link href="/login" className={buttonClass("ghost", "sm")}>
             {nav.loginLabel}
           </Link>
@@ -34,7 +51,7 @@ export async function SiteHeader() {
             {nav.registerLabel}
           </Link>
         </div>
-        <MobileNav links={[...nav.primary, ...nav.prepare, { href: "/privacy", label: "Privacy Policy" }, { href: "/terms", label: "Terms" }]} />
+        <MobileNav links={[...nav.primary, ...(primaryOn ? [{ label: "Primary School", href: "/primary-school" }] : []), { label: nav.parentRegisterLabel, href: "/register/parent" }, { label: nav.parentLoginLabel, href: "/login" }, ...nav.prepare, { href: "/privacy", label: "Privacy Policy" }, { href: "/terms", label: "Terms" }]} />
       </div>
     </header>
   );

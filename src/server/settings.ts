@@ -219,6 +219,7 @@ export const SETTING_SCHEMAS = {
     sms: z.boolean(),
     multiSchool: z.boolean(),
     multilingual: z.boolean(),
+    primarySchool: z.boolean(),
   }),
 } as const;
 
@@ -347,6 +348,7 @@ export const SETTING_DEFAULTS: { [K in SettingKey]: SettingValue<K> } = {
     sms: false,
     multiSchool: false,
     multilingual: false,
+    primarySchool: false,
   },
 };
 

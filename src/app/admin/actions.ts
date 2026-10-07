@@ -767,3 +767,10 @@ export async function promotionBulkAction(classId: string, _: ActionResult | nul
     return r;
   }, "Class promoted.");
 }
+
+export async function setPrimarySchoolAction(on: boolean) {
+  return action({ role: "staff", perm: "curriculum.manage" }, async (a, ctx) => {
+    await curriculum.setPrimarySchool(a, on, ctx);
+    revalidatePath("/", "layout");
+  }, on ? "Primary School is now enabled." : "Primary School is now hidden.");
+}

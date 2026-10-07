@@ -7,6 +7,7 @@ import { audit, type Actor, type ReqCtx } from "../audit";
 import { AppError } from "../errors";
 import { SECTIONS } from "@/core/sections";
 import { resolveSection } from "./scope";
+import { getSetting, putSetting } from "../settings";
 
 const code = z
   .string()
@@ -320,4 +321,34 @@ export async function getLessonAdmin(schoolId: string, id: string) {
     .where(eq(lessonQuestions.lessonId, id))
     .orderBy(asc(lessonQuestions.sortOrder));
   return { ...l, resources: res, questions: qs };
+}
+
+/**
+ * Switches Primary School (Basic 1–6 and the Primary department) on or off. Everything is built in and
+ * dormant until a Super Admin enables it; switching off only hides it (pupils and results are kept).
+ */
+export async function setPrimarySchool(actor: Actor, on: boolean, ctx: ReqCtx) {
+  const db = getDb();
+  const [{ n }] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(classes)
+    .where(and(eq(classes.schoolId, actor.schoolId), eq(classes.level, "PRIMARY")));
+  if (n === 0) throw new AppError("NOT_CONFIGURED", "The Primary classes have not been created yet. Redeploy the platform once so the structure is seeded, then try again.");
+  const when = on ? null : new Date();
+  await db.transaction(async (tx) => {
+    await tx.update(departments).set({ archivedAt: when }).where(and(eq(departments.schoolId, actor.schoolId), eq(departments.level, "PRIMARY")));
+    await tx.update(classes).set({ archivedAt: when }).where(and(eq(classes.schoolId, actor.schoolId), eq(classes.level, "PRIMARY")));
+  });
+  const flags = await getSetting(actor.schoolId, "featureFlags");
+  await putSetting(actor.schoolId, "featureFlags", { ...flags, primarySchool: on }, actor.id);
+  await audit({ actor, action: `curriculum.primary_school_${on ? "enabled" : "disabled"}`, entityType: "class", entityId: actor.schoolId }, ctx);
+}
+
+export async function primarySchoolState(schoolId: string) {
+  const db = getDb();
+  const rows = await db
+    .select({ archivedAt: classes.archivedAt })
+    .from(classes)
+    .where(and(eq(classes.schoolId, schoolId), eq(classes.level, "PRIMARY")));
+  return { exists: rows.length > 0, enabled: rows.length > 0 && rows.every((r) => !r.archivedAt), classes: rows.length };
 }

@@ -97,3 +97,22 @@ describe("student registration", () => {
     await setAutoStudentId(true);
   });
 });
+
+describe("Primary School switch", () => {
+  it("starts hidden, appears in pickers when enabled, and hides again without losing data", async () => {
+    const { getCatalog, primarySchoolState, setPrimarySchool } = await import("@/server/services/curriculum");
+    const schoolId = (await db.select({ id: S.schools.id }).from(S.schools).limit(1))[0].id;
+    const admin = (await db.select().from(S.users).limit(1))[0];
+    const actor = { id: admin.id, schoolId, userType: "SUPER_ADMIN" } as unknown as import("@/server/audit").Actor;
+    const names = async () => (await getCatalog(schoolId, {})).classes.map((c) => c.name);
+    expect(await names()).not.toContain("Basic 1");
+    expect((await primarySchoolState(schoolId)).enabled).toBe(false);
+    await setPrimarySchool(actor, true, ctx);
+    expect(await names()).toContain("Basic 6");
+    expect((await primarySchoolState(schoolId)).enabled).toBe(true);
+    expect((await getSetting(schoolId, "featureFlags")).primarySchool).toBe(true);
+    await setPrimarySchool(actor, false, ctx);
+    expect(await names()).not.toContain("Basic 1");
+    expect(await names()).toContain("JSS 1");
+  });
+});
