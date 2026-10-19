@@ -24,6 +24,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       if (st && st.status !== "ACTIVE") return new Response("Access required", { status: 403 });
       // Documents belong to the Resource Centre and to lessons: the code must include one of the two.
       if (st && a.kind === "DOCUMENT" && !st.features.includes("LEARNING_RESOURCES") && !st.features.includes("STUDY_CENTRE")) return new Response("Not included in your access plan", { status: 403 });
+      // Students read Word, PowerPoint and Excel materials inside the app; the files themselves stay in the backend.
+      if (st && a.kind === "DOCUMENT" && a.mimeType !== "application/pdf" && a.mimeType !== "audio/mpeg") return new Response("Open this material from the Study Materials page.", { status: 403 });
     }
   }
   const inline = a.mimeType.startsWith("image/") || a.mimeType === "application/pdf";

@@ -25,7 +25,7 @@ export default async function ParentReport({ params }: PageProps<"/report/[token
   if (!link) {
     return (
       <main id="main" className="grid min-h-dvh place-items-center bg-surface px-4">
-        <div className="max-w-md rounded-2xl border border-line bg-card p-8 text-center">
+        <div className="max-w-md rounded-2xl border border-line bg-white p-8 text-center">
           <ShieldCheck className="mx-auto size-10 text-gold-600" aria-hidden />
           <h1 className="mt-4 text-xl font-bold text-navy-800">This report link is not available</h1>
           <p className="mt-2 text-sm text-muted">It may have expired or been switched off by the student. Please ask them to create a new link.</p>

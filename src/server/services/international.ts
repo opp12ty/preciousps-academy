@@ -1,5 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { INTERNATIONAL_PROGRAMMES } from "@/content/international";
+import { PREP_PROGRAMMES } from "@/content/advanced-prep";
 import { arrange } from "@/content/packs/build";
 import { getDb } from "../db";
 import { examinations, questions, subjects } from "../db/schema";
@@ -23,6 +24,37 @@ export async function internationalOverview(schoolId: string) {
     const exam = exams.find((e) => e.title === p.title && e.status !== "ARCHIVED") ?? null;
     return { ...p, questions: undefined, starter: p.questions.length, subjectId, approved: counts.find((c) => c.examType === p.examType && c.level === p.level && c.subjectId === subjectId)?.n ?? 0, exam: exam ? { id: exam.id, status: exam.status, questionCount: exam.questionCount } : null };
   });
+}
+
+/**
+ * Loads the JUPEB- and IJMB-style practice sets and publishes one examination each. They are ordinary
+ * (not Premium) examinations, shown to SS 2 and SS 3 only by the examination-programme rule.
+ * Safe to run again: questions already in the bank are skipped and existing examinations are kept.
+ */
+export async function setupPrepProgrammes(actor: Actor, ctx: ReqCtx) {
+  const db = getDb();
+  const out = { questions: 0, exams: 0 };
+  const subs = await db.select({ id: subjects.id, code: subjects.code }).from(subjects).where(eq(subjects.schoolId, actor.schoolId));
+  const have = await db.select({ title: examinations.title }).from(examinations).where(eq(examinations.schoolId, actor.schoolId));
+  for (const p of PREP_PROGRAMMES) {
+    const subjectId = subs.find((s) => s.code === p.subjectCode)?.id;
+    if (!subjectId) continue;
+    for (const q of p.questions) {
+      const { options, correct } = arrange(q);
+      try {
+        await createQuestion({ ...actor, userType: "SUPER_ADMIN" }, { subjectId, level: p.level ?? "SENIOR_SECONDARY", examType: p.examType, difficulty: DIFF[q[0]], type: "MCQ", stem: q[1], explanation: q[6], marks: 1, options: options.map((text, i) => ({ text, isCorrect: "ABCD"[i] === correct })), status: "APPROVED", copyrightStatus: "ORIGINAL" }, ctx, { skipAudit: true });
+        out.questions++;
+      } catch {
+        /* already in the bank */
+      }
+    }
+    if (!have.some((e) => e.title === p.title)) {
+      await db.insert(examinations).values({ schoolId: actor.schoolId, title: p.title, description: p.description, subjectId, level: p.level ?? "SENIOR_SECONDARY", examType: p.examType, questionCount: Math.min(12, p.questions.length), durationMinutes: p.minutes, maxAttempts: 100, isPremium: false, poolFilter: { examTypes: [p.examType] }, status: "PUBLISHED", createdBy: actor.id });
+      out.exams++;
+    }
+  }
+  if (out.questions || out.exams) await audit({ actor, action: "exam.prep_programmes", entityType: "examination", summary: `${out.questions} JUPEB/IJMB/Common Entrance questions and ${out.exams} examinations added` }, ctx);
+  return out;
 }
 
 /**

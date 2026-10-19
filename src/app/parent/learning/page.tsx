@@ -4,11 +4,13 @@ import { BookOpen, Lightbulb } from "lucide-react";
 import { requireParentPage } from "@/server/http";
 import { getSetting } from "@/server/settings";
 import { HUB_SECTIONS, listParentArticles, parentDaily } from "@/server/services/hub";
+import { SCIENCE_HUB_CATEGORIES } from "@/content/science-hub";
 import { buttonClass, Card, cx, EmptyState, inputClass, PageHeader } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Parent Learning Hub" };
 
-const TABS = [["", "Everything"], ["LEARNING", "Learning Hub"], ["PSYCHOLOGY", "Psychology Library"], ["TEMPERAMENT", "Temperament"]] as const;
+const TABS = [["", "Everything"], ["LEARNING", "Learning Hub"], ["PSYCHOLOGY", "Psychology Library"], ["TEMPERAMENT", "Temperament"], ["SCIENCE", "Science & Engineering"]] as const;
+const SCIENCE = new Set<string>(SCIENCE_HUB_CATEGORIES);
 
 export default async function ParentLearning({ searchParams }: PageProps<"/parent/learning">) {
   const s = await requireParentPage();
@@ -17,7 +19,7 @@ export default async function ParentLearning({ searchParams }: PageProps<"/paren
   const q = typeof sp.q === "string" ? sp.q : "";
   const { timezone } = await getSetting(s.user.schoolId, "localization");
   const day = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date());
-  const [list, daily] = await Promise.all([listParentArticles(s.actor, { section: section || undefined, search: q }), parentDaily(s.actor, day)]);
+  const [list, daily] = await Promise.all([listParentArticles(s.actor, { section: section === "SCIENCE" ? "LEARNING" : section || undefined, search: q }).then((r) => (section === "SCIENCE" ? r.filter((a) => SCIENCE.has(a.category)) : r)), parentDaily(s.actor, day)]);
   return (
     <div className="space-y-5">
       <PageHeader eyebrow="For parents" title="Parent Learning Hub" description="Free for every parent: practical guidance on parenting, child development, study habits, examinations and digital safety." />

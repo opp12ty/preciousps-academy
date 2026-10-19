@@ -5,7 +5,7 @@ import { AppError } from "./errors";
  * Upload validation (§48): extension allow-list, magic-byte sniffing (MIME is
  * never trusted), size limits, macro / script / zip-bomb rejection.
  */
-export type FileKind = "docx" | "doc" | "xlsx" | "xls" | "pptx" | "ppt" | "pdf" | "png" | "jpg" | "webp" | "gif" | "csv";
+export type FileKind = "docx" | "doc" | "xlsx" | "xls" | "pptx" | "ppt" | "pdf" | "png" | "jpg" | "webp" | "gif" | "csv" | "mp3";
 
 const EXT: Record<string, FileKind> = {
   docx: "docx",
@@ -21,6 +21,7 @@ const EXT: Record<string, FileKind> = {
   webp: "webp",
   gif: "gif",
   csv: "csv",
+  mp3: "mp3",
 };
 
 export const MIME: Record<FileKind, string> = {
@@ -36,6 +37,7 @@ export const MIME: Record<FileKind, string> = {
   webp: "image/webp",
   gif: "image/gif",
   csv: "text/csv",
+  mp3: "audio/mpeg",
 };
 
 const OLE = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
@@ -131,6 +133,10 @@ export async function validateUpload(
       break;
     case "csv":
       if (b.includes(0)) throw bad();
+      break;
+    case "mp3":
+      // An ID3 tag, or an MPEG audio frame header.
+      if (!(b.subarray(0, 3).toString("latin1") === "ID3" || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0))) throw bad();
       break;
   }
   return { kind, mime: MIME[kind], name: safeFileName(file.name), bytes: b, warnings };

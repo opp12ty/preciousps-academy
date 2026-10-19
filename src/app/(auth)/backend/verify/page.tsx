@@ -13,7 +13,7 @@ export default async function VerifyPage({ searchParams }: PageProps<"/backend/v
   if (!s) redirect("/backend");
   if (!s.mfaPending) redirect("/admin");
   return (
-    <AuthShell variant="backend" title="Two-factor verification" subtitle={`Signed in as ${s.user.email}.`}>
+    <AuthShell variant="backend" scene="backend" title="Two-factor verification" subtitle={`Signed in as ${s.user.email}.`}>
       <MfaForm next={typeof sp.next === "string" ? sp.next : undefined} />
       <form action={logoutAction} className="mt-4 text-center">
         <button className="text-sm font-semibold text-muted hover:text-navy-800">Cancel and sign out</button>

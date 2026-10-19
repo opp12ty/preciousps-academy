@@ -6,6 +6,8 @@ export interface HubFlags {
   idiomsEnabled: boolean;
   clichesEnabled: boolean;
   phrasalVerbsEnabled: boolean;
+  proverbsEnabled?: boolean;
+  commonErrorsEnabled?: boolean;
   gamesEnabled: boolean;
 }
 
@@ -17,6 +19,8 @@ export function MaterialsNav({ current, flags }: { current: string; flags: HubFl
     { key: "idioms", href: "/student/materials/idioms", label: "Idioms", on: flags.idiomsEnabled },
     { key: "cliches", href: "/student/materials/cliches", label: "Clichés", on: flags.clichesEnabled },
     { key: "phrasal-verbs", href: "/student/materials/phrasal-verbs", label: "Phrasal Verbs", on: flags.phrasalVerbsEnabled },
+    { key: "proverbs", href: "/student/materials/proverbs", label: "Proverbs", on: flags.proverbsEnabled !== false },
+    { key: "common-errors", href: "/student/materials/common-errors", label: "Common Errors", on: flags.commonErrorsEnabled !== false },
     { key: "games", href: "/student/materials/games", label: "Games", on: flags.gamesEnabled },
   ].filter((t) => t.on);
   return (

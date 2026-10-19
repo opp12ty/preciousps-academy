@@ -25,10 +25,12 @@ const LABELS: Record<ContentKey, { label: string; path: string }> = {
   "primary-school": { label: "Primary School", path: "/primary-school" },
   "for-parents": { label: "For Parents", path: "/for-parents" },
   "get-access": { label: "Get Access", path: "/get-access" },
+  "parent-promo": { label: "Parent page banner (Fodan Softnet)", path: "/parent" },
   faq: { label: "FAQ", path: "/faq" },
   contact: { label: "Contact", path: "/contact" },
   privacy: { label: "Privacy Policy", path: "/privacy" },
   terms: { label: "Terms", path: "/terms" },
+  "auth-pictures": { label: "Sign-in & registration pictures", path: "/login" },
   footer: { label: "Footer", path: "/" },
   navigation: { label: "Menus & navigation", path: "/" },
 };
@@ -44,7 +46,7 @@ export default async function HomepageContentPage({ searchParams }: PageProps<"/
       <div className="grid gap-6 lg:grid-cols-[13rem_1fr]">
         <nav aria-label="Content blocks" className="no-scrollbar flex gap-1 overflow-x-auto lg:flex-col">
           {(Object.keys(LABELS) as ContentKey[]).map((k) => (
-            <Link key={k} href={`/admin/homepage?block=${k}`} className={cx("whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold", k === key ? "bg-navy-800 text-white" : "text-navy-800 hover:bg-card")}>
+            <Link key={k} href={`/admin/homepage?block=${k}`} className={cx("whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold", k === key ? "bg-navy-800 text-white" : "text-navy-800 hover:bg-white")}>
               {LABELS[k].label}
             </Link>
           ))}

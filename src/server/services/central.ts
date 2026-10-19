@@ -8,12 +8,20 @@ import { classes, departments, departmentSubjects, resourceLinks, subjects, word
 import { audit, type Actor, type ReqCtx } from "../audit";
 import { AppError } from "../errors";
 import { validateUpload } from "../files";
+import { EXAM_TYPES } from "@/core/question-parser";
+import { PROGRAMME_KEYS, PROGRAMMES } from "@/core/exam-programmes";
+import { DIAGRAM_HELP } from "@/core/diagrams";
 import { rateLimit } from "../rate-limit";
 import { getSetting } from "../settings";
 import { previewPackWorkbook, type PackIssue } from "./content-packs";
 import { upsertResource } from "./resources";
 import { HUB_SECTIONS, upsertArticle, upsertHubQuestion } from "./hub";
 import { WORD_KINDS, type WordKind } from "./wordbank";
+import { upsertSchoolTask } from "./holiday";
+import { subjectCoverage } from "./coverage";
+import { HOLIDAY_KEYS, HOLIDAYS, TASK_KINDS, type HolidayKey } from "@/content/holiday";
+import { SCIENCE_HUB_CATEGORIES } from "@/content/science-hub";
+import { holidayTasks, hubArticles, terms } from "../db/schema";
 
 /**
  * The central upload workbook: one Excel file for everything. Curriculum rows carry a Subject
@@ -43,7 +51,7 @@ export const CENTRAL_COLUMNS: Record<CurriculumKey, string[]> = {
   exams: ["Subject", ...PACK_COLUMNS.exams],
   assignments: ["Subject", ...PACK_COLUMNS.assignments],
 };
-export const WORD_SHEETS: Record<WordKind, string> = { WORD: "Dictionary", IDIOM: "Idioms", CLICHE: "Cliches", PHRASAL_VERB: "Phrasal Verbs" };
+export const WORD_SHEETS: Record<WordKind, string> = { WORD: "Dictionary", IDIOM: "Idioms", CLICHE: "Cliches", PHRASAL_VERB: "Phrasal Verbs", PROVERB: "Proverbs", COMMON_ERROR: "Common Errors" };
 export const WORD_COLUMNS = ["Word or Phrase", "Part of Speech", "Meaning", "Example", "Picture (emoji)", "Section", "Class", "Status"];
 export const RESOURCE_SHEET = "Resources";
 export const RESOURCE_COLUMNS = ["Title", "Description", "Subject", "Class", "Section", "Type", "Link (https)", "Recommended", "Premium", "Status"];
@@ -51,6 +59,8 @@ export const ARTICLE_SHEET = "Articles";
 export const ARTICLE_COLUMNS = ["Section", "Category", "Title", "Summary", "Main Content", "Key Points", "Activity", "Sources", "Class Level", "Department", "Status"];
 export const QUIZ_SHEET = "Quiz Questions";
 export const QUIZ_COLUMNS = ["Audience", "Category", "Class Level", "Department", "Difficulty", "Question", "A", "B", "C", "D", "Correct Answer", "Explanation"];
+export const HOLIDAY_SHEET = "Holiday Tasks";
+export const HOLIDAY_COLUMNS = ["Holiday", "Type", "Title", "Instructions", "Class", "Section", "Link", "Finish by (YYYY-MM-DD)", "Every year", "Show to learners"];
 const RESOURCE_TYPES = ["VIDEO", "AUDIO", "DOCUMENT", "WEBSITE", "LIBRARY", "PRESENTATION", "OTHER"];
 /** What the first column of a required-content check is called on each curriculum sheet. */
 const KEY_COLUMN: Record<CurriculumKey, string> = { scheme: "Topic", lessons: "Lesson Title", questions: "Question", exams: "Title", assignments: "Title" };
@@ -199,6 +209,42 @@ function parseHub(wb: XLSX.WorkBook) {
   return { articles, questions, issues };
 }
 
+const holidayOf = (v: string): HolidayKey | null => (/christ|first|^1$/i.test(v) ? "CHRISTMAS" : /easter|second|^2$/i.test(v) ? "EASTER" : /long|third|vac|summer|^3$/i.test(v) ? "LONG" : null);
+const kindOf = (v: string) => {
+  const t = v.trim().toLowerCase();
+  if (!t) return "ACTIVITY";
+  const hit = Object.entries(TASK_KINDS).find(([k, x]) => k.toLowerCase() === t.replace(/[ -]/g, "_") || x.label.toLowerCase() === t || x.label.toLowerCase().startsWith(t.split(" ")[0]));
+  return (hit?.[0] ?? null) as keyof typeof TASK_KINDS | null;
+};
+
+function parseHoliday(wb: XLSX.WorkBook, l: Lookups) {
+  const rows: { row: number; input: Record<string, unknown> }[] = [];
+  const issues: PackIssue[] = [];
+  sheetRows(wb, HOLIDAY_SHEET).forEach((r, i) => {
+    if (blank(r)) return;
+    const row = i + 2;
+    const bad = (message: string) => void issues.push({ sheet: HOLIDAY_SHEET, row, message });
+    // The example row in the template is ignored until someone changes its title.
+    if (/^example:/i.test(cell(r, "Title"))) return;
+    const holiday = holidayOf(cell(r, "Holiday"));
+    if (!holiday) return bad("Holiday must be Christmas, Easter or Long vacation.");
+    const kind = kindOf(cell(r, "Type"));
+    if (!kind) return bad(`Type "${cell(r, "Type")}" is not known. Use one of: ${Object.values(TASK_KINDS).map((k) => k.label).join(", ")}.`);
+    if (cell(r, "Title").length < 3) return bad("A title of at least 3 characters is needed.");
+    const cls = cell(r, "Class") ? findClass(l, cell(r, "Class")) : null;
+    if (cell(r, "Class") && !cls) return bad(`Class "${cell(r, "Class")}" does not exist.`);
+    const sec = sectionOf(cell(r, "Section"));
+    if (!sec) return bad(`Section "${cell(r, "Section")}" is not known. Use Primary, JSS, SS or All.`);
+    const link = cell(r, "Link");
+    if (link && !/^(\/|https:\/\/)/.test(link)) return bad("Link must start with / (a page in the app) or https://");
+    const due = cell(r, "Finish by (YYYY-MM-DD)") || cell(r, "Finish by");
+    if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) return bad("Finish by must be written as YYYY-MM-DD, e.g. 2026-12-30.");
+    const flag = (v: string) => !v.trim() || yes(v);
+    rows.push({ row, input: { holiday, kind, title: cell(r, "Title").slice(0, 120), instructions: cell(r, "Instructions").slice(0, 4000), link, classId: cls?.id ?? "", level: cls ? "" : sec.level ?? "", dueOn: due, everyYear: flag(cell(r, "Every year")), active: flag(cell(r, "Show to learners")) } });
+  });
+  return { rows, issues };
+}
+
 async function readWorkbook(actor: Actor, file: { name: string; bytes: Buffer }, ctx: ReqCtx) {
   await rateLimit("upload", actor.id, ctx);
   const cfg = await getSetting(actor.schoolId, "uploads");
@@ -218,6 +264,7 @@ export interface CentralReport {
   words: { counts: Record<WordKind, number>; issues: PackIssue[]; allowed: boolean };
   resources: { count: number; issues: PackIssue[]; allowed: boolean };
   hub: { articles: number; questions: number; issues: PackIssue[]; allowed: boolean };
+  holiday: { count: number; issues: PackIssue[]; allowed: boolean };
   canReview: boolean;
   empty: boolean;
 }
@@ -238,7 +285,8 @@ export async function previewCentral(actor: Actor, file: { name: string; bytes: 
   const words = parseWords(wb, l);
   const resources = parseResources(wb, l);
   const hub = parseHub(wb);
-  const counts = { WORD: 0, IDIOM: 0, CLICHE: 0, PHRASAL_VERB: 0 } as Record<WordKind, number>;
+  const holiday = parseHoliday(wb, l);
+  const counts = { WORD: 0, IDIOM: 0, CLICHE: 0, PHRASAL_VERB: 0, PROVERB: 0, COMMON_ERROR: 0 } as Record<WordKind, number>;
   for (const w of words.rows) counts[w.kind]++;
   return {
     subjects: out,
@@ -247,8 +295,9 @@ export async function previewCentral(actor: Actor, file: { name: string; bytes: 
     words: { counts, issues: words.issues, allowed: can(actor, "learning.manage") },
     resources: { count: resources.rows.length, issues: resources.issues, allowed: can(actor, "resources.manage") },
     hub: { articles: hub.articles.length, questions: hub.questions.length, issues: hub.issues, allowed: can(actor, "learning.manage") },
+    holiday: { count: holiday.rows.length, issues: holiday.issues, allowed: can(actor, "assignments.manage") },
     canReview: can(actor, "questions.review"),
-    empty: !packs.length && !words.rows.length && !resources.rows.length && !hub.articles.length && !hub.questions.length && !issues.length && !words.issues.length && !resources.issues.length && !hub.issues.length,
+    empty: !packs.length && !words.rows.length && !resources.rows.length && !hub.articles.length && !hub.questions.length && !holiday.rows.length && !issues.length && !words.issues.length && !resources.issues.length && !hub.issues.length && !holiday.issues.length,
   };
 }
 
@@ -260,7 +309,28 @@ export async function importCentralExtras(actor: Actor, file: { name: string; by
   const { name, wb } = await readWorkbook(actor, file, ctx);
   const l = await lookups(actor.schoolId);
   const db = getDb();
-  const out = { wordsAdded: 0, wordsUpdated: 0, resourcesAdded: 0, resourcesSkipped: 0, articlesAdded: 0, questionsAdded: 0, hubSkipped: 0 };
+  const out = { wordsAdded: 0, wordsUpdated: 0, resourcesAdded: 0, resourcesSkipped: 0, articlesAdded: 0, questionsAdded: 0, hubSkipped: 0, holidayAdded: 0, holidaySkipped: 0 };
+  if (can(actor, "assignments.manage")) {
+    const { rows } = parseHoliday(wb, l);
+    if (rows.length) {
+      // A task with the same holiday and title as one already there is not added twice.
+      const have = new Set((await db.select({ h: holidayTasks.holiday, t: holidayTasks.title }).from(holidayTasks).where(and(eq(holidayTasks.schoolId, actor.schoolId), eq(holidayTasks.setBy, "SCHOOL")))).map((x) => `${x.h}|${x.t.toLowerCase()}`));
+      for (const r of rows) {
+        const key = `${r.input.holiday}|${String(r.input.title).toLowerCase()}`;
+        if (have.has(key)) {
+          out.holidaySkipped++;
+          continue;
+        }
+        await upsertSchoolTask(actor, null, r.input, ctx).then(
+          () => {
+            out.holidayAdded++;
+            have.add(key);
+          },
+          () => out.holidaySkipped++,
+        );
+      }
+    }
+  }
   if (can(actor, "learning.manage")) {
     const hub = parseHub(wb);
     for (const a of hub.articles) await upsertArticle(actor, null, a.input, ctx).then(() => out.articlesAdded++, () => out.hubSkipped++);
@@ -302,8 +372,8 @@ export async function importCentralExtras(actor: Actor, file: { name: string; by
       }
     }
   }
-  if (out.wordsAdded + out.wordsUpdated + out.resourcesAdded > 0) {
-    await audit({ actor, action: "central_upload.imported", entityType: "school", entityId: actor.schoolId, summary: `${name}: ${out.wordsAdded} word(s) added, ${out.wordsUpdated} updated, ${out.resourcesAdded} resource(s) added` }, ctx);
+  if (out.wordsAdded + out.wordsUpdated + out.resourcesAdded + out.holidayAdded > 0) {
+    await audit({ actor, action: "central_upload.imported", entityType: "school", entityId: actor.schoolId, summary: `${name}: ${out.wordsAdded} word(s) added, ${out.wordsUpdated} updated, ${out.resourcesAdded} resource(s) added, ${out.holidayAdded} holiday task(s) added` }, ctx);
   }
   return out;
 }
@@ -352,6 +422,18 @@ export async function centralTemplateWorkbook(schoolId: string, only: "all" | "w
       [""],
     );
   }
+  if (only === "all") {
+    // Written from the live rules each time the template is downloaded, so it never falls behind the app.
+    readMe.push(
+      ["EXAM TYPES YOU CAN TYPE"],
+      [EXAM_TYPES.join(", ")],
+      ...PROGRAMME_KEYS.map((k) => [`${k}: shown only to ${PROGRAMMES[k].classes.join(", ")}`]),
+      [""],
+      ["PICTURES AND DIAGRAMS YOU CAN TYPE IN NOTES, QUESTIONS AND EXPLANATIONS"],
+      ...DIAGRAM_HELP.map((d) => [`${d.example}   —   ${d.shows}`]),
+      [""],
+    );
+  }
   if (only === "all" || only === "hub") {
     readMe.push(
       ["KNOWLEDGE HUB AND PARENT LEARNING: Articles, Quiz Questions"],
@@ -363,9 +445,21 @@ export async function centralTemplateWorkbook(schoolId: string, only: "all" | "w
   }
   if (only !== "resources" && only !== "hub") {
     readMe.push(
-      ["STUDY MATERIALS: Dictionary, Idioms, Cliches, Phrasal Verbs"],
+      ["STUDY MATERIALS: Dictionary, Idioms, Cliches, Phrasal Verbs, Proverbs, Common Errors"],
+      ["Proverbs: Part of Speech holds the origin (e.g. Yoruba proverb). Common Errors: Word or Phrase is the error, Example is the correct form, Meaning explains why, Part of Speech is the group (e.g. Grammar)."],
       ["One row per word or phrase. Meaning is required. Picture is one emoji (optional). Section: Primary, JSS, SS or All. Class (optional) limits the entry to one class."],
       ["A word that already exists is updated with the new row, so the same sheet can be corrected and uploaded again."],
+      [""],
+    );
+  }
+  if (only === "all") {
+    readMe.push(
+      ["HOLIDAY PROGRAMME: Holiday Tasks"],
+      ["One row per task for the Christmas, Easter or Long vacation break. Class or Section decide who sees it (leave both empty for every learner). Type: " + Object.values(TASK_KINDS).map((k) => k.label).join(", ") + "."],
+      ["Every year and Show to learners: Yes or No (empty means Yes). A task with the same holiday and title as an existing one is skipped. The example row is ignored until you change its title."],
+      [""],
+      ["THIS WORKBOOK IS ALWAYS CURRENT"],
+      ["The Subjects, Classes, Lists and Coverage sheets are written from the live system each time you download this file. Download a fresh copy after adding a subject, class, department, term or category."],
       [""],
     );
   }
@@ -386,6 +480,19 @@ export async function centralTemplateWorkbook(schoolId: string, only: "all" | "w
       .sort((a, b) => Number(primaryIds.has(b.id)) - Number(primaryIds.has(a.id)) || a.name.localeCompare(b.name));
     XLSX.utils.book_append_sheet(wb, sheet([["Subject code", "Subject name", "Taught in"], ...subjectRows.map((s) => [s.code, s.name, s.sections.join(", ") || "All"])], [14, 40, 24]), "Subjects");
     XLSX.utils.book_append_sheet(wb, sheet([["Class code", "Class name", "Section"], ...l.classes.map((c) => [c.code, c.name, SECTION_SHORT[c.level as Section] ?? c.level])], [14, 20, 14]), "Classes");
+    XLSX.utils.book_append_sheet(wb, sheet(await listsSheet(schoolId), [26, 34, 26, 34, 26, 40, 40, 26]), "Lists");
+    const cov = await subjectCoverage(schoolId);
+    const covRows: unknown[][] = [["Subject code", "Subject", ...cov.classes.map((c) => c.name)]];
+    for (const r of cov.rows)
+      covRows.push([
+        r.code,
+        r.name,
+        ...cov.classes.map((c) => {
+          const x = r.cells[c.code];
+          return x.state === "none" ? "" : x.state === "missing" ? "NO CONTENT" : `${x.lessons}/${x.topics} lessons, ${x.questions} questions${x.questions < 70 ? " (under 70)" : ""}`;
+        }),
+      ]);
+    XLSX.utils.book_append_sheet(wb, sheet(covRows, [12, 34, ...cov.classes.map(() => 26)]), "Coverage");
     const primaryClasses = l.classes.filter((c) => c.level === "PRIMARY");
     const skeleton: string[][] = [];
     for (const s of subjectRows.filter((x) => primaryIds.has(x.id)))
@@ -397,6 +504,7 @@ export async function centralTemplateWorkbook(schoolId: string, only: "all" | "w
     for (const key of CURRICULUM) XLSX.utils.book_append_sheet(wb, sheet([CENTRAL_COLUMNS[key], ...(key === "scheme" ? skeleton : [])], widths[key]), PACK_SHEETS[key]);
   }
   if (only !== "resources" && only !== "hub") for (const kind of Object.keys(WORD_SHEETS) as WordKind[]) XLSX.utils.book_append_sheet(wb, sheet([WORD_COLUMNS, ...(only === "words" ? [] : [])], [28, 16, 60, 60, 14, 12, 14, 12]), WORD_SHEETS[kind]);
+  if (only === "all") XLSX.utils.book_append_sheet(wb, sheet([HOLIDAY_COLUMNS, ["Christmas", "Revision", "Example: revise fractions and decimals", "Do 20 questions a day from Practice.", "Basic 5", "", "/student/practice", "", "Yes", "Yes"]], [12, 22, 44, 60, 12, 12, 26, 20, 10, 14]), HOLIDAY_SHEET);
   if (only !== "words" && only !== "hub") XLSX.utils.book_append_sheet(wb, sheet([RESOURCE_COLUMNS], [40, 50, 12, 12, 12, 14, 50, 14, 10, 12]), RESOURCE_SHEET);
   if (only === "all" || only === "hub") {
     XLSX.utils.book_append_sheet(wb, sheet([ARTICLE_COLUMNS], [18, 22, 40, 50, 90, 40, 40, 30, 12, 14, 10]), ARTICLE_SHEET);
@@ -415,4 +523,32 @@ export const CENTRAL_SHEET_GUIDE = [
   { sheet: RESOURCE_SHEET, goes: "Resource Centre (links)" },
   { sheet: ARTICLE_SHEET, goes: "Knowledge Hub, Parent Learning Hub and Psychology Library (as Review)" },
   { sheet: QUIZ_SHEET, goes: "Quiz Arena, challenges and parent games" },
+  { sheet: HOLIDAY_SHEET, goes: "Holiday Programme (school holiday tasks)" },
+  { sheet: "Lists", goes: "Reference only: every value you can type, always current" },
+  { sheet: "Coverage", goes: "Reference only: lessons and questions per subject and class" },
 ];
+
+/** Every value a sheet accepts, written from the live system so the workbook never falls behind. */
+async function listsSheet(schoolId: string): Promise<unknown[][]> {
+  const db = getDb();
+  const [deps, trs, cats] = await Promise.all([
+    db.select({ code: departments.code, name: departments.name }).from(departments).where(and(eq(departments.schoolId, schoolId), isNull(departments.archivedAt))),
+    db.select({ name: terms.name, startsOn: terms.startsOn, endsOn: terms.endsOn }).from(terms).where(and(eq(terms.schoolId, schoolId), isNull(terms.archivedAt))).orderBy(terms.sortOrder),
+    db.selectDistinct({ c: hubArticles.category }).from(hubArticles).where(eq(hubArticles.schoolId, schoolId)),
+  ]);
+  const categories = [...new Set([...cats.map((x) => x.c), ...SCIENCE_HUB_CATEGORIES])].sort();
+  const cols: [string, string[]][] = [
+    ["Departments (code — name)", deps.map((d) => `${d.code} — ${d.name}`)],
+    ["Terms (start → end)", trs.map((t) => `${t.name}: ${t.startsOn ?? "?"} → ${t.endsOn ?? "?"}`)],
+    ["Holiday", HOLIDAY_KEYS.map((k) => HOLIDAYS[k].label)],
+    ["Holiday task Type", Object.values(TASK_KINDS).map((k) => k.label)],
+    ["Section / Class Level", ["Primary", "JSS", "SS", "All"]],
+    ["Article Section", Object.values(HUB_SECTIONS).map((x) => x.label)],
+    ["Article Category (Science & Engineering Hub categories included)", categories],
+    ["Resource Type", RESOURCE_TYPES],
+  ];
+  const height = Math.max(...cols.map(([, v]) => v.length));
+  const out: unknown[][] = [cols.map(([h]) => h)];
+  for (let i = 0; i < height; i++) out.push(cols.map(([, v]) => v[i] ?? ""));
+  return out;
+}

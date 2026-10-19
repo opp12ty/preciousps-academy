@@ -127,6 +127,8 @@ export async function listStudentAssignments(actor: Actor, kind?: "ASSIGNMENT" |
         or(isNull(assignments.classId), scope.classId ? eq(assignments.classId, scope.classId) : undefined),
         or(isNull(assignments.departmentId), scope.departmentId ? eq(assignments.departmentId, scope.departmentId) : undefined),
         sectionCond(assignments.level, scope.level),
+        // Work attached to a topic belongs to that topic's class, even when no class was chosen for it.
+        or(isNull(topics.classId), scope.classId ? eq(topics.classId, scope.classId) : sql`false`),
       ),
     )
     .orderBy(asc(assignments.dueAt));
@@ -160,7 +162,8 @@ async function loadForStudent(actor: Actor, id: string, ctx: ReqCtx) {
   const [a] = await db.select().from(assignments).where(and(eq(assignments.id, id), eq(assignments.schoolId, actor.schoolId), eq(assignments.status, "PUBLISHED")));
   if (!a) throw new AppError("NOT_FOUND", "Assignment not found.");
   const scope = await studentScope(actor.id);
-  if ((a.classId && a.classId !== scope.classId) || (a.departmentId && a.departmentId !== scope.departmentId) || !sectionAllows(a.level, scope.level)) {
+  const [topic] = a.topicId ? await db.select({ classId: topics.classId }).from(topics).where(eq(topics.id, a.topicId)) : [];
+  if ((a.classId && a.classId !== scope.classId) || (a.departmentId && a.departmentId !== scope.departmentId) || !sectionAllows(a.level, scope.level) || (topic?.classId && topic.classId !== scope.classId)) {
     await securityEvent({ type: "UNAUTHORIZED_RESOURCE", userId: actor.id, schoolId: actor.schoolId, detail: { assignmentId: id } }, ctx);
     throw new AppError("NOT_FOUND", "Assignment not found.");
   }

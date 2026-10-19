@@ -84,6 +84,7 @@ export const MATERIAL_TYPES = {
   word: { label: "Word (DOCX)", ext: ["docx", "doc"] },
   powerpoint: { label: "PowerPoint (PPTX)", ext: ["pptx", "ppt"] },
   excel: { label: "Excel (XLSX)", ext: ["xlsx", "xls"] },
+  audio: { label: "Audio (MP3)", ext: ["mp3"] },
 } as const;
 export type MaterialType = keyof typeof MATERIAL_TYPES;
 export const materialType = (fileName: string | null): MaterialType | null => {

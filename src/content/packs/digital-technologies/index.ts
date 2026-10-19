@@ -1,4 +1,6 @@
 import type { SubjectPack } from "../types";
+import { ss1 } from "./ss1";
+import { ss2 } from "./ss2";
 import { ss3t1 } from "./ss3-t1";
 import { ss3t2, ss3t3 } from "./ss3-t2";
 
@@ -6,8 +8,8 @@ import { ss3t2, ss3t3 } from "./ss3-t2";
 export const digitalTechnologies: SubjectPack = {
   code: "DGT",
   name: "Digital Technologies",
-  version: "1.0",
-  classes: ["SS3"],
+  version: "1.1",
+  classes: ["SS1", "SS2", "SS3"],
   seniorExams: ["WAEC", "NECO", "JAMB"],
-  terms: [ss3t1, ss3t2, ss3t3],
+  terms: [...ss1, ...ss2, ss3t1, ss3t2, ss3t3],
 };

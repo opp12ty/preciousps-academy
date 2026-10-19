@@ -3,6 +3,7 @@ import { z } from "zod";
 import { buildSnapshot, markResponse, normaliseResponse, summarise, toPublicQuestion, type AttemptQuestionSnapshot } from "@/core/exam-engine";
 import { getDb } from "../db";
 import {
+  assets,
   classes,
   departmentSubjects,
   learningAttempts,
@@ -153,6 +154,19 @@ async function lessonForStudent(actor: Actor, lessonId: string, ctx: ReqCtx) {
     throw new AppError("FORBIDDEN", "This lesson is not part of your class or department.");
   }
   return l;
+}
+
+/** A file attached to a lesson, for the in-app reader. The lesson must be one this student may open. */
+export async function lessonAttachment(actor: Actor, resourceId: string, ctx: ReqCtx) {
+  if (!/^[0-9a-f-]{36}$/i.test(resourceId)) throw new AppError("NOT_FOUND", "Material not found.");
+  await requireFeature(actor.id, "STUDY_CENTRE");
+  const db = getDb();
+  const [r] = await db.select().from(lessonResources).where(eq(lessonResources.id, resourceId));
+  if (!r?.assetId) throw new AppError("NOT_FOUND", "Material not found.");
+  const l = await lessonForStudent(actor, r.lessonId, ctx);
+  const [file] = await db.select({ fileName: assets.fileName, data: assets.data, mimeType: assets.mimeType }).from(assets).where(and(eq(assets.id, r.assetId), eq(assets.schoolId, actor.schoolId)));
+  if (!file) throw new AppError("NOT_FOUND", "Material not found.");
+  return { title: r.title, lessonId: r.lessonId, lessonTitle: l.l.title, fileName: file.fileName, bytes: file.data as Buffer, mimeType: file.mimeType, assetId: r.assetId };
 }
 
 export async function openLesson(actor: Actor, lessonId: string, ctx: ReqCtx) {

@@ -7,6 +7,7 @@ import { clearSessionCookie, getSession, reqCtx, setSessionCookie, type ActionRe
 import { revokeSession } from "@/server/auth/session";
 import { audit } from "@/server/audit";
 import { bootstrapSuperAdmin, checkOwnerEmail, login, registerParent, registerStudent, signInNewStudent, requestPasswordReset, resetPasswordWithToken, verifyMfa } from "@/server/services/auth";
+import { registerSchool } from "@/server/services/school-accounts";
 
 const fd = (f: FormData) => Object.fromEntries(Array.from(f.keys()).map((k) => [k, f.get(k)?.toString() ?? ""]));
 
@@ -40,6 +41,22 @@ export async function registerAction(_: ActionResult | null, form: FormData): Pr
   }
   if (ok) redirect("/student?welcome=1");
   return { ok: true };
+}
+
+export async function registerSchoolAction(_: ActionResult | null, form: FormData): Promise<ActionResult> {
+  let dest = "";
+  try {
+    const ctx = await reqCtx();
+    const data = fd(form);
+    const r = await registerSchool({ ...data, acceptTerms: data.acceptTerms === "on" }, ctx);
+    const l = await login({ identifier: r.schoolCode, password: data.password }, "student", ctx);
+    await setSessionCookie(l.token, l.expiresAt);
+    dest = r.accessError ? "/student?welcome=school&code=failed" : "/student?welcome=school";
+  } catch (e) {
+    const p = toPublicError(e);
+    return { ok: false, error: p.message, fields: p.fields };
+  }
+  redirect(dest);
 }
 
 export async function registerParentAction(_: ActionResult | null, form: FormData): Promise<ActionResult> {

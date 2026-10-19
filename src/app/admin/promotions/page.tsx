@@ -6,13 +6,16 @@ import { getSetting } from "@/server/settings";
 import { fmtLagos } from "@/server/services/access";
 import { classMembers, listPromotionsAdmin, promotionOverview } from "@/server/services/promotions";
 import { BulkPromoteForm, PromotionDecide } from "@/components/promotion-controls";
+import { MoveStudentForm } from "@/components/admin/move-student";
+import { findStudents } from "@/server/services/guardians";
+import { getCatalog } from "@/server/services/curriculum";
 import { SettingsForm, type FieldSpec } from "@/components/admin/settings-forms";
 import { spRecord } from "@/components/admin/filters";
-import { Alert, Badge, buttonClass, Card, CardHeader, cx, EmptyState, PageHeader, Table, Td, Th } from "@/components/ui/primitives";
+import { Alert, Badge, buttonClass, Card, CardHeader, cx, EmptyState, inputClass, PageHeader, Table, Td, Th } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Promotion" };
 
-const TABS = [["requests", "Requests"], ["classes", "Promote a class"], ["settings", "Rules"]] as const;
+const TABS = [["requests", "Requests"], ["classes", "Promote a class"], ["correct", "Demote or correct a class"], ["settings", "Rules"]] as const;
 
 export default async function PromotionsAdmin({ searchParams }: PageProps<"/admin/promotions">) {
   const s = await requireStaffPage("students.manage");
@@ -29,8 +32,48 @@ export default async function PromotionsAdmin({ searchParams }: PageProps<"/admi
       </nav>
       {tab === "requests" && <Requests schoolId={s.user.schoolId} status={sp.status ?? "PENDING"} />}
       {tab === "classes" && <Classes schoolId={s.user.schoolId} overview={overview} classId={sp.classId} />}
+      {tab === "correct" && <Correct schoolId={s.user.schoolId} q={sp.q ?? ""} />}
       {tab === "settings" && <Settings schoolId={s.user.schoolId} />}
     </div>
+  );
+}
+
+async function Correct({ schoolId, q }: { schoolId: string; q: string }) {
+  const [found, cat] = await Promise.all([findStudents(schoolId, q), getCatalog(schoolId)]);
+  const classes = cat.classes.map((c) => ({ id: c.id, name: c.name, level: c.level ?? null }));
+  const departments = cat.departments.map((d) => ({ id: d.id, name: d.name, level: d.level ?? null }));
+  return (
+    <>
+      <Alert tone="warning" title="For mistakes only">
+        Use this when a student registered in the wrong class, or must be moved down. Only staff can do it; students and parents cannot. When the class changes, the student starts afresh: lesson progress, classwork, assignments, quizzes, timetable and loyalty points are cleared. When a student is moved down or across, results earned in the wrong class are also voided (kept in the records, but no longer counted). <strong>The access code and its remaining days are never changed.</strong>
+      </Alert>
+      <Card>
+        <CardHeader title="Find the student" />
+        <div className="space-y-4 p-5">
+          <form className="flex flex-col gap-2 sm:flex-row" role="search">
+            <input type="hidden" name="tab" value="correct" />
+            <input name="q" defaultValue={q} placeholder="Student name, Student ID or e-mail" aria-label="Find a student" className={inputClass} />
+            <button className={buttonClass("primary")}>Find student</button>
+          </form>
+          {q.trim().length >= 2 &&
+            (found.length ? (
+              <ul className="divide-y divide-line rounded-xl border border-line">
+                {found.map((st) => (
+                  <li key={st.id} className="space-y-3 p-4">
+                    <div>
+                      <Link href={`/admin/students/${st.id}`} className="font-semibold text-navy-800 hover:text-royal-600">{st.firstName} {st.lastName}</Link>
+                      <p className="text-xs text-muted">Now in {st.className ?? "no class"} · {st.studentNumber}</p>
+                    </div>
+                    <MoveStudentForm userId={st.id} classes={classes} departments={departments} classId={cat.classes.find((c) => c.name === st.className)?.id ?? null} />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted">No student matches “{q}”.</p>
+            ))}
+        </div>
+      </Card>
+    </>
   );
 }
 

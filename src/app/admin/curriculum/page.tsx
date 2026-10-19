@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Pencil, X } from "lucide-react";
+import { Headphones, Pencil, X } from "lucide-react";
 import { requireStaffPage } from "@/server/http";
 import { getCatalog, listTopics } from "@/server/services/curriculum";
+import { audioCounts } from "@/server/services/topic-audio";
 import { deleteSubtopicAction, upsertSubtopicAction } from "../actions";
 import { TopicForm } from "@/components/admin/topic-form";
 import { FilterBar, spRecord } from "@/components/admin/filters";
@@ -16,6 +17,7 @@ export default async function CurriculumPage({ searchParams }: PageProps<"/admin
   const s = await requireStaffPage("curriculum.manage");
   const sp = spRecord(await searchParams);
   const [cat, topics] = await Promise.all([getCatalog(s.user.schoolId), listTopics(s.user.schoolId, { subjectId: sp.subjectId, classId: sp.classId, includeDrafts: true })]);
+  const audio = await audioCounts(s.user.schoolId);
   const opt = <T extends { id: string; name: string }>(xs: T[]) => xs.map((x) => ({ value: x.id, label: x.name }));
   const topicOpts = topics.map((t) => ({ value: t.t.id, label: `${t.subject} — ${t.t.title}` }));
   const common = { subjects: opt(cat.subjects), classes: opt(cat.classes), terms: opt(cat.terms), departments: opt(cat.departments), topics: topicOpts };
@@ -61,11 +63,12 @@ export default async function CurriculumPage({ searchParams }: PageProps<"/admin
                     <Badge tone="green">{questionCount} approved questions</Badge>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <Link href={`/admin/curriculum/audio/${t.id}`} className={buttonClass("secondary", "sm")}><Headphones className="size-4" /> Audio{audio.get(t.id) ? ` (${audio.get(t.id)})` : ""}</Link>
                   <Link href={`/admin/lessons/new?topicId=${t.id}`} className={buttonClass("secondary", "sm")}>Add lesson</Link>
                   <details className="relative">
                     <summary className={buttonClass("secondary", "sm", "list-none cursor-pointer")}><Pencil className="size-4" /> Edit</summary>
-                    <div className="absolute right-0 z-20 mt-2 w-[min(52rem,92vw)] rounded-2xl border border-line bg-card p-4 shadow-lift">
+                    <div className="absolute right-0 z-20 mt-2 w-[min(52rem,92vw)] rounded-2xl border border-line bg-white p-4 shadow-lift">
                       <TopicForm {...common} topic={t} />
                     </div>
                   </details>

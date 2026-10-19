@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { EXAM_TYPES } from "@/core/question-parser";
 import * as XLSX from "xlsx";
 import { can } from "@/core/permissions";
 import { questionFingerprint, validateExcelRow } from "@/core/question-parser";
@@ -240,7 +241,7 @@ export function parsePackWorkbook(
     const cls = classCode(cell(r, "Class"));
     if (!cls) return err(PACK_SHEETS.exams, row, `Class "${cell(r, "Class")}" does not exist.`);
     const examType = cell(r, "Exam Type").toUpperCase().replace(/[\s-]+/g, "_") || "SCHOOL_EXAM";
-    if (!["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "CONTINUOUS_ASSESSMENT", "JAMB", "WAEC", "NECO", "BECE", "CUSTOM", "IELTS", "TOEFL", "SAT", "CHECKPOINT"].includes(examType))
+    if (!(EXAM_TYPES as readonly string[]).includes(examType))
       return err(PACK_SHEETS.exams, row, `Exam Type "${cell(r, "Exam Type")}" is not recognised.`);
     const covered = splitList(cell(r, "Classes Covered").replace(/,/g, ";")).map((c) => classCode(c));
     if (covered.some((c) => !c)) return err(PACK_SHEETS.exams, row, "Every class in Classes Covered must exist.");
@@ -271,7 +272,7 @@ export function parsePackWorkbook(
     if (!(e.passMark >= 0 && e.passMark <= 100)) return err(PACK_SHEETS.exams, row, "Pass Mark must be 0–100.");
     if (!Number.isInteger(e.maxAttempts) || e.maxAttempts < 1 || e.maxAttempts > 100) return err(PACK_SHEETS.exams, row, "Max Attempts must be 1–100.");
     const pool = questionsFor(e.classesCovered, e.termsCovered);
-    if (pool < e.questionCount) warn(PACK_SHEETS.exams, row, `"${title}" needs ${e.questionCount} questions but this pack has ${pool} for its topics; it can be published once enough are approved.`);
+    if (pool < e.questionCount) warn(PACK_SHEETS.exams, row, `"${title}" asks for ${e.questionCount} questions but this pack has ${pool} for its topics; it will use ${pool} with the time shortened to match.`);
     examRows.push(e);
   });
 
@@ -700,11 +701,11 @@ export async function publishPack(actor: Actor, importId: string, ctx: ReqCtx) {
   let exams = 0;
   if (c.examIds.length && can(actor, "exams.publish")) {
     const rows = await db.select().from(examinations).where(and(inArray(examinations.id, c.examIds), eq(examinations.status, "DRAFT")));
-    const { poolSize } = await import("./exams");
+    const { fitExamToPool } = await import("./exams");
     for (const e of rows) {
-      const size = await poolSize(e);
-      if (size < e.questionCount) {
-        notPublished.push(`${e.title}: needs ${e.questionCount} approved questions, has ${size}`);
+      // A smaller pool than planned is fine: the paper uses every approved question, timed to match.
+      if (!(await fitExamToPool(e))) {
+        notPublished.push(`${e.title}: no approved questions yet`);
         continue;
       }
       await db.update(examinations).set({ status: "PUBLISHED", updatedAt: new Date() }).where(eq(examinations.id, e.id));

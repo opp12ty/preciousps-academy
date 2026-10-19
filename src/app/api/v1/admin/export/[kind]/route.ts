@@ -12,6 +12,7 @@ import { studentConditions, type StudentFilter } from "@/server/services/people"
 import { listQuestions } from "@/server/services/questions";
 import { REPORTS, runReport, type ReportKind } from "@/server/services/analytics";
 import { results } from "@/server/db/schema";
+import { scoreBook } from "@/server/services/preciousps-exams";
 
 /**
  * GET /api/v1/admin/export/{students|results|codes|questions|report}?format=csv|xlsx|pdf&…filters
@@ -24,6 +25,13 @@ export const GET = api<{ kind: string }>({ auth: "staff" }, async ({ req, params
   const db = getDb();
   let rows: Record<string, unknown>[] = [];
   let title = "";
+
+  if (params.kind === "scorebook") {
+    if (!can(actor, "results.export")) throw new AppError("FORBIDDEN", "Permission denied.");
+    const book = await scoreBook(actor!.schoolId, sp.get("session") ?? undefined);
+    await recordExport(actor!, "scorebook", "xlsx", book.rows, filters, ctx);
+    return fileResponse(book.buffer, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", `PreciousPS_Score_Book_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
 
   switch (params.kind) {
     case "students": {

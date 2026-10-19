@@ -17,7 +17,7 @@ export function GenerateCodes({ defaultDays, maxBulk, canPremium }: { defaultDay
   return (
     <div className="space-y-4">
       <ActionForm action={generateCodesAction} onSuccess={(r) => { if (r.ok) { setMade(audience); setResult(r.data as { batchId: string; codes: string[] }); } }} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[10rem_7rem_8rem_11rem_1fr_auto] lg:items-end">
-        <SelectField label="For" name="audience" value={audience} onChange={(e) => setAudience(e.target.value)} options={[{ value: "STUDENT", label: "Students" }, { value: "PARENT", label: "Parents / guardians" }]} />
+        <SelectField label="For" name="audience" value={audience} onChange={(e) => setAudience(e.target.value)} options={[{ value: "STUDENT", label: "Students" }, { value: "PARENT", label: "Parents / guardians" }, { value: "SCHOOL", label: "Schools" }]} />
         <TextField label="How many" name="count" type="number" min={1} max={maxBulk} defaultValue="1" required />
         <TextField label="Access days" name="durationDays" type="number" min={1} max={3650} defaultValue={String(defaultDays)} required />
         {forParent ? <input type="hidden" name="tier" value="STANDARD" /> : <SelectField label="Type" name="tier" defaultValue="STANDARD" options={[{ value: "STANDARD", label: "Standard" }, ...(canPremium ? [{ value: "PREMIUM", label: "Premium (international)" }] : [])]} />}
@@ -29,7 +29,7 @@ export function GenerateCodes({ defaultDays, maxBulk, canPremium }: { defaultDay
       </ActionForm>
       {result && (
         <div className="space-y-2">
-          <RevealOnce title={`${result.codes.length} new ${made === "PARENT" ? "parent " : ""}code(s) — UNUSED until a ${made === "PARENT" ? "parent" : "student"} activates`} values={result.codes} note={`Codes are stored encrypted. Access starts when a ${made === "PARENT" ? "parent" : "student"} first activates a code, not now.`} />
+          <RevealOnce title={`${result.codes.length} new ${made === "PARENT" ? "parent " : made === "SCHOOL" ? "school " : ""}code(s) — UNUSED until a ${made === "PARENT" ? "parent" : made === "SCHOOL" ? "school" : "student"} activates`} values={result.codes} note={`Codes are stored encrypted. Access starts when a ${made === "PARENT" ? "parent" : made === "SCHOOL" ? "school" : "student"} first activates a code, not now. A code works only on the kind of account it was made for.`} />
           <a href={`/api/v1/admin/export/codes?batchId=${result.batchId}&reveal=1&format=xlsx`} className={buttonClass("secondary", "sm")}>
             <Download className="size-4" /> Download this batch (Excel)
           </a>

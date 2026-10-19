@@ -176,7 +176,7 @@ export function RevealOnce({ title, values, note }: { title: string; values: str
       {note && <p className="mt-1 text-xs text-muted">{note}</p>}
       <div className="mt-3 grid gap-1.5 font-mono text-sm sm:grid-cols-2">
         {values.map((v) => (
-          <code key={v} className="rounded-lg bg-card px-3 py-1.5 text-navy-800 ring-1 ring-line">
+          <code key={v} className="rounded-lg bg-white px-3 py-1.5 text-navy-800 ring-1 ring-line">
             {v}
           </code>
         ))}

@@ -8,10 +8,10 @@ export function PageSkeleton() {
       </div>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-24 rounded-2xl border border-line bg-card" />
+          <div key={i} className="h-24 rounded-2xl border border-line bg-white" />
         ))}
       </div>
-      <div className="h-72 rounded-2xl border border-line bg-card" />
+      <div className="h-72 rounded-2xl border border-line bg-white" />
     </div>
   );
 }

@@ -50,7 +50,7 @@ export default async function InternationalPage() {
                   </div>
                 </div>
                 {premium ? (
-                  <a href={r.assetId ? `/api/v1/assets/${r.assetId}` : (r.url ?? "#")} target="_blank" rel="noopener noreferrer" className={buttonClass("primary", "sm")}><Download className="size-4" /> Open</a>
+                  <a href={r.assetId ? `/student/materials/read/${r.id}` : (r.url ?? "#")} target="_blank" rel="noopener noreferrer" className={buttonClass("primary", "sm")}><Download className="size-4" /> Open</a>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-xs font-semibold text-muted"><Lock className="size-3.5" /> Premium</span>
                 )}

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { requireParentPage } from "@/server/http";
-import { ChangePasswordForm } from "@/components/account";
+import { ChangePasswordForm, DeleteOwnAccountForm } from "@/components/account";
 import { Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Password" };
@@ -13,6 +13,10 @@ export default async function ParentSecurity() {
       <Card>
         <CardHeader title="Change password" />
         <div className="p-5"><ChangePasswordForm /></div>
+      </Card>
+      <Card>
+        <CardHeader title="Delete my account" description="Permanently close your parent or guardian account. Your children's accounts are not affected." />
+        <div className="p-5"><DeleteOwnAccountForm /></div>
       </Card>
     </div>
   );

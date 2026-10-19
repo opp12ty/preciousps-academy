@@ -12,7 +12,7 @@ import { seedPlatform } from "@/server/seed";
 import { resolveSessionToken } from "@/server/auth/session";
 import { registerStudent, signInNewStudent } from "@/server/services/auth";
 import { clearAllRateLimits } from "@/server/rate-limit";
-import { getSetting } from "@/server/settings";
+import { clearSettingCache, getSetting } from "@/server/settings";
 import { sql } from "drizzle-orm";
 
 const ctx = { ip: "127.0.0.1", userAgent: "vitest" };
@@ -48,6 +48,7 @@ async function setAutoStudentId(on: boolean) {
   const sid = (await db.select({ id: S.schools.id }).from(S.schools).limit(1))[0].id;
   const cur = await getSetting(sid, "examination");
   await db.execute(sql`INSERT INTO settings (school_id, key, value) VALUES (${sid}, ${"examination"}, ${JSON.stringify({ ...cur, studentIdAuto: on })}::jsonb) ON CONFLICT (school_id, key) DO UPDATE SET value = EXCLUDED.value`);
+  clearSettingCache();
 }
 
 describe("student registration", () => {

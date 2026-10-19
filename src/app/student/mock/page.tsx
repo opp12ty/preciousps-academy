@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Mock CBT" };
 
 export default async function MockPage() {
   const s = await requireStudentPage();
-  const [exams, access] = await Promise.all([listStudentExams(s.actor, { types: ["MOCK", "JAMB", "WAEC", "NECO", "BECE", "SCHOOL_EXAM"] }), getAccessState(s.user.id)]);
+  const [exams, access] = await Promise.all([listStudentExams(s.actor, { types: ["MOCK", "JAMB", "WAEC", "NECO", "BECE", "SCHOOL_EXAM", "COMMON_ENTRANCE", "JUPEB", "IJMB", "PreciousPS_EXAM"] }), getAccessState(s.user.id)]);
   return (
     <>
       <PageHeader eyebrow="Exam preparation" title="Mock CBT" description="Full-length mock papers for school examinations, JAMB, WAEC and NECO preparation." />

@@ -49,7 +49,7 @@ export function CentralUpload({ templateHref, templateLabel = "Download the Exce
 
   const ready = report?.subjects.filter((s) => s.importId && !s.errors.length) ?? [];
   const wordTotal = report ? Object.values(report.words.counts).reduce((a, b) => a + b, 0) : 0;
-  const extrasReady = Boolean(report && ((report.words.allowed && wordTotal > 0) || (report.resources.allowed && report.resources.count > 0) || (report.hub.allowed && report.hub.articles + report.hub.questions > 0)));
+  const extrasReady = Boolean(report && ((report.words.allowed && wordTotal > 0) || (report.resources.allowed && report.resources.count > 0) || (report.hub.allowed && report.hub.articles + report.hub.questions > 0) || (report.holiday.allowed && report.holiday.count > 0)));
 
   const run = async () => {
     if (!report) return;
@@ -77,8 +77,8 @@ export function CentralUpload({ templateHref, templateLabel = "Download the Exce
     if (extrasReady) {
       const r = await centralExtrasAction(form());
       if (r.ok) {
-        const d = r.data as { wordsAdded: number; wordsUpdated: number; resourcesAdded: number; resourcesSkipped: number; articlesAdded: number; questionsAdded: number; hubSkipped: number };
-        setExtras(`${d.wordsAdded} word(s) and phrase(s) added, ${d.wordsUpdated} updated; ${d.resourcesAdded} resource(s) added${d.resourcesSkipped ? `, ${d.resourcesSkipped} already there or not accepted` : ""}; ${d.articlesAdded} article(s) added for review, ${d.questionsAdded} quiz question(s) added${d.hubSkipped ? `, ${d.hubSkipped} already there` : ""}.`);
+        const d = r.data as { wordsAdded: number; wordsUpdated: number; resourcesAdded: number; resourcesSkipped: number; articlesAdded: number; questionsAdded: number; hubSkipped: number; holidayAdded: number; holidaySkipped: number };
+        setExtras(`${d.wordsAdded} word(s) and phrase(s) added, ${d.wordsUpdated} updated; ${d.resourcesAdded} resource(s) added${d.resourcesSkipped ? `, ${d.resourcesSkipped} already there or not accepted` : ""}; ${d.articlesAdded} article(s) added for review, ${d.questionsAdded} quiz question(s) added${d.hubSkipped ? `, ${d.hubSkipped} already there` : ""}; ${d.holidayAdded} holiday task(s) added${d.holidaySkipped ? `, ${d.holidaySkipped} already there` : ""}.`);
       } else setExtras(`Study materials and resources were not imported: ${r.error}`);
     }
     setBusy("");
@@ -166,6 +166,15 @@ export function CentralUpload({ templateHref, templateLabel = "Download the Exce
               <p className="text-sm text-navy-800">{report.hub.articles} article(s) (they will wait in Review) · {report.hub.questions} quiz question(s)</p>
               {!report.hub.allowed && <p className="text-xs font-semibold text-danger-600">Your account cannot change this content, so these rows will be skipped.</p>}
               {report.hub.issues.length > 0 && <Issues issues={report.hub.issues} />}
+            </div>
+          )}
+
+          {(report.holiday.count > 0 || report.holiday.issues.length > 0) && (
+            <div>
+              <p className="mb-1 text-sm font-bold text-navy-800">Holiday Programme</p>
+              <p className="text-sm text-navy-800">{report.holiday.count} holiday task(s) ready</p>
+              {!report.holiday.allowed && <p className="text-xs font-semibold text-danger-600">Your account cannot set holiday tasks, so these rows will be skipped.</p>}
+              {report.holiday.issues.length > 0 && <Issues issues={report.holiday.issues} />}
             </div>
           )}
 

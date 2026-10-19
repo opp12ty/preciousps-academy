@@ -50,7 +50,7 @@ export function FilterBar({ filters, values, action, exportHref, hidden }: { fil
             <summary className={buttonClass("secondary", "md", "list-none cursor-pointer")}>
               <Download className="size-4" /> Export
             </summary>
-            <div className="absolute right-0 z-20 mt-1 w-40 overflow-hidden rounded-xl border border-line bg-card shadow-lift">
+            <div className="absolute right-0 z-20 mt-1 w-40 overflow-hidden rounded-xl border border-line bg-white shadow-lift">
               {(["csv", "xlsx", "pdf"] as const).map((fmt) => (
                 <a key={fmt} href={`${exportHref}${exportHref.includes("?") ? "&" : "?"}format=${fmt}`} className="block px-4 py-2.5 text-sm font-semibold text-navy-800 hover:bg-surface">
                   {fmt === "csv" ? "CSV" : fmt === "xlsx" ? "Excel (.xlsx)" : "PDF"}

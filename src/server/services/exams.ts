@@ -9,6 +9,7 @@ import {
   markResponse,
   normaliseResponse,
   selectQuestionIds,
+  shuffle,
   SUBMIT_GRACE_MS,
   summarise,
   toPublicQuestion,
@@ -17,6 +18,7 @@ import {
   type Rng,
 } from "@/core/exam-engine";
 import { getDb, type Executor } from "../db";
+import { JAMB_SUBJECT_CODES } from "@/core/exam-programmes";
 import {
   attemptAnswers,
   attemptEvents,
@@ -28,6 +30,7 @@ import {
   examinations,
   questions,
   results,
+  topics,
   students,
   subjects,
   users,
@@ -40,6 +43,8 @@ import { FEATURE_DENIED } from "@/core/features";
 import { loadBankQuestions } from "./questions";
 import { resolveSection, sectionCond, studentScope, type StudentScope } from "./scope";
 import { SECTIONS, sectionAllows } from "@/core/sections";
+import { EXAM_TYPES } from "@/core/question-parser";
+import { examTypeAllowsClass } from "@/core/exam-programmes";
 import { notifyUser } from "./notifications";
 
 /** CSPRNG in [0,1) for production randomisation. */
@@ -68,7 +73,7 @@ export const examInputSchema = z
     departmentId: uuidOpt,
     level: sectionOpt,
     year: z.coerce.number().int().min(1990).max(2100).nullish(),
-    examType: z.enum(["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "CONTINUOUS_ASSESSMENT", "JAMB", "WAEC", "NECO", "BECE", "CUSTOM", "IELTS", "TOEFL", "SAT", "CHECKPOINT"]),
+    examType: z.enum(EXAM_TYPES),
     questionCount: z.coerce.number().int().min(1).max(500),
     durationMinutes: z.coerce.number().int().min(1).max(600),
     totalMarks: z.coerce.number().positive().max(10000).nullish(),
@@ -90,7 +95,7 @@ export const examInputSchema = z
         difficulties: z.array(z.enum(["EASY", "MEDIUM", "HARD"])).optional(),
         matchClass: z.boolean().optional(),
         /** Draw only questions tagged with these exam types (e.g. JAMB-only tests). */
-        examTypes: z.array(z.enum(["JAMB", "WAEC", "NECO", "BECE", "IELTS", "TOEFL", "SAT", "CHECKPOINT"])).max(8).optional(),
+        examTypes: z.array(z.enum(["JAMB", "WAEC", "NECO", "BECE", "IELTS", "TOEFL", "SAT", "CHECKPOINT", "COMMON_ENTRANCE", "JUPEB", "IJMB", "PreciousPS_EXAM"])).max(12).optional(),
       })
       .nullish(),
   })
@@ -121,7 +126,7 @@ export async function updateExam(actor: Actor, id: string, raw: unknown, ctx: Re
   const level = await resolveSection(actor.schoolId, e.classId, e.level);
   const [row] = await db
     .update(examinations)
-    .set({ ...e, level, poolFilter: keepExamTypes(e.poolFilter ?? null, cur.poolFilter), version: cur.version + 1, updatedAt: new Date() })
+    .set({ ...e, ...((cur.poolFilter as PoolFilter | null)?.allSubjects ? { subjectId: cur.subjectId } : {}), level, poolFilter: handSized(keepExamTypes(e.poolFilter ?? null, cur.poolFilter), e.questionCount !== cur.questionCount), version: cur.version + 1, updatedAt: new Date() })
     .where(eq(examinations.id, id))
     .returning();
   await audit({ actor, action: "exam.edited", entityType: "examination", entityId: id, summary: `${row.title} → v${row.version}` }, ctx);
@@ -134,8 +139,16 @@ export async function setExamStatus(actor: Actor, id: string, status: "DRAFT" | 
   if (!cur) throw new AppError("NOT_FOUND", "Examination not found.");
   if (status === "PUBLISHED") {
     const size = await poolSize(cur);
-    if (size < cur.questionCount)
-      throw new AppError("VALIDATION", `Cannot publish: the exam needs ${cur.questionCount} approved questions but the pool has ${size}. Approve more questions or reduce the count.`);
+    if (size === 0) throw new AppError("VALIDATION", "Cannot publish: this exam has no approved questions yet. Upload or approve some questions first.");
+    if (size < cur.questionCount) {
+      // A small pool is never a reason to refuse: the paper uses every question there is, with the
+      // same time per question as before.
+      const minutes = minutesForPaper(size, cur.durationMinutes / cur.questionCount);
+      await db.update(examinations).set({ questionCount: size, durationMinutes: minutes, version: cur.version + 1 }).where(eq(examinations.id, id));
+      await audit({ actor, action: "exam.resized", entityType: "examination", entityId: id, summary: `${cur.title}: ${cur.questionCount} → ${size} questions, ${cur.durationMinutes} → ${minutes} minutes (pool has ${size})` }, ctx);
+      cur.questionCount = size;
+      cur.durationMinutes = minutes;
+    }
   }
   await db.update(examinations).set({ status, updatedAt: new Date() }).where(eq(examinations.id, id));
   await audit({ actor, action: status === "PUBLISHED" ? "exam.published" : status === "ARCHIVED" ? "exam.archived" : "exam.unpublished", entityType: "examination", entityId: id, summary: cur.title }, ctx);
@@ -146,23 +159,62 @@ export async function setExamStatus(actor: Actor, id: string, status: "DRAFT" | 
   }
 }
 
-type PoolFilter = { years?: number[]; topicIds?: string[]; difficulties?: string[]; matchClass?: boolean; examTypes?: ("JAMB" | "WAEC" | "NECO" | "BECE" | "IELTS" | "TOEFL" | "SAT" | "CHECKPOINT")[] };
+type PoolFilter = {
+  years?: number[];
+  topicIds?: string[];
+  difficulties?: string[];
+  matchClass?: boolean;
+  examTypes?: ("JAMB" | "WAEC" | "NECO" | "BECE" | "IELTS" | "TOEFL" | "SAT" | "CHECKPOINT" | "COMMON_ENTRANCE" | "JUPEB" | "IJMB" | "PreciousPS_EXAM")[];
+  /** Draw only questions written for these classes (e.g. JSS1–JSS3 for a BECE paper). */
+  classIds?: string[];
+  /** With both examTypes and classIds: questions of those types OR of those classes. */
+  orClasses?: boolean;
+  /** With classIds: questions not tied to any class (but within the exam section) may be drawn too. */
+  unclassed?: boolean;
+  /** Set on the standard JAMB, BECE and Common Entrance papers the system keeps up to date. */
+  standard?: boolean;
+  /** False once staff change the question count by hand: the paper then keeps its own size. */
+  autoSize?: boolean;
+  /** Every subject of the class (Precious PS Examinations): the paper is drawn evenly across subjects. */
+  allSubjects?: boolean;
+  /** Only questions on topics of these terms. */
+  termIds?: string[];
+  /** Identifies a Precious PS Examination: "<class code>-<term order>". */
+  fodanKey?: string;
+};
 
-/** The exam form does not edit the exam-type restriction, so an edit must not silently drop it. */
+/** Pool settings the exam form does not show; an edit keeps them. */
+const HIDDEN_POOL_KEYS = ["classIds", "orClasses", "unclassed", "standard", "autoSize", "allSubjects", "termIds", "fodanKey"] as const;
+
+/** The exam form does not edit the exam-type, class or standard-paper settings, so an edit must not silently drop them. */
 function keepExamTypes(next: PoolFilter | null, current: unknown): PoolFilter | null {
-  const types = (current as PoolFilter | null)?.examTypes;
-  if (!types?.length || next?.examTypes?.length) return next;
-  return { ...(next ?? {}), examTypes: types };
+  const cur = (current as PoolFilter | null) ?? {};
+  const out: PoolFilter = { ...(next ?? {}) };
+  if (!out.examTypes?.length && cur.examTypes?.length) out.examTypes = cur.examTypes;
+  for (const k of HIDDEN_POOL_KEYS) if (out[k] === undefined && cur[k] !== undefined) (out as Record<string, unknown>)[k] = cur[k];
+  return Object.keys(out).length ? out : next;
 }
+
+/** A standard paper whose count was changed by hand stops following the standard size. */
+const handSized = (f: PoolFilter | null, changed: boolean) => (changed && f?.standard ? { ...f, autoSize: false } : f);
+
+/** Time allowed for a paper: the same minutes per question whatever the size, never under 5 minutes. */
+export const minutesForPaper = (questions: number, perQuestion: number) => Math.max(5, Math.ceil(questions * perQuestion));
 
 function poolConditions(exam: typeof examinations.$inferSelect): SQL[] {
   const f = (exam.poolFilter ?? {}) as PoolFilter;
-  const conds: SQL[] = [eq(questions.schoolId, exam.schoolId), eq(questions.subjectId, exam.subjectId), eq(questions.status, "APPROVED")];
+  const conds: SQL[] = [eq(questions.schoolId, exam.schoolId), eq(questions.status, "APPROVED")];
+  if (!f.allSubjects) conds.push(eq(questions.subjectId, exam.subjectId));
+  if (f.termIds?.length) conds.push(inArray(questions.topicId, getDb().select({ id: topics.id }).from(topics).where(inArray(topics.termId, f.termIds))));
   if (f.years?.length) conds.push(inArray(questions.year, f.years));
   if (f.topicIds?.length) conds.push(inArray(questions.topicId, f.topicIds));
   if (f.difficulties?.length) conds.push(inArray(questions.difficulty, f.difficulties as ("EASY" | "MEDIUM" | "HARD")[]));
   if (f.matchClass && exam.classId) conds.push(or(eq(questions.classId, exam.classId), isNull(questions.classId))!);
-  if (f.examTypes?.length) conds.push(inArray(questions.examType, f.examTypes));
+  if (f.examTypes?.length && f.classIds?.length && f.orClasses) conds.push(or(inArray(questions.examType, f.examTypes), inArray(questions.classId, f.classIds))!);
+  else {
+    if (f.examTypes?.length) conds.push(inArray(questions.examType, f.examTypes));
+    if (f.classIds?.length) conds.push(f.unclassed ? or(inArray(questions.classId, f.classIds), isNull(questions.classId))! : inArray(questions.classId, f.classIds));
+  }
   // A JSS exam never draws SS questions and vice versa.
   if (exam.level) conds.push(sectionCond(questions.level, exam.level));
   return conds;
@@ -173,6 +225,50 @@ export async function poolSize(exam: typeof examinations.$inferSelect, db: Execu
   if (fixed[0].n > 0) return fixed[0].n;
   const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(questions).where(and(...poolConditions(exam)));
   return n;
+}
+
+/**
+ * Makes an exam fit its question pool: when the pool is smaller than the set count, the paper uses
+ * every question there is and keeps the same time per question. False when the pool is empty.
+ */
+export async function fitExamToPool(exam: typeof examinations.$inferSelect, db: Executor = getDb()) {
+  const size = await poolSize(exam, db);
+  if (!size) return false;
+  if (size < exam.questionCount) await db.update(examinations).set({ questionCount: size, durationMinutes: minutesForPaper(size, exam.durationMinutes / exam.questionCount), version: exam.version + 1 }).where(eq(examinations.id, exam.id));
+  return true;
+}
+
+/**
+ * An all-subjects paper (Precious PS Examination): questions are dealt subject by subject, so every subject
+ * the class offers is covered as evenly as the pool allows, then grouped by subject like a real paper.
+ */
+async function balancedPick(exam: typeof examinations.$inferSelect, db: Executor, count: number, rng: Parameters<typeof shuffle>[1]) {
+  const rows = await db
+    .select({ id: questions.id, s: questions.subjectId, order: subjects.sortOrder, name: subjects.name })
+    .from(questions)
+    .innerJoin(subjects, eq(subjects.id, questions.subjectId))
+    .where(and(...poolConditions(exam)));
+  const bySubject = new Map<string, { order: number; name: string; ids: string[] }>();
+  for (const r of rows) {
+    const g = bySubject.get(r.s) ?? { order: r.order, name: r.name, ids: [] };
+    g.ids.push(r.id);
+    bySubject.set(r.s, g);
+  }
+  const groups = shuffle([...bySubject.values()], rng).map((g) => ({ ...g, ids: shuffle(g.ids, rng), picked: [] as string[] }));
+  let left = Math.min(count, rows.length);
+  while (left > 0) {
+    let moved = false;
+    for (const g of groups) {
+      if (!left) break;
+      const next = g.ids.shift();
+      if (!next) continue;
+      g.picked.push(next);
+      left--;
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  return groups.sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)).flatMap((g) => g.picked);
 }
 
 async function poolIds(exam: typeof examinations.$inferSelect, db: Executor): Promise<string[]> {
@@ -191,7 +287,13 @@ async function poolIds(exam: typeof examinations.$inferSelect, db: Executor): Pr
 /* ------------------------------------------------------- student surface */
 
 function eligible(exam: typeof examinations.$inferSelect, scope: StudentScope) {
-  return (!exam.classId || exam.classId === scope.classId) && (!exam.departmentId || exam.departmentId === scope.departmentId) && sectionAllows(exam.level, scope.level);
+  return (
+    (!exam.classId || exam.classId === scope.classId) &&
+    (!exam.departmentId || exam.departmentId === scope.departmentId) &&
+    sectionAllows(exam.level, scope.level) &&
+    // Common Entrance is for Basic 4-6, BECE for JSS2-3, WAEC/NECO/JAMB/JUPEB/IJMB for SS2-3.
+    examTypeAllowsClass(exam.examType, scope.classCode)
+  );
 }
 
 const isJambOnly = (exam: typeof examinations.$inferSelect) => exam.examType === "JAMB" && Boolean((exam.poolFilter as PoolFilter | null)?.examTypes?.includes("JAMB"));
@@ -296,9 +398,13 @@ export async function startAttempt(actor: Actor, examId: string, clientSessionId
     if (used >= exam.maxAttempts) throw new AppError("ATTEMPT_LIMIT", `You have used all ${exam.maxAttempts} attempt(s) for this examination.`);
 
     const ids = await poolIds(exam, tx);
+    // If questions were retired after publishing, the attempt uses what is left, timed to match.
+    const count = Math.min(exam.questionCount, new Set(ids).size);
+    const minutes = count < exam.questionCount ? minutesForPaper(count, exam.durationMinutes / exam.questionCount) : exam.durationMinutes;
     let selected: string[];
     try {
-      selected = selectQuestionIds(ids, exam.questionCount, exam.randomizeQuestions, rng);
+      selected = (exam.poolFilter as PoolFilter | null)?.allSubjects ? await balancedPick(exam, tx, Math.max(1, count), rng) : selectQuestionIds(ids, Math.max(1, count), exam.randomizeQuestions, rng);
+      if (!selected.length) throw new ExamEngineError("POOL_TOO_SMALL", "No questions.");
     } catch (e) {
       if (e instanceof ExamEngineError) throw new AppError("EXAM_UNAVAILABLE", "This examination is not ready yet. Please contact the Super Admin.");
       throw e;
@@ -307,7 +413,7 @@ export async function startAttempt(actor: Actor, examId: string, clientSessionId
     const byId = new Map(bank.map((q) => [q.id, q]));
     const snaps = selected.map((id) => buildSnapshot(byId.get(id)!, exam.randomizeOptions, rng));
 
-    const durationMs = exam.durationMinutes * 60_000;
+    const durationMs = minutes * 60_000;
     const deadline = new Date(Math.min(now.getTime() + durationMs, exam.endsAt ? exam.endsAt.getTime() : Infinity));
     const attemptNumber = (prior[0]?.attemptNumber ?? 0) + 1;
     const examSnapshot = {
@@ -317,8 +423,8 @@ export async function startAttempt(actor: Actor, examId: string, clientSessionId
       subjectId: exam.subjectId,
       examType: exam.examType,
       year: exam.year,
-      questionCount: exam.questionCount,
-      durationMinutes: exam.durationMinutes,
+      questionCount: count,
+      durationMinutes: minutes,
       passMark: exam.passMark,
       negativeMarking: exam.negativeMarking,
       randomizeQuestions: exam.randomizeQuestions,
@@ -975,10 +1081,14 @@ export async function listExamsAdmin(actor: Actor, f: { status?: string; search?
 
 /* ------------------------------------------------------------ JAMB tests */
 
+/** The default standard JAMB size; the Super Admin can change it in Settings → Examination. */
 export const JAMB_TEST_QUESTIONS = 50;
-const JAMB_TEST_MINUTES = 40;
+/** 50 questions in 40 minutes: 48 seconds a question, as in the UTME. */
+const JAMB_MINUTES_PER_QUESTION = 0.8;
+/** A JAMB test draws only JAMB questions once a subject has this many; below it, standard SS2–SS3 questions join them. */
+export const JAMB_ONLY_FROM = 20;
 
-/** One row per subject: how many JAMB-tagged questions it has and the state of its JAMB-only test. */
+/** One row per subject: how many JAMB-tagged questions it has and the state of its JAMB test. */
 export async function jambOverview(actor: Actor) {
   const db = getDb();
   const subs = await db.select({ id: subjects.id, name: subjects.name, code: subjects.code }).from(subjects).where(and(eq(subjects.schoolId, actor.schoolId), isNull(subjects.archivedAt))).orderBy(asc(subjects.name));
@@ -991,49 +1101,130 @@ export async function jambOverview(actor: Actor) {
   return subs.map((s) => {
     const c = counts.find((x) => x.subjectId === s.id);
     const t = tests.find((x) => x.subjectId === s.id);
-    return { ...s, approved: c?.approved ?? 0, total: c?.total ?? 0, test: t ? { id: t.id, title: t.title, status: t.status, questionCount: t.questionCount, durationMinutes: t.durationMinutes } : null };
+    return { ...s, approved: c?.approved ?? 0, total: c?.total ?? 0, test: t ? { id: t.id, title: t.title, status: t.status, questionCount: t.questionCount, durationMinutes: t.durationMinutes, mixed: Boolean((t.poolFilter as PoolFilter | null)?.orClasses) } : null };
   });
 }
 
+async function classIdsFor(schoolId: string, codes: string[], db: Executor = getDb()) {
+  const rows = await db.select({ id: classes.id, code: classes.code }).from(classes).where(and(eq(classes.schoolId, schoolId), isNull(classes.archivedAt)));
+  return rows.filter((c) => codes.includes(c.code.toUpperCase().replace(/[^A-Z0-9]/g, ""))).map((c) => c.id);
+}
+
 /**
- * Creates the subject's JAMB-only test if it does not exist and publishes it once the subject has
- * enough approved JAMB questions. Safe to run again after more questions are uploaded.
+ * Creates (or tops up) one JAMB test per subject. Every attempt draws a fresh random set. A subject
+ * with enough JAMB questions gets a JAMB-only test of up to 50; one with fewer also draws its
+ * standard SS2–SS3 questions. A small pool is never a reason to wait: the test uses what there is,
+ * with 48 seconds a question. Tests the staff have edited keep their settings unless the pool shrank.
  */
 export async function setupJambTests(actor: Actor, subjectIds: string[] | "ALL", ctx: ReqCtx) {
   const db = getDb();
-  const rows = (await jambOverview(actor)).filter((r) => (subjectIds === "ALL" ? r.total > 0 || r.test : subjectIds.includes(r.id)));
+  const standardSize = (await getSetting(actor.schoolId, "examination")).jambQuestions ?? JAMB_TEST_QUESTIONS;
+  const senior = await classIdsFor(actor.schoolId, ["SS2", "SS3"], db);
+  const subjectCodes = subjectIds === "ALL" ? null : new Set(subjectIds);
+  const all = await jambOverview(actor);
+  const rows = all.filter((r) => (subjectCodes ? subjectCodes.has(r.id) : r.total > 0 || r.test || JAMB_SUBJECT_CODES.includes(r.code)));
   const out = { created: 0, published: 0, waiting: [] as string[] };
   for (const r of rows) {
-    let test = r.test;
-    if (!test) {
-      const [row] = await db
+    // JAMB-only once the subject has enough JAMB questions to fill the standard paper; otherwise its
+    // standard SS2–SS3 questions join them so every subject sits a full paper.
+    const jambOnly = r.approved >= Math.max(JAMB_ONLY_FROM, standardSize);
+    const pool: PoolFilter = jambOnly ? { examTypes: ["JAMB"], standard: true } : { examTypes: ["JAMB"], classIds: senior, orClasses: true, standard: true };
+
+    let row = r.test ? (await db.select().from(examinations).where(eq(examinations.id, r.test.id)))[0] : null;
+    if (!row) {
+      [row] = await db
         .insert(examinations)
         .values({
           schoolId: actor.schoolId,
           title: `JAMB ${r.name}`,
-          description: `${JAMB_TEST_QUESTIONS} JAMB (UTME) questions in ${r.name}. Every attempt draws a fresh set.`,
+          description: jambOnly ? `JAMB (UTME) questions in ${r.name}. Every attempt draws a fresh random set.` : `JAMB (UTME) and standard SS2–SS3 questions in ${r.name}. Every attempt draws a fresh random set.`,
           subjectId: r.id,
           level: "SENIOR_SECONDARY",
           examType: "JAMB",
-          questionCount: JAMB_TEST_QUESTIONS,
-          durationMinutes: JAMB_TEST_MINUTES,
+          questionCount: standardSize,
+          durationMinutes: minutesForPaper(standardSize, JAMB_MINUTES_PER_QUESTION),
           maxAttempts: 100,
-          poolFilter: { examTypes: ["JAMB"] } satisfies PoolFilter,
+          poolFilter: pool,
           status: "DRAFT",
           createdBy: actor.id,
         })
         .returning();
       await audit({ actor, action: "exam.created", entityType: "examination", entityId: row.id, summary: row.title }, ctx);
-      test = { id: row.id, title: row.title, status: row.status, questionCount: row.questionCount, durationMinutes: row.durationMinutes };
       out.created++;
+    } else if (Boolean((row.poolFilter as PoolFilter | null)?.orClasses) === jambOnly) {
+      // The mix follows the number of JAMB questions: JAMB-only when there are enough, mixed when not.
+      const cur = (row.poolFilter as PoolFilter | null) ?? {};
+      const next: PoolFilter = jambOnly ? { examTypes: ["JAMB"], standard: true } : { examTypes: ["JAMB"], classIds: senior, orClasses: true, standard: true };
+      if (cur.autoSize === false) next.autoSize = false;
+      await db.update(examinations).set({ poolFilter: next, description: jambOnly ? `JAMB (UTME) questions in ${r.name}. Every attempt draws a fresh random set.` : `JAMB (UTME) and standard SS2–SS3 questions in ${r.name}. Every attempt draws a fresh random set.` }).where(eq(examinations.id, row.id));
+      row = (await db.select().from(examinations).where(eq(examinations.id, row.id)))[0];
     }
-    if (test.status === "PUBLISHED") continue;
-    if (r.approved >= test.questionCount) {
-      // Published quietly: setting up many subjects at once must not send one announcement per subject.
-      await db.update(examinations).set({ status: "PUBLISHED", updatedAt: new Date() }).where(eq(examinations.id, test.id));
-      await audit({ actor, action: "exam.published", entityType: "examination", entityId: test.id, summary: test.title }, ctx);
+    const size = await poolSize(row, db);
+    if (!size) {
+      out.waiting.push(`${r.name} (no approved questions)`);
+      continue;
+    }
+    // Follow the standard size (growing as questions arrive), or use every question when there are fewer.
+    // A test whose count staff set by hand keeps it, shrinking only if its pool shrank.
+    const managed = (row.poolFilter as PoolFilter | null)?.autoSize !== false;
+    const wanted = Math.min(managed ? standardSize : row.questionCount, size);
+    const minutes = managed ? minutesForPaper(wanted, JAMB_MINUTES_PER_QUESTION) : minutesForPaper(wanted, row.durationMinutes / row.questionCount);
+    if (wanted !== row.questionCount || (managed && minutes !== row.durationMinutes)) await db.update(examinations).set({ questionCount: wanted, durationMinutes: minutes, updatedAt: new Date() }).where(eq(examinations.id, row.id));
+    if (row.status === "PUBLISHED") continue;
+    // Published quietly: setting up many subjects at once must not send one announcement per subject.
+    await db.update(examinations).set({ status: "PUBLISHED", updatedAt: new Date() }).where(eq(examinations.id, row.id));
+    await audit({ actor, action: "exam.published", entityType: "examination", entityId: row.id, summary: `${row.title} (${wanted} questions)` }, ctx);
+    out.published++;
+  }
+  return out;
+}
+
+/**
+ * The standard BECE (every JSS subject, from JSS1–JSS3 questions) and Common Entrance (every upper
+ * primary subject, from Basic 4–6 questions) papers. Each attempt draws a fresh random set. A subject
+ * that already has a paper of that type (built-in or made by staff) is left alone, so every paper
+ * stays editable in Examinations. Papers are published quietly and sized to the pool.
+ */
+export async function setupStandardPapers(actor: Actor, ctx: ReqCtx) {
+  const db = getDb();
+  const cfg = await getSetting(actor.schoolId, "examination");
+  const out = { jamb: await setupJambTests(actor, "ALL", ctx), created: 0, published: 0, resized: 0 };
+  const specs = [
+    { type: "BECE" as const, classes: ["JSS1", "JSS2", "JSS3"], level: "JUNIOR_SECONDARY", size: cfg.beceQuestions ?? 50, perQuestion: 1.2, title: (n: string) => `BECE ${n} Standard Paper`, about: (n: string) => `BECE-style paper drawn at random from the whole JSS1–JSS3 ${n} syllabus. A fresh set every attempt.` },
+    { type: "COMMON_ENTRANCE" as const, classes: ["BASIC4", "BASIC5", "BASIC6"], level: "PRIMARY", size: cfg.commonEntranceQuestions ?? 50, perQuestion: 1, title: (n: string) => `Common Entrance ${n} Standard Paper`, about: (n: string) => `Common Entrance-style paper drawn at random from the Basic 4–Basic 6 ${n} syllabus. A fresh set every attempt.` },
+  ];
+  const subs = await db.select({ id: subjects.id, name: subjects.name }).from(subjects).where(and(eq(subjects.schoolId, actor.schoolId), isNull(subjects.archivedAt)));
+  for (const spec of specs) {
+    const ids = await classIdsFor(actor.schoolId, spec.classes, db);
+    if (!ids.length) continue;
+    const papers = await db.select().from(examinations).where(and(eq(examinations.schoolId, actor.schoolId), eq(examinations.examType, spec.type), ne(examinations.status, "ARCHIVED"), eq(examinations.isPremium, false)));
+    // Standard papers follow the size set by the Super Admin, unless staff changed one by hand.
+    for (const p of papers) {
+      const pf = (p.poolFilter as PoolFilter | null) ?? {};
+      if (!pf.standard || pf.autoSize === false) continue;
+      const size = Math.min(spec.size, await poolSize(p, db));
+      if (!size || size === p.questionCount) continue;
+      await db.update(examinations).set({ questionCount: size, durationMinutes: minutesForPaper(size, spec.perQuestion), updatedAt: new Date() }).where(eq(examinations.id, p.id));
+      out.resized++;
+    }
+    const have = new Set(papers.map((x) => x.subjectId));
+    const counts = await db
+      .select({ s: questions.subjectId, n: sql<number>`count(*)::int` })
+      .from(questions)
+      .where(and(eq(questions.schoolId, actor.schoolId), eq(questions.status, "APPROVED"), or(inArray(questions.classId, ids), and(isNull(questions.classId), eq(questions.level, spec.level)))))
+      .groupBy(questions.subjectId);
+    for (const sub of subs) {
+      const n = counts.find((c) => c.s === sub.id)?.n ?? 0;
+      if (!n || have.has(sub.id)) continue;
+      const size = Math.min(spec.size, n);
+      const [row] = await db
+        .insert(examinations)
+        .values({ schoolId: actor.schoolId, title: spec.title(sub.name), description: spec.about(sub.name), subjectId: sub.id, level: spec.level, examType: spec.type, questionCount: size, durationMinutes: minutesForPaper(size, spec.perQuestion), maxAttempts: 10, passMark: 50, poolFilter: { classIds: ids, unclassed: true, standard: true } satisfies PoolFilter, status: "PUBLISHED", createdBy: actor.id })
+        .returning();
+      await audit({ actor, action: "exam.created", entityType: "examination", entityId: row.id, summary: `${row.title} (${size} questions, published)` }, ctx);
+      out.created++;
       out.published++;
-    } else out.waiting.push(`${r.name} (${r.approved}/${test.questionCount})`);
+    }
   }
   return out;
 }

@@ -1,42 +1,40 @@
 @import "tailwindcss";
 
-/* Precious PS design system "Campus Ivory": warm ivory canvas, midnight ink, electric cobalt, bright gold. */
+/* Precious PS design tokens — navy, royal blue, white, controlled gold. */
 @theme {
-  --color-navy-950: #060c24;
-  --color-navy-900: #0a1432;
-  --color-navy-800: #0f1c4d;
-  --color-navy-700: #18296a;
-  --color-navy-600: #26398a;
-  --color-royal-700: #1b46d6;
-  --color-royal-600: #2563ff;
-  --color-royal-500: #4d82ff;
-  --color-royal-100: #dfe8ff;
-  --color-royal-50: #f0f4ff;
-  --color-gold-600: #a67900;
-  --color-gold-500: #f2b705;
-  --color-gold-400: #ffcb2e;
-  --color-gold-100: #fff1c2;
-  --color-gold-50: #fffaf0;
-  --color-card: #ffffff;
-  --color-surface: #f7f4ec;
-  --color-ink: #0c1536;
-  --color-muted: #5d6279;
-  --color-line: #e7e1d1;
-  --color-success-600: #0b7a53;
-  --color-success-50: #e9f9f1;
+  --color-navy-950: #050f26;
+  --color-navy-900: #081634;
+  --color-navy-800: #0b1f4b;
+  --color-navy-700: #122a63;
+  --color-navy-600: #1b3a7e;
+  --color-royal-700: #1a45c4;
+  --color-royal-600: #1d4ed8;
+  --color-royal-500: #2f66ea;
+  --color-royal-100: #dbe6ff;
+  --color-royal-50: #eef3ff;
+  --color-gold-600: #a8841e;
+  --color-gold-500: #c8a02f;
+  --color-gold-400: #d8b650;
+  --color-gold-100: #f7efd6;
+  --color-gold-50: #fcf8ec;
+  --color-surface: #f5f7fc;
+  --color-ink: #0d1733;
+  --color-muted: #5b6784;
+  --color-line: #e3e8f2;
+  --color-success-600: #047857;
+  --color-success-50: #ecfdf5;
   --color-danger-600: #c62828;
-  --color-danger-50: #fff0f0;
-  --color-warn-600: #a85a00;
-  --color-warn-50: #fff7e6;
+  --color-danger-50: #fef2f2;
+  --color-warn-600: #b45309;
+  --color-warn-50: #fffbeb;
 
-  --font-sans: var(--font-figtree), ui-sans-serif, system-ui, "Segoe UI", Roboto, Arial, sans-serif;
-  --font-display: var(--font-sora), var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-display: var(--font-playfair), Georgia, "Times New Roman", serif;
 
-  --shadow-card: 0 1px 0 rgb(15 28 77 / 0.04);
-  --shadow-lift: 0 22px 44px -22px rgb(10 20 50 / 0.4);
-  --radius-lg: 0.5rem;
-  --radius-xl: 0.7rem;
-  --radius-2xl: 1rem;
+  --shadow-card: 0 1px 2px rgb(13 23 51 / 0.04), 0 4px 16px -4px rgb(13 23 51 / 0.08);
+  --shadow-lift: 0 12px 40px -12px rgb(11 31 75 / 0.28);
+  --radius-xl: 0.9rem;
+  --radius-2xl: 1.25rem;
 }
 
 :root {
@@ -53,7 +51,6 @@ body {
   background: var(--color-surface);
   color: var(--color-ink);
   font-family: var(--font-sans);
-  font-size: 16px;
   font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -76,43 +73,6 @@ body {
   outline: 3px solid var(--color-royal-500);
   outline-offset: 2px;
   border-radius: 6px;
-}
-
-h1,
-h2,
-h3 {
-  font-family: var(--font-display);
-  letter-spacing: -0.02em;
-}
-::selection {
-  background: var(--color-gold-400);
-  color: var(--color-navy-900);
-}
-/* Soft dotted canvas used behind hero areas */
-.bg-dots {
-  background-image: radial-gradient(rgb(255 255 255 / 0.14) 1px, transparent 1.2px);
-  background-size: 22px 22px;
-}
-.bg-dots-dark {
-  background-image: radial-gradient(rgb(15 28 77 / 0.1) 1px, transparent 1.2px);
-  background-size: 22px 22px;
-}
-@keyframes ticker {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
-}
-.animate-ticker {
-  animation: ticker 38s linear infinite;
-}
-.animate-ticker:hover {
-  animation-play-state: paused;
-}
-@keyframes rise {
-  from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: none; }
-}
-.animate-rise {
-  animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
 .skip-link {
@@ -353,4 +313,105 @@ h3 {
 /* Long words, codes and links never push a page wider than a small screen. */
 main {
   overflow-wrap: break-word;
+}
+
+/* Certificates and report cards keep their colours on paper and fill the page. */
+@media print {
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  main {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  @page {
+    margin: 10mm;
+  }
+}
+
+/*
+ * Very large displays: projectors, smart TVs and 4K monitors. The whole interface is sized in rem,
+ * so raising the base size keeps text readable from across a room without any separate layout.
+ */
+@media (min-width: 1920px) {
+  html {
+    font-size: 112.5%;
+  }
+}
+@media (min-width: 2560px) {
+  html {
+    font-size: 137.5%;
+  }
+}
+@media (min-width: 3840px) {
+  html {
+    font-size: 200%;
+  }
+}
+/* Remote controls and keyboards: the focused item is always obvious. */
+@media (hover: none) and (pointer: coarse) {
+  a,
+  button,
+  summary,
+  [role="button"] {
+    min-height: 2.5rem;
+  }
+}
+/* Gentle entrance for cards, switched off for people who prefer no motion (see the rule near the top). */
+@keyframes preciousps-pop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pop {
+  animation: preciousps-pop 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.pop-2 {
+  animation-delay: 0.08s;
+}
+.pop-3 {
+  animation-delay: 0.16s;
+}
+.pop-4 {
+  animation-delay: 0.24s;
+}
+@keyframes preciousps-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+.float {
+  animation: preciousps-float 5s ease-in-out infinite;
+}
+
+/* [[listen: …]] buttons in lessons and questions */
+.listen { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.25rem 0; }
+.listen-btn { display: inline-flex; align-items: center; gap: 0.35rem; border-radius: 9999px; background: #10316b; color: #fff; font-weight: 700; font-size: 0.875rem; padding: 0.4rem 0.9rem; cursor: pointer; }
+.listen-btn:hover { background: #1d4ed8; }
+.listen-btn[data-playing="1"] { background: #b91c1c; }
+@media print { .listen-btn { display: none; } }
+
+/* ---------------------------------------------------------- African patterns (CSS only, no downloads) */
+.kente-band {
+  background:
+    repeating-linear-gradient(90deg, #c8a02f 0 18px, #047857 18px 30px, #b91c1c 30px 42px, #111827 42px 48px, #c8a02f 48px 60px, #0b1f4b 60px 72px);
+}
+.adinkra-dots {
+  background-image: radial-gradient(circle at 12px 12px, rgba(168, 132, 30, 0.18) 2.5px, transparent 3px), radial-gradient(circle at 36px 36px, rgba(4, 120, 87, 0.12) 2px, transparent 2.5px);
+  background-size: 48px 48px;
+}
+.mudcloth {
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.18) 0 2px, transparent 2px 22px),
+    repeating-linear-gradient(-45deg, rgba(216, 182, 80, 0.2) 0 2px, transparent 2px 22px);
 }

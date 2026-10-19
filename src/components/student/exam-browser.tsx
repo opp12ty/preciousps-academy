@@ -8,7 +8,7 @@ import { ExamGrid } from "./exam-list";
 
 type Exam = Awaited<ReturnType<typeof listStudentExams>>[number];
 
-const TYPE_LABEL: Record<string, string> = { PRACTICE: "Practice", MOCK: "Mock", SCHOOL_EXAM: "School exam", CLASS_TEST: "Class test", CONTINUOUS_ASSESSMENT: "C.A.", JAMB: "JAMB", WAEC: "WAEC", NECO: "NECO", BECE: "BECE", CUSTOM: "Custom", IELTS: "IELTS-style", TOEFL: "TOEFL-style", SAT: "SAT-style", CHECKPOINT: "Checkpoint-style" };
+const TYPE_LABEL: Record<string, string> = { PRACTICE: "Practice", MOCK: "Mock", SCHOOL_EXAM: "School exam", CLASS_TEST: "Class test", CONTINUOUS_ASSESSMENT: "C.A.", JAMB: "JAMB", WAEC: "WAEC", NECO: "NECO", BECE: "BECE", CUSTOM: "Custom", IELTS: "IELTS-style", TOEFL: "TOEFL-style", SAT: "SAT-style", CHECKPOINT: "Checkpoint-style", COMMON_ENTRANCE: "Common Entrance", JUPEB: "JUPEB", IJMB: "IJMB", PreciousPS_EXAM: "Precious PS Exam" };
 const STATUS = [
   { value: "READY", label: "Ready to start" },
   { value: "RESUME", label: "In progress" },

@@ -2,19 +2,25 @@ import { and, asc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { SECTIONS } from "@/core/sections";
 import { STARTER_CLICHES, STARTER_IDIOMS, STARTER_PHRASAL_VERBS, STARTER_WORDS } from "@/content/wordbank";
+import { MORE_WORDS } from "@/content/advanced-prep";
+import { MORE_CLICHES, MORE_DICTIONARY, MORE_IDIOMS, MORE_PHRASAL_VERBS } from "@/content/wordbank-more";
+import { PROVERBS } from "@/content/proverbs";
+import { COMMON_ERRORS } from "@/content/common-errors";
 import { getDb } from "../db";
 import { requireFeature } from "./access";
-import { classes, wordEntries } from "../db/schema";
+import { classes, settings, wordEntries } from "../db/schema";
 import { audit, type Actor, type ReqCtx } from "../audit";
 import { AppError } from "../errors";
 import { resolveSection, sectionCond, studentScope } from "./scope";
 
-/** The four collections under Study Materials. `slug` is the student page address. */
+/** The collections under Study Materials. `slug` is the student page address. */
 export const WORD_KINDS = {
   WORD: { slug: "dictionary", label: "Picture Dictionary", one: "word" },
   IDIOM: { slug: "idioms", label: "Idioms", one: "idiom" },
   CLICHE: { slug: "cliches", label: "Clichés", one: "cliché" },
   PHRASAL_VERB: { slug: "phrasal-verbs", label: "Phrasal Verbs", one: "phrasal verb" },
+  PROVERB: { slug: "proverbs", label: "Proverbs", one: "proverb" },
+  COMMON_ERROR: { slug: "common-errors", label: "Common Errors", one: "common error" },
 } as const;
 export type WordKind = keyof typeof WORD_KINDS;
 export const WORD_KIND_KEYS = Object.keys(WORD_KINDS) as WordKind[];
@@ -22,7 +28,7 @@ export const kindFromSlug = (slug: string) => WORD_KIND_KEYS.find((k) => WORD_KI
 
 const blank = z.literal("").transform(() => null);
 const entrySchema = z.object({
-  kind: z.enum(["WORD", "IDIOM", "CLICHE", "PHRASAL_VERB"]),
+  kind: z.enum(["WORD", "IDIOM", "CLICHE", "PHRASAL_VERB", "PROVERB", "COMMON_ERROR"]),
   term: z.string().trim().min(1).max(120),
   partOfSpeech: z.string().trim().max(40).nullish(),
   meaning: z.string().trim().min(2).max(600),
@@ -111,6 +117,46 @@ export async function loadStarterAction(actor: Actor, ctx: ReqCtx) {
   return r;
 }
 
+/**
+ * Adds the further dictionary words, once. A marker is saved so that a word the school later removes
+ * never comes back; words the school already has are left exactly as they are.
+ */
+export async function seedMoreWords(schoolId: string) {
+  const db = getDb();
+  const MARK = "seed:more-words-v1";
+  const [done] = await db.select({ key: settings.key }).from(settings).where(and(eq(settings.schoolId, schoolId), eq(settings.key, MARK)));
+  if (done) return 0;
+  const rows = MORE_WORDS.map(([picture, term, partOfSpeech, meaning, example]) => ({ schoolId, kind: "WORD", term, partOfSpeech, meaning, example, picture, level: null, createdBy: null }));
+  const added = (await db.insert(wordEntries).values(rows).onConflictDoNothing().returning({ id: wordEntries.id })).length;
+  await db.insert(settings).values({ schoolId, key: MARK, value: { added, at: new Date().toISOString() } }).onConflictDoNothing();
+  return added;
+}
+
+/**
+ * Adds the proverbs, common errors and further idioms, clichés, phrasal verbs and words, once per
+ * release of the built-in collection. Entries the school already has (same kind and wording) are
+ * left exactly as they are.
+ */
+export async function seedWordbankMore(schoolId: string) {
+  const db = getDb();
+  const total = PROVERBS.length + COMMON_ERRORS.length + MORE_IDIOMS.length + MORE_CLICHES.length + MORE_PHRASAL_VERBS.length + MORE_DICTIONARY.length;
+  const MARK = `seed:wordbank-more-v1:${total}`;
+  const [done] = await db.select({ key: settings.key }).from(settings).where(and(eq(settings.schoolId, schoolId), eq(settings.key, MARK)));
+  if (done) return 0;
+  const rows: (typeof wordEntries.$inferInsert)[] = [
+    ...PROVERBS.map(([term, origin, meaning, example]) => ({ schoolId, kind: "PROVERB", term, partOfSpeech: `${origin} proverb`.slice(0, 40), meaning, example, picture: "🦉", createdBy: null })),
+    ...COMMON_ERRORS.map(([wrong, right, why, group]) => ({ schoolId, kind: "COMMON_ERROR", term: wrong.slice(0, 120), partOfSpeech: group, meaning: why, example: right, picture: "✏️", createdBy: null })),
+    ...MORE_IDIOMS.map(([term, meaning, example]) => ({ schoolId, kind: "IDIOM", term, meaning, example, picture: "💬", createdBy: null })),
+    ...MORE_CLICHES.map(([term, meaning, example]) => ({ schoolId, kind: "CLICHE", term, meaning, example, picture: "🗣️", createdBy: null })),
+    ...MORE_PHRASAL_VERBS.map(([term, meaning, example]) => ({ schoolId, kind: "PHRASAL_VERB", term, partOfSpeech: "phrasal verb", meaning, example, picture: "🔗", createdBy: null })),
+    ...MORE_DICTIONARY.map(([picture, term, partOfSpeech, meaning, example]) => ({ schoolId, kind: "WORD", term, partOfSpeech, meaning, example, picture, level: null, createdBy: null })),
+  ];
+  let added = 0;
+  for (let i = 0; i < rows.length; i += 200) added += (await db.insert(wordEntries).values(rows.slice(i, i + 200)).onConflictDoNothing().returning({ id: wordEntries.id })).length;
+  await db.insert(settings).values({ schoolId, key: MARK, value: { added, at: new Date().toISOString() } }).onConflictDoNothing();
+  return added;
+}
+
 /** First deploy only: an empty word bank receives the starter collection. */
 export async function seedStarterEntriesIfEmpty(schoolId: string) {
   const [{ n }] = await getDb().select({ n: sql<number>`count(*)::int` }).from(wordEntries).where(eq(wordEntries.schoolId, schoolId));
@@ -127,15 +173,26 @@ export function gradeOf(classCode: string | null, level: string | null) {
   return level === "PRIMARY" ? 3 : level === "JUNIOR_SECONDARY" ? 8 : 11;
 }
 
+/** A small random sample of common errors and proverbs for the Game Zone (only what one game round needs). */
+export async function gameExtras(schoolId: string) {
+  const db = getDb();
+  const pick = (kind: string, n: number) => db.select({ term: wordEntries.term, meaning: wordEntries.meaning, example: wordEntries.example }).from(wordEntries).where(and(eq(wordEntries.schoolId, schoolId), eq(wordEntries.kind, kind), eq(wordEntries.status, "PUBLISHED"))).orderBy(sql`random()`).limit(n);
+  const [errors, proverbs] = await Promise.all([pick("COMMON_ERROR", 30), pick("PROVERB", 30)]);
+  return {
+    errors: errors.filter((e) => e.example && e.example.toLowerCase() !== e.term.toLowerCase()).map((e) => ({ wrong: e.term, right: e.example!, why: e.meaning })),
+    proverbs: proverbs.map((p) => ({ text: p.term, meaning: p.meaning })),
+  };
+}
+
 /** Everything the learning games need for one student, drawn from that student's class. */
 export async function gameData(actor: Actor) {
   const scope = await studentScope(actor.id);
   const [cls] = scope.classId ? await getDb().select({ code: classes.code, name: classes.name }).from(classes).where(eq(classes.id, scope.classId)) : [];
-  const all = await listEntriesForStudent(actor, {});
+  const all = await listEntriesForStudent(actor, {}).catch(() => []);
   return {
     grade: gradeOf(cls?.code ?? null, scope.level),
     className: cls?.name ?? null,
     words: all.filter((e) => e.kind === "WORD" && /^[a-z]{3,12}$/i.test(e.term)).map((e) => ({ term: e.term.toLowerCase(), meaning: e.meaning, picture: e.picture ?? "" })),
-    phrases: all.filter((e) => e.kind !== "WORD").map((e) => ({ term: e.term, meaning: e.meaning })),
+    phrases: all.filter((e) => e.kind !== "WORD" && e.kind !== "COMMON_ERROR").map((e) => ({ term: e.term, meaning: e.meaning })),
   };
 }

@@ -1,12 +1,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BookOpen, Lock } from "lucide-react";
+import { ArrowRight, BookOpen, Headphones, Lock, NotebookPen, Target, Trophy } from "lucide-react";
 import { requireStudentPage } from "@/server/http";
 import { getAccessState } from "@/server/services/access";
 import { learningSummary, mySubjects } from "@/server/services/study";
 import { Alert, Card, PageHeader, ProgressBar } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Study Centre" };
+
+/** The learning path, drawn so that a pupil can see what comes next. */
+const PATH = [
+  { icon: BookOpen, title: "Read", body: "Short notes with pictures and worked examples.", colour: "#1d4ed8" },
+  { icon: Headphones, title: "Listen", body: "Your teacher's recorded explanation.", colour: "#7c3aed" },
+  { icon: NotebookPen, title: "Classwork", body: "Try the questions; each answer is explained.", colour: "#c2410c" },
+  { icon: Target, title: "Reach the mark", body: "Score the mastery mark to unlock the next lesson.", colour: "#047857" },
+  { icon: Trophy, title: "Earn points", body: "Every lesson adds to your loyalty points.", colour: "#a8841e" },
+];
 
 export default async function StudyCentrePage() {
   const s = await requireStudentPage();
@@ -15,6 +24,19 @@ export default async function StudyCentrePage() {
   return (
     <>
       <PageHeader eyebrow="Precious PS Study Centre" title="Learn at your own pace" description="Follow the guided path: lesson → study material → classwork → assessment → next lesson. Reach the mastery score to move on." />
+      <ol aria-label="How the Study Centre works" className="pop mb-6 grid gap-3 rounded-2xl border border-line bg-white p-4 shadow-card sm:grid-cols-5">
+        {PATH.map((p, i) => (
+          <li key={p.title} className="relative flex items-center gap-3 sm:flex-col sm:text-center">
+            <span className="grid size-12 shrink-0 place-items-center rounded-2xl text-white shadow-card" style={{ background: p.colour }}><p.icon className="size-6" aria-hidden /></span>
+            <div className="min-w-0">
+              <p className="text-[0.65rem] font-bold uppercase tracking-[0.16em] text-gold-600">Step {i + 1}</p>
+              <p className="text-sm font-extrabold text-navy-800">{p.title}</p>
+              <p className="text-xs leading-snug text-muted">{p.body}</p>
+            </div>
+            {i < PATH.length - 1 && <ArrowRight aria-hidden className="absolute -right-3 top-4 hidden size-5 text-line sm:block" />}
+          </li>
+        ))}
+      </ol>
       {!active && (
         <Alert tone="warning" className="mb-6" title="Access required">
           {access.message}

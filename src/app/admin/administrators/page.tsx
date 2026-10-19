@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { requireStaffPage } from "@/server/http";
 import { listAdmins, listRoles } from "@/server/services/people";
 import { CreateAdminForm, EditRolesButton, StaffTempPassword } from "@/components/admin/admin-forms";
-import { StaffStatusButton } from "@/components/admin/action-wrappers";
+import { DeleteAccountButton, StaffStatusButton } from "@/components/admin/action-wrappers";
 import { Badge, Card, CardHeader, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Administrators" };
@@ -37,6 +37,7 @@ export default async function AdministratorsPage() {
                       <EditRolesButton userId={u.id} roles={roles.map((r) => ({ id: r.id, name: r.name }))} current={u.roles.map((r) => r.id)} />
                       <StaffTempPassword userId={u.id} />
                       <StaffStatusButton userId={u.id} status={u.status} />
+                      {s.actor.userType === "SUPER_ADMIN" && <DeleteAccountButton userId={u.id} name={`${u.firstName} ${u.lastName}`} />}
                       <a href={`/admin/audit-logs?actorId=${u.id}`} className="inline-flex h-9 items-center px-2 text-sm font-semibold text-royal-600 hover:underline">Activity</a>
                     </div>
                   )}

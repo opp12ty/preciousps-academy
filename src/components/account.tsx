@@ -3,7 +3,7 @@
 import { Laptop, Loader2, Smartphone, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { changePasswordAction, revokeOtherSessionsAction, revokeSessionAction, updateProfileAction } from "@/app/student/actions";
+import { changePasswordAction, deleteOwnAccountAction, revokeOtherSessionsAction, revokeSessionAction, updateProfileAction } from "@/app/student/actions";
 import { ActionForm, NewPasswordPair, PasswordField, SelectField, SubmitButton, TextField } from "./ui/form";
 import { ActionButton, ConfirmAction } from "./ui/interactive";
 import { Badge, buttonClass } from "./ui/primitives";
@@ -107,6 +107,19 @@ export function ProfileForm({ initial }: { initial: { phone: string; middleName:
         <SelectField label="Language" name="locale" defaultValue={initial.locale} options={[{ value: "en", label: "English" }, { value: "yo", label: "Yorùbá (coming soon)" }, { value: "ha", label: "Hausa (coming soon)" }, { value: "ig", label: "Igbo (coming soon)" }, { value: "fr", label: "Français (coming soon)" }]} />
       </div>
       <SubmitButton onClick={() => setTimeout(() => router.refresh(), 800)}>Save profile</SubmitButton>
+    </ActionForm>
+  );
+}
+
+/** Lets a parent or student delete their own account after typing their password and DELETE. */
+export function DeleteOwnAccountForm() {
+  const [typed, setTyped] = useState("");
+  return (
+    <ActionForm action={deleteOwnAccountAction} className="max-w-md space-y-4" redirectTo="/login">
+      <p className="text-sm text-muted">Deleting your account signs you out everywhere and you will not be able to sign in again. Any unused access-code days are lost. The school keeps your results and payment records as required by law.</p>
+      <PasswordField label="Your password" name="password" autoComplete="current-password" />
+      <TextField label='Type DELETE to confirm' name="confirm" value={typed} onChange={(e) => setTyped(e.target.value)} />
+      <SubmitButton variant="danger" disabled={typed !== "DELETE"} pendingText="Deleting…">Delete my account</SubmitButton>
     </ActionForm>
   );
 }

@@ -1,16 +1,18 @@
 "use server";
 
-import { action, type ActionResult } from "@/server/http";
+import { action, clearSessionCookie, type ActionResult } from "@/server/http";
 import { activateCode } from "@/server/services/access";
 import { changePassword } from "@/server/services/auth";
-import { revokeOtherOwnSessions, revokeOwnSession, updateOwnProfile } from "@/server/services/people";
+import { deleteOwnAccount, revokeOtherOwnSessions, revokeOwnSession, updateOwnProfile } from "@/server/services/people";
 import { createParentLink, revokeParentLink } from "@/server/services/engagement";
 import { markRead, setPreference } from "@/server/services/notifications";
 import { revalidatePath } from "next/cache";
+import { markHolidayTask } from "@/server/services/holiday";
 import { reportConnection, respondToLinkRequest, revokeLink } from "@/server/services/guardians";
 import { respondToSchedule } from "@/server/services/schedules";
 import { requestPromotion } from "@/server/services/promotions";
 import { submitAppeal } from "@/server/services/appeals";
+import { switchSchoolClass } from "@/server/services/school-accounts";
 
 export async function activateCodeAction(_: ActionResult | null, form: FormData) {
   return action({ role: "student" }, async (actor, ctx) => {
@@ -24,6 +26,20 @@ export async function submitAppealAction(resultId: string, _: ActionResult | nul
     await submitAppeal(actor, resultId, { questions: String(form.get("questions") ?? ""), reason: String(form.get("reason") ?? "") }, ctx);
     revalidatePath(`/student/results/${resultId}`);
   }, "Appeal sent. The examination office will reply here and in your notifications.");
+}
+
+export async function switchSchoolClassAction(_: ActionResult | null, form: FormData) {
+  return action({ role: "student" }, async (actor, ctx) => {
+    await switchSchoolClass(actor, String(form.get("classId") ?? ""), String(form.get("departmentId") ?? "") || undefined, ctx);
+    revalidatePath("/student", "layout");
+  }, "Class changed. Lessons, tests and examinations now follow the new class.");
+}
+
+export async function deleteOwnAccountAction(_: ActionResult | null, form: FormData) {
+  return action({ role: "any", allowLocked: true }, async (actor, ctx) => {
+    await deleteOwnAccount(actor, String(form.get("password") ?? ""), ctx);
+    await clearSessionCookie();
+  }, "Your account has been deleted.");
 }
 
 export async function changePasswordAction(_: ActionResult | null, form: FormData) {
@@ -101,4 +117,17 @@ export async function revokeParentLinkAction(id: string) {
   return action({ role: "student" }, async (actor, ctx) => {
     await revokeParentLink(actor, id, ctx);
   });
+}
+
+export async function holidayDoneAction(taskId: string, _: ActionResult | null, form: FormData) {
+  return action({ role: "student" }, async (actor) => {
+    await markHolidayTask(actor, taskId, true, String(form.get("note") ?? ""));
+    revalidatePath("/student/holiday");
+  }, "Well done! Task ticked off.");
+}
+export async function holidayUndoAction(taskId: string) {
+  return action({ role: "student" }, async (actor) => {
+    await markHolidayTask(actor, taskId, false);
+    revalidatePath("/student/holiday");
+  }, "Task marked as not done.");
 }

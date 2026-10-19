@@ -3,6 +3,7 @@
 import { Ban, CheckCircle2, ShieldOff, LogOut, Mail, Send, Timer, Trash2, UserCheck } from "lucide-react";
 import {
   clearRateLimitsAction,
+  deleteAccountAction,
   deleteRoleAction,
   flushOutboxAction,
   sendTestEmailAction,
@@ -64,5 +65,21 @@ export function ResolveEventButton({ id }: { id: string }) {
     <ActionButton run={() => resolveSecurityEventAction(id)}>
       <CheckCircle2 className="size-4" /> Resolve
     </ActionButton>
+  );
+}
+
+/** Super Admin only: deletes a parent, student or staff account and frees its e-mail address. */
+export function DeleteAccountButton({ userId, name }: { userId: string; name: string }) {
+  return (
+    <ConfirmAction
+      label="Delete account"
+      variant="danger-outline"
+      icon={<Trash2 className="size-4" />}
+      title={`Delete ${name}'s account?`}
+      description="They are signed out at once and can no longer sign in. Their e-mail and phone number are released so they can register again later. Results, payments and the audit log are kept. This cannot be undone from the screen."
+      confirmLabel="Delete account"
+      reason
+      run={({ reason }) => deleteAccountAction(userId, reason)}
+    />
   );
 }

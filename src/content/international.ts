@@ -5,6 +5,7 @@
  * connection with this platform.
  */
 import type { Q } from "./packs/types";
+import { MORE_IELTS, MORE_TOEFL } from "./intl-more";
 
 export interface IntlProgramme {
   key: string;
@@ -159,8 +160,8 @@ const checkpointLowerEnglish: Q[] = [
 ];
 
 export const INTERNATIONAL_PROGRAMMES: IntlProgramme[] = [
-  { key: "ielts", title: "IELTS-style Academic English Practice", examType: "IELTS", subjectCode: "ENG", level: "SENIOR_SECONDARY", minutes: 25, description: "Original practice in the style of IELTS: academic vocabulary, grammar for writing, describing data and understanding a writer's view.", questions: ielts },
-  { key: "toefl", title: "TOEFL-style English Practice", examType: "TOEFL", subjectCode: "ENG", level: "SENIOR_SECONDARY", minutes: 25, description: "Original practice in the style of TOEFL: structure, academic vocabulary, campus language and inference.", questions: toefl },
+  { key: "ielts", title: "IELTS-style Academic English Practice", examType: "IELTS", subjectCode: "ENG", level: "SENIOR_SECONDARY", minutes: 25, description: "Original practice in the style of IELTS: listening (press Listen to hear each recording), reading passages, academic vocabulary, grammar for writing, describing data and the speaking test.", questions: [...ielts, ...MORE_IELTS] },
+  { key: "toefl", title: "TOEFL-style English Practice", examType: "TOEFL", subjectCode: "ENG", level: "SENIOR_SECONDARY", minutes: 25, description: "Original practice in the style of TOEFL: lectures and campus conversations to listen to, reading passages, structure, academic vocabulary and inference.", questions: [...toefl, ...MORE_TOEFL] },
   { key: "sat", title: "SAT-style Mathematics Practice", examType: "SAT", subjectCode: "MTH", level: "SENIOR_SECONDARY", minutes: 30, description: "Original practice in the style of SAT Math: algebra, functions, ratios, percentages, geometry and data.", questions: sat },
   { key: "cp-maths", title: "Primary Checkpoint-style Mathematics", examType: "CHECKPOINT", subjectCode: "MTH", level: "PRIMARY", minutes: 20, description: "Original practice in the style of an international primary checkpoint: number, measures, shape, data and problem solving.", questions: checkpointPrimaryMaths },
   { key: "cp-english", title: "Primary Checkpoint-style English", examType: "CHECKPOINT", subjectCode: "ENG", level: "PRIMARY", minutes: 20, description: "Original practice in the style of an international primary checkpoint: grammar, punctuation, vocabulary and reading inference.", questions: checkpointPrimaryEnglish },

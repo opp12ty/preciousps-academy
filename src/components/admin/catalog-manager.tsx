@@ -94,7 +94,7 @@ export function CatalogManager({ kind, title, rows, departments, description }: 
                       <summary className={buttonClass("secondary", "sm", "list-none cursor-pointer")}>
                         <Pencil className="size-4" /> Edit
                       </summary>
-                      <div className="absolute right-0 z-20 mt-2 w-[min(36rem,90vw)] rounded-2xl border border-line bg-card p-4 shadow-lift">
+                      <div className="absolute right-0 z-20 mt-2 w-[min(36rem,90vw)] rounded-2xl border border-line bg-white p-4 shadow-lift">
                         <ActionForm action={upsertCatalogAction.bind(null, kind, r.id)} className="space-y-3" successMessage="Saved.">
                           <Fields kind={kind} row={r} departments={departments} />
                           <SubmitButton size="sm">Save</SubmitButton>

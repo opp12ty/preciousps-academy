@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "../db";
-import { classes, departments, promotions, students, users } from "../db/schema";
+import { assignmentAttempts, awards, classes, departments, examinationAttempts, hubSessions, learningAttempts, learningProgress, loyaltyPoints, promotions, quizAttempts, results, students, studySchedules, users } from "../db/schema";
 import { audit, type Actor, type ReqCtx } from "../audit";
 import { AppError } from "../errors";
 import { getSetting } from "../settings";
@@ -16,8 +16,68 @@ import { resolvePlacement, sectionCond } from "./scope";
  *   4. a student who registered during that window chose the new session's class already;
  *   5. unless the school switches on self-promotion, staff must approve each request;
  *   6. every request, approval, rejection and repeat is written to the audit log.
- * Results and attempts are never touched: they stay with the examinations that produced them.
+ *
+ * Whenever a student's class changes, their work starts afresh in the new class (see resetActivity).
+ * The access code and its remaining days are never touched by a class change.
  */
+
+/**
+ * Starts a student afresh after a class change. Lesson progress, classwork, assignments, quizzes,
+ * the study timetable and loyalty points are cleared, and an examination in progress is closed.
+ * Moving UP keeps released results as the record of the class just finished. A CORRECTION (a move
+ * down, or sideways, made by staff because the wrong class was chosen) also voids the results, since
+ * they were earned in a class the student was never meant to be in. Voided results stay in the
+ * records for audit but no longer count anywhere. Access periods and codes are left exactly as they are.
+ */
+export async function resetActivity(userId: string, mode: "PROMOTION" | "CORRECTION") {
+  const db = getDb();
+  await db.transaction(async (tx) => {
+    await tx.delete(learningProgress).where(eq(learningProgress.userId, userId));
+    await tx.delete(learningAttempts).where(eq(learningAttempts.userId, userId));
+    await tx.delete(assignmentAttempts).where(eq(assignmentAttempts.userId, userId));
+    await tx.delete(quizAttempts).where(eq(quizAttempts.userId, userId));
+    await tx.delete(hubSessions).where(eq(hubSessions.userId, userId));
+    await tx.delete(studySchedules).where(eq(studySchedules.studentUserId, userId));
+    await tx.delete(loyaltyPoints).where(eq(loyaltyPoints.userId, userId));
+    await tx.update(examinationAttempts).set({ status: "VOIDED", voidReason: "Class changed" }).where(and(eq(examinationAttempts.userId, userId), eq(examinationAttempts.status, "IN_PROGRESS")));
+    if (mode === "CORRECTION") {
+      await tx.update(results).set({ isVoided: true, voidReason: "Class corrected by the school" }).where(and(eq(results.userId, userId), eq(results.isVoided, false)));
+      await tx.delete(awards).where(and(eq(awards.userId, userId), sql`${awards.publishedAt} IS NULL`));
+    }
+  });
+}
+
+/**
+ * Staff move one student to any class: down (demotion), up, or across. For correcting a class chosen
+ * by mistake at registration. Never available to students or parents. It also uses up the student's
+ * one promotion for the session, so the correction cannot be undone by a self-promotion.
+ */
+export async function moveStudentClass(actor: Actor, userId: string, raw: { classId: string; departmentId?: string | null; reason: string }, ctx: ReqCtx, now = new Date()) {
+  const reason = (raw.reason ?? "").trim();
+  if (reason.length < 5) throw new AppError("VALIDATION", "Record a reason of at least 5 characters.");
+  const db = getDb();
+  const [st] = await db.select({ classId: students.classId, departmentId: students.departmentId, kind: students.accountKind, firstName: users.firstName, lastName: users.lastName }).from(students).innerJoin(users, eq(users.id, students.userId)).where(and(eq(students.userId, userId), eq(students.schoolId, actor.schoolId), isNull(users.deletedAt)));
+  if (!st) throw new AppError("NOT_FOUND", "Student not found.");
+  if (st.kind === "SCHOOL") throw new AppError("FORBIDDEN", "A school account switches class from its own dashboard.");
+  const placement = await resolvePlacement(actor.schoolId, raw.classId, raw.departmentId || null, db);
+  if (placement.classId === st.classId && placement.departmentId === st.departmentId) throw new AppError("CONFLICT", "The student is already in that class and department.");
+  const rungs = await ladder(actor.schoolId);
+  const from = rungs.findIndex((c) => c.id === st.classId);
+  const to = rungs.findIndex((c) => c.id === placement.classId);
+  const direction = to > from ? "PROMOTED" : to < from ? "DEMOTED" : "MOVED";
+  const [cfg, { timezone }] = await Promise.all([getSetting(actor.schoolId, "promotion"), getSetting(actor.schoolId, "localization")]);
+  const session = sessionFor(now, cfg.windowStart, timezone);
+  const values = { schoolId: actor.schoolId, userId, fromClassId: st.classId ?? placement.classId, toClassId: placement.classId, toDepartmentId: placement.departmentId, session, status: "APPROVED", method: "CORRECTION", note: reason.slice(0, 300), decidedBy: actor.id, decidedAt: now };
+  await db.insert(promotions).values(values).onConflictDoUpdate({ target: [promotions.userId, promotions.session], set: values });
+  await db.update(students).set({ classId: placement.classId, departmentId: placement.departmentId }).where(eq(students.userId, userId));
+  await resetActivity(userId, direction === "PROMOTED" ? "PROMOTION" : "CORRECTION");
+  const name = rungs[to]?.name ?? "the new class";
+  await audit({ actor, action: `promotion.${direction.toLowerCase()}_by_staff`, entityType: "user", entityId: userId, summary: `${st.firstName} ${st.lastName}: ${rungs[from]?.name ?? "?"} → ${name} — ${reason}`, metadata: { fromClassId: st.classId, toClassId: placement.classId, departmentId: placement.departmentId, session } }, ctx);
+  await notifyUser({ schoolId: actor.schoolId, userId, category: "ANNOUNCEMENT", title: `Your class is now ${name}`, body: `The school has placed you in ${name}. Your lessons, classwork and tests now follow this class and your earlier activity has been cleared so that you start afresh. Your access code and its remaining days are unchanged.`, link: "/student" });
+  return { direction, to: name };
+}
+
+
 
 const md = (d: Date, tz: string) => new Intl.DateTimeFormat("en-CA", { timeZone: tz, month: "2-digit", day: "2-digit" }).format(d); // "MM-DD"
 const yearOf = (d: Date, tz: string) => Number(new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric" }).format(d));
@@ -91,11 +151,15 @@ export async function promotionState(student: Actor, now = new Date()): Promise<
 
 async function apply(db: ReturnType<typeof getDb>, userId: string, placement: { classId: string; departmentId: string | null }) {
   await db.update(students).set({ classId: placement.classId, departmentId: placement.departmentId }).where(eq(students.userId, userId));
+  // A new class means a fresh start; released results stay as the record of the class just finished.
+  await resetActivity(userId, "PROMOTION");
 }
 
 /** The student asks to move up. Under the default policy this only creates a request for staff. */
 export async function requestPromotion(student: Actor, raw: { departmentId?: string | null }, ctx: ReqCtx, now = new Date()) {
   if (student.userType !== "STUDENT") throw new AppError("FORBIDDEN", "Only a student can request promotion.");
+  const [kind] = await getDb().select({ k: students.accountKind }).from(students).where(eq(students.userId, student.id));
+  if (kind?.k === "SCHOOL") throw new AppError("FORBIDDEN", "A school account switches class from its dashboard and is not promoted.");
   const st = await promotionState(student, now);
   if (!st.canRequest || !st.next || !st.current) throw new AppError("FORBIDDEN", st.reason ?? "You cannot request promotion now.");
   const db = getDb();

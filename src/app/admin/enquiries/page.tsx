@@ -26,7 +26,7 @@ export default async function EnquiriesPage({ searchParams }: PageProps<"/admin/
       <PageHeader eyebrow="Inbox" title="Enquiries" description="Messages sent from the website contact form. Reply by phone or e-mail, then mark them handled." />
       <div className="mb-4 flex flex-wrap gap-2">
         {FILTERS.map(([v, l]) => (
-          <Link key={v} href={v ? `/admin/enquiries?status=${v}` : "/admin/enquiries"} className={cx("rounded-lg px-3 py-1.5 text-sm font-semibold ring-1 ring-inset", status === v ? "bg-navy-800 text-white ring-navy-800" : "bg-card text-navy-800 ring-line hover:bg-gold-50")}>
+          <Link key={v} href={v ? `/admin/enquiries?status=${v}` : "/admin/enquiries"} className={cx("rounded-lg px-3 py-1.5 text-sm font-semibold ring-1 ring-inset", status === v ? "bg-navy-800 text-white ring-navy-800" : "bg-white text-navy-800 ring-line hover:bg-gold-50")}>
             {l}
             {v && counts[v] ? <span className="ml-1.5 rounded bg-gold-500 px-1 text-[0.7rem] text-navy-900">{counts[v]}</span> : null}
           </Link>

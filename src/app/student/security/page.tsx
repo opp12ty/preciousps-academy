@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { requireStudentPage } from "@/server/http";
 import { ownSessions } from "@/server/services/people";
-import { ChangePasswordForm, SessionsList } from "@/components/account";
+import { ChangePasswordForm, DeleteOwnAccountForm, SessionsList } from "@/components/account";
 import { Alert, Card, CardHeader, PageHeader } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Security" };
@@ -30,6 +30,12 @@ export default async function SecurityPage({ searchParams }: PageProps<"/student
           <CardHeader title="Active sessions" description="Devices currently signed in to your account. Sign out any you don't recognise." />
           <SessionsList currentId={s.sessionId} sessions={sessions.map((x) => ({ id: x.id, createdAt: x.createdAt.toISOString(), lastSeenAt: x.lastSeenAt.toISOString(), ip: x.ip, userAgent: x.userAgent }))} />
         </Card>
+      )}
+      {!forced && s.user.userType === "STUDENT" && (
+  <Card>
+        <CardHeader title="Delete my account" description="Permanently close your student account." />
+        <div className="p-5"><DeleteOwnAccountForm /></div>
+      </Card>
       )}
     </div>
   );

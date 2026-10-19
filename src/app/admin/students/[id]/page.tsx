@@ -10,7 +10,7 @@ import { toPublicError } from "@/server/errors";
 import { updateStudentAction } from "../../actions";
 import { AdjustAccessButton, AssignAccessButton, StudentSecurityControls, TransferAccessButton } from "@/components/admin/student-controls";
 import { ActionForm, CheckboxField, SelectField, SubmitButton, TextField } from "@/components/ui/form";
-import { Badge, Card, CardHeader, EmptyState, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui/primitives";
+import { buttonClass, Badge, Card, CardHeader, EmptyState, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Student profile" };
 const fmt = (d: Date | string | null | undefined) => (d ? new Intl.DateTimeFormat("en-NG", { timeZone: "Africa/Lagos", dateStyle: "medium", timeStyle: "short" }).format(new Date(d)) : "—");
@@ -38,6 +38,7 @@ export default async function StudentDetail({ params }: PageProps<"/admin/studen
         actions={
           <>
             <StatusBadge status={p.status} />
+            <Link href={`/admin/students/${p.id}/report-card`} className={buttonClass("secondary", "sm")}>Report card</Link>
             {p.mustChangePassword && <Badge tone="amber">Password change required</Badge>}
             {p.lockedUntil && new Date(p.lockedUntil) > new Date() && <Badge tone="red">Locked</Badge>}
           </>

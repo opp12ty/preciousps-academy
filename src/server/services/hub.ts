@@ -1,9 +1,18 @@
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { STARTER_ARTICLES, STARTER_QUESTIONS } from "@/content/hub";
+import { MORE_ARTICLES as FAMILY_AND_SKILLS } from "@/content/hub-more";
+import { PREP_ARTICLES } from "@/content/advanced-prep";
+import { TRAVEL_ARTICLES } from "@/content/travel";
+import { PREP_STUDY_ARTICLES } from "@/content/prep-articles";
+import { SCIENCE_ARTICLES } from "@/content/science-hub";
+import { GK_CATEGORIES, PARENT_GK } from "@/content/parent-gk";
+import { EXTRA_ARTICLES } from "@/content/hub-extra";
+
+const MORE_ARTICLES = [...FAMILY_AND_SKILLS, ...PREP_ARTICLES, ...TRAVEL_ARTICLES, ...PREP_STUDY_ARTICLES, ...SCIENCE_ARTICLES, ...EXTRA_ARTICLES];
 import { SECTIONS } from "@/core/sections";
 import { getDb } from "../db";
-import { departments, hubArticles, hubArticleVersions, hubQuestions, hubSessions, quizAttempts, students } from "../db/schema";
+import { departments, hubArticles, hubArticleVersions, hubQuestions, hubSessions, quizAttempts, settings as settingsTable, students } from "../db/schema";
 import { audit, type Actor, type ReqCtx } from "../audit";
 import { AppError } from "../errors";
 import { getSetting } from "../settings";
@@ -234,6 +243,7 @@ export const QUIZ_MODES = {
   CULTURE: { audience: "STUDENT", feature: "CULTURE_CHALLENGE", label: "Culture Challenge", categories: ["Culture", "History", "Geography"], daily: false },
   PARENTING: { audience: "PARENT", feature: null, label: "Parenting Scenario Challenge", categories: ["Parenting", "Child Development", "Temperament"], daily: false },
   PARENT_KNOWLEDGE: { audience: "PARENT", feature: null, label: "Knowledge Challenge", categories: ["Nigeria", "Africa", "World", "Science and Technology"], daily: false },
+  PARENT_GK: { audience: "PARENT", feature: null, label: "General Knowledge Exam", categories: GK_CATEGORIES, daily: false },
 } as const;
 export type QuizMode = keyof typeof QUIZ_MODES;
 
@@ -350,7 +360,7 @@ export async function startQuiz(actor: Actor, mode: QuizMode, ctx: ReqCtx, day: 
   if (m.categories) conds.push(inArray(hubQuestions.category, [...m.categories]));
   const pool = await db.select({ id: hubQuestions.id }).from(hubQuestions).where(and(...conds)).orderBy(asc(hubQuestions.id));
   if (pool.length < 3) throw new AppError("VALIDATION", "There are not enough questions for this game yet. Please check back later.");
-  const want = m.daily ? cfg.dailyQuestions : cfg.quizQuestions;
+  const want = m.daily ? cfg.dailyQuestions : mode === "PARENT_GK" ? cfg.parentExamQuestions : cfg.quizQuestions;
   const ids = seeded(pool.map((p) => p.id), m.daily ? `${day}|${mode}` : `${actor.id}|${Date.now()}`).slice(0, Math.min(want, pool.length));
   const [row] = await db.insert(quizAttempts).values({ schoolId: actor.schoolId, userId: actor.id, mode, questionIds: ids, answers: ids.map(() => null), day: m.daily ? day : null }).returning({ id: quizAttempts.id });
   void ctx;
@@ -389,6 +399,41 @@ export async function recentQuizAttempts(userId: string) {
 }
 
 /* --------------------------------------------------------------------- seed */
+
+/**
+ * Adds the further articles (parenting, money, home, digital and study skills) that are not in the
+ * hub yet. An article is matched by audience and title, so one the school has edited, archived or
+ * renamed is never overwritten or added twice.
+ */
+export async function seedHubExtras(schoolId: string) {
+  const db = getDb();
+  const have = new Set((await db.select({ audience: hubArticles.audience, title: hubArticles.title }).from(hubArticles).where(eq(hubArticles.schoolId, schoolId))).map((x) => `${x.audience}|${x.title.toLowerCase()}`));
+  const fresh = MORE_ARTICLES.filter((x) => !have.has(`${x.audience}|${x.title.toLowerCase()}`));
+  if (!fresh.length) return 0;
+  await db.insert(hubArticles).values(fresh.map((x) => ({ ...x, schoolId, status: "PUBLISHED", publishedAt: new Date(), sources: "Written for Precious PS Academy.", level: x.level ?? null, stream: x.stream ?? null, activity: x.activity ?? null })));
+  return fresh.length;
+}
+
+/**
+ * Loads the parents' General Knowledge bank. It runs again only when the built-in bank changes, and a
+ * question whose wording is already in the bank is never added twice, so staff edits are kept.
+ */
+export async function seedParentGk(schoolId: string) {
+  const db = getDb();
+  const key = `gk:seeded:v1:${PARENT_GK.length}`;
+  const [mark] = await db.select({ key: settingsTable.key }).from(settingsTable).where(and(eq(settingsTable.schoolId, schoolId), eq(settingsTable.key, key)));
+  if (mark) return 0;
+  const D = { E: "EASY", M: "MEDIUM", H: "HARD" } as const;
+  const rows = PARENT_GK.map(([category, d, stem, right, w1, w2, w3, explanation], i) => {
+    const pos = (i * 7) % 4; // spread the correct option over A–D
+    const wrong = [w1, w2, w3];
+    return { schoolId, audience: "PARENT", category, difficulty: D[d], stem, options: [...wrong.slice(0, pos), right, ...wrong.slice(pos)], answer: pos, explanation, status: "PUBLISHED" };
+  });
+  let added = 0;
+  for (let i = 0; i < rows.length; i += 200) added += (await db.insert(hubQuestions).values(rows.slice(i, i + 200)).onConflictDoNothing().returning({ id: hubQuestions.id })).length;
+  await db.insert(settingsTable).values({ schoolId, key, value: { at: new Date().toISOString(), added } }).onConflictDoNothing();
+  return added;
+}
 
 /** First deploy only: an empty hub receives the starter articles and questions. */
 export async function seedHubIfEmpty(schoolId: string) {

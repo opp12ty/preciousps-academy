@@ -7,6 +7,8 @@
 import type { ClassCode, Diff, PackTopic, Q, SubjectPack, TermPlan } from "../types";
 
 export const PRIMARY_CLASSES: ClassCode[] = ["BASIC1", "BASIC2", "BASIC3", "BASIC4", "BASIC5", "BASIC6"];
+/** Every class from Primary 1 to SS 3, in order; the compact authoring helpers below work for all of them. */
+export const ALL_CLASSES: ClassCode[] = [...PRIMARY_CLASSES, "JSS1", "JSS2", "JSS3", "SS1", "SS2", "SS3"];
 
 function hash(s: string) {
   let h = 2166136261;
@@ -118,7 +120,7 @@ export function buildPrimaryTerms(code: string, plan: (g: number) => Factory[], 
           title: spec.title,
           subtopics: spec.subtopics,
           objectives: spec.objectives,
-          lesson: { title: spec.title, summary: spec.summary, minutes: g <= 3 ? 20 : 30, notes: spec.notes, examples: spec.examples },
+          lesson: { title: spec.title, summary: spec.summary, minutes: g <= 3 ? 20 : g <= 6 ? 30 : 40, notes: spec.notes, examples: spec.examples },
           questions: questions(c, spec, perTopic),
         };
       });
@@ -149,7 +151,7 @@ export interface FactTopic {
 /** Twelve written topics for one class: four a term, in the order given. */
 export function factTerms(classCode: ClassCode, topics: FactTopic[], footer = ""): TermPlan[] {
   if (topics.length !== 12) throw new Error(`${classCode} needs 12 topics, has ${topics.length}`);
-  const g = PRIMARY_CLASSES.indexOf(classCode) + 1;
+  const g = ALL_CLASSES.indexOf(classCode) + 1;
   return [1, 2, 3].map((term) => ({
     classCode,
     term: term as 1 | 2 | 3,
@@ -261,7 +263,7 @@ export function vocabTopic(lang: string, v: VocabSpec, seen: Set<string>): FactT
 
 /** A whole written subject for the primary classes given, twelve topics a class. */
 export function factPack(code: string, name: string, byClass: Partial<Record<ClassCode, FactTopic[]>>, footer: string, entrance = false): SubjectPack {
-  const classes = PRIMARY_CLASSES.filter((c) => byClass[c]);
+  const classes = ALL_CLASSES.filter((c) => byClass[c]);
   return { code, name, version: "2026.1", classes, entrance, terms: classes.flatMap((c) => factTerms(c, byClass[c]!, footer)) };
 }
 
@@ -274,6 +276,6 @@ export const LANGUAGE_FOOTER =
 /** A whole primary language subject built from word lists, twelve topics a class. */
 export function vocabPack(code: string, name: string, lang: string, byClass: Partial<Record<ClassCode, VocabSpec[]>>, footer = LANGUAGE_FOOTER): SubjectPack {
   const seen = new Set<string>();
-  const classes = PRIMARY_CLASSES.filter((c) => byClass[c]);
+  const classes = ALL_CLASSES.filter((c) => byClass[c]);
   return { code, name, version: "2026.1", classes, terms: classes.flatMap((c) => factTerms(c, byClass[c]!.map((v) => vocabTopic(lang, v, seen)), footer)) };
 }

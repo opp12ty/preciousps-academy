@@ -1,10 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
-import { Figtree, Sora } from "next/font/google";
+import { Plus_Jakarta_Sans, Playfair_Display } from "next/font/google";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
 import { getBrand } from "@/server/brand";
+import { ServiceWorker } from "@/components/service-worker";
+import { SpeakButtons } from "@/components/speak-buttons";
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 /** Brand colours chosen in Admin → Branding; shades are derived so every token follows. */
@@ -16,8 +18,8 @@ function themeCss(c: { navy: string; royal: string; gold: string }) {
   return out.length ? `:root{${out.join(";")}}` : "";
 }
 
-const figtree = Figtree({ subsets: ["latin"], variable: "--font-figtree", display: "swap" });
-const sora = Sora({ subsets: ["latin"], weight: ["600", "700", "800"], variable: "--font-sora", display: "swap" });
+const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-jakarta", display: "swap" });
+const playfair = Playfair_Display({ subsets: ["latin"], weight: ["700", "800"], variable: "--font-playfair", display: "swap" });
 
 export async function generateMetadata(): Promise<Metadata> {
   const b = await getBrand();
@@ -52,13 +54,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   await headers();
   const theme = themeCss((await getBrand()).colors);
   return (
-    <html lang="en" className={`${figtree.variable} ${sora.variable}`}>
+    <html lang="en" className={`${jakarta.variable} ${playfair.variable}`}>
       <body className="min-h-dvh">
         {theme && <style dangerouslySetInnerHTML={{ __html: theme }} />}
         <a href="#main" className="skip-link">
           Skip to main content
         </a>
         <ToastProvider>{children}</ToastProvider>
+        <ServiceWorker />
+        <SpeakButtons />
       </body>
     </html>
   );

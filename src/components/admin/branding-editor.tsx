@@ -73,7 +73,7 @@ export function BrandingEditor({ initial }: { initial: Branding }) {
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2">
         {SLOTS.map((s) => (
-          <div key={s.key} className="flex gap-4 rounded-2xl border border-line bg-card p-4">
+          <div key={s.key} className="flex gap-4 rounded-2xl border border-line bg-white p-4">
             <div className="grid size-24 shrink-0 place-items-center overflow-hidden rounded-xl bg-[conic-gradient(#f1f5f9_25%,#fff_0_50%,#f1f5f9_0_75%,#fff_0)] bg-[length:16px_16px] ring-1 ring-line">
               {b[s.key] ? <img src={`/api/v1/assets/${b[s.key]}`} alt="" className="max-h-full max-w-full object-contain" /> : s.fallback ? <img src={s.fallback} alt="" className="max-h-full max-w-full object-contain opacity-80" /> : <span className="text-xs text-muted">None</span>}
             </div>
@@ -95,7 +95,7 @@ export function BrandingEditor({ initial }: { initial: Branding }) {
           </div>
         ))}
       </div>
-      <div className="rounded-2xl border border-line bg-card p-4">
+      <div className="rounded-2xl border border-line bg-white p-4">
         <p className="text-sm font-bold text-navy-800">Brand colours</p>
         <p className="mt-0.5 text-xs text-muted">Leave blank to use the official navy, royal blue and gold. Shades are derived automatically across the whole platform.</p>
         <div className="mt-3 grid gap-4 sm:grid-cols-3">
@@ -103,7 +103,7 @@ export function BrandingEditor({ initial }: { initial: Branding }) {
             <label key={k} className="text-sm font-semibold text-navy-800">
               {l}
               <span className="mt-1.5 flex items-center gap-2">
-                <input type="color" aria-label={l} className="h-10 w-12 cursor-pointer rounded-lg border border-line bg-card p-1" value={b[k] || d} onChange={(e) => setB((x) => ({ ...x, [k]: e.target.value }))} />
+                <input type="color" aria-label={l} className="h-10 w-12 cursor-pointer rounded-lg border border-line bg-white p-1" value={b[k] || d} onChange={(e) => setB((x) => ({ ...x, [k]: e.target.value }))} />
                 <input className={inputClass} placeholder={d} value={b[k] ?? ""} onChange={(e) => setB((x) => ({ ...x, [k]: e.target.value }))} />
               </span>
             </label>

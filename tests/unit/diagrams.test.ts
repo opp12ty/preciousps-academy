@@ -23,3 +23,27 @@ describe("diagrams", () => {
     expect(brokenFigures("ok [[diagram: clock 3:30]] bad [[diagram: clock 99]]")).toEqual(["[[diagram: clock 99]]"]);
   });
 });
+
+describe("automatic lesson illustrations", () => {
+  it("every built-in illustration can be drawn", async () => {
+    const { AUTO_FIGURE_SPECS, autoFigure } = await import("@/core/auto-figure");
+    const { brokenFigures } = await import("@/core/diagrams");
+    for (const spec of AUTO_FIGURE_SPECS) expect(brokenFigures(`[[diagram: ${spec}]]`), spec).toEqual([]);
+    expect(autoFigure("Adding fractions", "Fractions", "Plain notes.")?.spec).toBe("fraction 3/4");
+    expect(autoFigure("The water cycle", null, "Notes")?.spec).toContain("Evaporation");
+    // A lesson that already has a figure of its own is left alone, and so is a topic with no match.
+    expect(autoFigure("Adding fractions", null, "See [[diagram: fraction 1/2]]")).toBeNull();
+    expect(autoFigure("Nouns and pronouns", "Parts of speech", "Notes")).toBeNull();
+  });
+});
+
+describe("Listening recordings", () => {
+  it("turns [[listen: …]] into a safe Listen button", async () => {
+    const { renderInline } = await import("@/components/rich-text");
+    const html = renderInline('Question one [[listen: The shop opens at "ten" <b>sharp</b>. || Play twice]]');
+    expect(html).toContain('class="listen-btn"');
+    expect(html).toContain("data-say=\"The shop opens at &quot;ten&quot; &lt;b&gt;sharp&lt;/b&gt;.\"");
+    expect(html).toContain("Play twice");
+    expect(html).not.toContain("<b>");
+  });
+});

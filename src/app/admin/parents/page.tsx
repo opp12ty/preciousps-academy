@@ -8,6 +8,7 @@ import { findStudents, listGuardianCodes, listLinkRequestsAdmin, listParents } f
 import { can } from "@/core/permissions";
 import { AssignParentAccess, GenerateParentCode, LinkDecideButtons, RevokeCode, UnlinkChild } from "@/components/admin/parent-controls";
 import { SettingsForm, type FieldSpec } from "@/components/admin/settings-forms";
+import { DeleteAccountButton } from "@/components/admin/action-wrappers";
 import { spRecord } from "@/components/admin/filters";
 import { Badge, buttonClass, Card, CardHeader, cx, EmptyState, inputClass, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui/primitives";
 
@@ -31,7 +32,7 @@ export default async function ParentsAdmin({ searchParams }: PageProps<"/admin/p
       </nav>
       {tab === "requests" && <Requests schoolId={s.user.schoolId} status={sp.status} />}
       {tab === "codes" && <Codes schoolId={s.user.schoolId} q={sp.q ?? ""} />}
-      {tab === "parents" && <Parents schoolId={s.user.schoolId} canAssign={can(s.actor, "codes.generate")} />}
+      {tab === "parents" && <Parents schoolId={s.user.schoolId} canAssign={can(s.actor, "codes.generate")} isSuper={s.actor.userType === "SUPER_ADMIN"} />}
       {tab === "settings" && <Settings schoolId={s.user.schoolId} />}
     </div>
   );
@@ -133,14 +134,14 @@ async function Codes({ schoolId, q }: { schoolId: string; q: string }) {
   );
 }
 
-async function Parents({ schoolId, canAssign }: { schoolId: string; canAssign: boolean }) {
+async function Parents({ schoolId, canAssign, isSuper }: { schoolId: string; canAssign: boolean; isSuper?: boolean }) {
   const [parents, cfg] = await Promise.all([listParents(schoolId), getSetting(schoolId, "accessCodes")]);
   return (
     <Card>
       <CardHeader title="Parent accounts" description="A parent uses the portal only while a parent access code is running. Generate parent codes under Access codes (choose “Parents / guardians”), or give access to one account here. Parents registered before codes were introduced have a free period that ends on the date shown." />
       {parents.length ? (
         <Table>
-          <thead><tr><Th>Parent / guardian</Th><Th>Contact</Th><Th>Children</Th><Th>Portal access</Th><Th>Last sign-in</Th><Th>Status</Th></tr></thead>
+          <thead><tr><Th>Parent / guardian</Th><Th>Contact</Th><Th>Children</Th><Th>Portal access</Th><Th>Last sign-in</Th><Th>Status</Th>{isSuper && <Th className="text-right">Actions</Th>}</tr></thead>
           <tbody>
             {parents.map((p) => (
               <tr key={p.id} className="align-top">
@@ -168,6 +169,7 @@ async function Parents({ schoolId, canAssign }: { schoolId: string; canAssign: b
                 </Td>
                 <Td className="whitespace-nowrap text-xs">{p.lastLoginAt ? fmtLagos(p.lastLoginAt) : "Not yet"}</Td>
                 <Td><StatusBadge status={p.status} /></Td>
+                {isSuper && <Td className="text-right"><DeleteAccountButton userId={p.id} name={`${p.firstName} ${p.lastName}`} /></Td>}
               </tr>
             ))}
           </tbody>

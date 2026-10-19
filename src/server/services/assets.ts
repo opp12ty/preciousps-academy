@@ -11,7 +11,7 @@ import { getSetting } from "../settings";
 export type AssetKind = "BRAND" | "IMAGE" | "DOCUMENT" | "AVATAR" | "QUESTION_IMAGE";
 
 const IMAGE_KINDS: FileKind[] = ["png", "jpg", "webp", "gif"];
-const DOC_KINDS: FileKind[] = ["pdf", "docx", "doc", "pptx", "ppt", "xlsx", "xls"];
+const DOC_KINDS: FileKind[] = ["pdf", "docx", "doc", "pptx", "ppt", "xlsx", "xls", "mp3"];
 
 export async function storeAsset(
   actor: Actor,

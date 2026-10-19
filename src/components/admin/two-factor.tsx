@@ -47,7 +47,7 @@ export function TwoFactorPanel({ enabled, mandatory }: { enabled: boolean; manda
         </>
       ) : (
         <div className="grid gap-5 sm:grid-cols-[auto_1fr]">
-          <img src={setup.qr} alt="QR code for your authenticator app" className="size-48 rounded-xl border border-line bg-card p-2" />
+          <img src={setup.qr} alt="QR code for your authenticator app" className="size-48 rounded-xl border border-line bg-white p-2" />
           <div className="space-y-3">
             <p className="text-sm">1. Scan the QR code with your authenticator app, or enter this key manually:</p>
             <code className="block break-all rounded-lg bg-surface px-3 py-2 font-mono text-sm font-bold text-navy-800">{setup.secret.replace(/(.{4})/g, "$1 ").trim()}</code>

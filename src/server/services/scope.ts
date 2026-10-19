@@ -9,15 +9,17 @@ export interface StudentScope {
   classId: string | null;
   departmentId: string | null;
   level: string | null;
+  /** The class code (BASIC5, JSS2, SS3 …); decides which examination programmes the student may see. */
+  classCode?: string | null;
 }
 
 export async function studentScope(userId: string, db: Executor = getDb()): Promise<StudentScope> {
   const [s] = await db
-    .select({ classId: students.classId, departmentId: students.departmentId, level: classes.level })
+    .select({ classId: students.classId, departmentId: students.departmentId, level: classes.level, classCode: classes.code })
     .from(students)
     .leftJoin(classes, eq(classes.id, students.classId))
     .where(eq(students.userId, userId));
-  return s ?? { classId: null, departmentId: null, level: null };
+  return s ?? { classId: null, departmentId: null, level: null, classCode: null };
 }
 
 /** SQL filter: content open to all sections, or to the student's own section. */

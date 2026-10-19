@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { EXAM_TYPES } from "@/core/question-parser";
 import { z } from "zod";
 import { can } from "@/core/permissions";
 import { questionFingerprint } from "@/core/question-parser";
@@ -26,7 +27,7 @@ export const questionInputSchema = z
     topicId: uuidOpt,
     subtopicId: uuidOpt,
     year: z.coerce.number().int().min(1990).max(2100).nullish(),
-    examType: z.enum(["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "CONTINUOUS_ASSESSMENT", "JAMB", "WAEC", "NECO", "BECE", "CUSTOM", "IELTS", "TOEFL", "SAT", "CHECKPOINT"]).nullish(),
+    examType: z.enum(EXAM_TYPES).nullish(),
     difficulty: z.enum(["EASY", "MEDIUM", "HARD"]).default("MEDIUM"),
     type: z.enum(["MCQ", "TRUE_FALSE", "MULTI_SELECT", "NUMERIC", "FILL_BLANK", "MATCHING"]).default("MCQ"),
     stem: z.string().trim().min(3, "Question text is required.").max(8000),

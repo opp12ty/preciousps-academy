@@ -5,6 +5,7 @@ import { forumMessages, forumReports, forumRooms, forumSuspensions, users } from
 import { audit, securityEvent, type Actor, type ReqCtx } from "../audit";
 import { AppError } from "../errors";
 import { requireParentAccess } from "./access";
+import { MORE_PARENT_ROOMS } from "@/content/hub-more";
 import { getSetting } from "../settings";
 
 /**
@@ -135,6 +136,20 @@ const PARENT_ROOMS = [
   { name: "Examinations and admissions", description: "Common Entrance, BECE, WAEC, NECO, JAMB and admissions." },
   { name: "Question of the week", description: "A weekly discussion started by the school." },
 ];
+
+/** Adds the learning and relaxation rooms that the parent community does not have yet. Runs at deploy. */
+export async function ensureParentRooms(schoolId: string) {
+  const db = getDb();
+  const have = await db.select({ name: forumRooms.name }).from(forumRooms).where(and(eq(forumRooms.schoolId, schoolId), eq(forumRooms.audience, "PARENT")));
+  const all = [...PARENT_ROOMS, ...MORE_PARENT_ROOMS];
+  let created = 0;
+  for (const [i, r] of all.entries()) {
+    if (have.some((h) => h.name.toLowerCase() === r.name.toLowerCase())) continue;
+    await db.insert(forumRooms).values({ schoolId, name: r.name, description: r.description, topic: "GENERAL", audience: "PARENT", sortOrder: i });
+    created++;
+  }
+  return created;
+}
 
 /** Starter rooms for the parent community; rooms that already exist are left alone. */
 export async function createParentRooms(actor: Actor, ctx: ReqCtx) {

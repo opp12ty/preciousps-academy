@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Download, FileSpreadsheet, FileText, Presentation, Star } from "lucide-react";
+import { BookOpen, FileSpreadsheet, FileText, Headphones, Presentation, Star } from "lucide-react";
 import { requireStudentPage } from "@/server/http";
 import { getAccessState } from "@/server/services/access";
 import { FEATURE_DENIED } from "@/core/features";
@@ -17,6 +17,7 @@ const LOOK: Record<MaterialType, { icon: typeof FileText; tone: string; short: s
   word: { icon: FileText, tone: "bg-royal-50 text-royal-600", short: "Word" },
   powerpoint: { icon: Presentation, tone: "bg-warn-50 text-warn-600", short: "PowerPoint" },
   excel: { icon: FileSpreadsheet, tone: "bg-success-50 text-success-600", short: "Excel" },
+  audio: { icon: Headphones, tone: "bg-gold-100 text-gold-600", short: "Audio" },
 };
 const size = (bytes: number | null) => (bytes ? (bytes >= 1_048_576 ? `${(bytes / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`) : "");
 
@@ -98,9 +99,13 @@ export default async function MaterialsPage({ searchParams }: PageProps<"/studen
                 {r.description && <p className="mt-3 line-clamp-3 text-sm text-muted">{r.description}</p>}
                 <div className="mt-auto pt-4">
                   {active ? (
-                    <a href={`/api/v1/assets/${r.assetId}`} target="_blank" rel="noopener noreferrer" className={buttonClass("primary", "sm")}>
-                      <Download className="size-4" /> {type === "pdf" ? "Open" : "Download"}
-                    </a>
+type === "audio" ? (
+                      <audio controls preload="none" controlsList="nodownload" src={`/api/v1/assets/${r.assetId}`} className="w-full" />
+                    ) : (
+                      <Link href={`/student/materials/read/${r.id}`} prefetch={false} className={buttonClass("primary", "sm")}>
+                        <BookOpen className="size-4" /> Read
+                      </Link>
+                    )
                   ) : (
                     <Link href="/student#activate" className="text-xs font-semibold text-royal-600 hover:underline">
                       Activate access to open

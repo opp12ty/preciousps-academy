@@ -50,7 +50,7 @@ export function ImportPreview({ importId, items, committed, resource }: { import
         <Badge tone="amber">{items.filter((i) => i.duplicateOf).length} duplicates</Badge>
         <div className="ml-auto flex rounded-lg bg-surface p-0.5 text-xs font-semibold">
           {(["all", "valid", "errors"] as const).map((f) => (
-            <button key={f} onClick={() => setFilter(f)} className={cx("rounded-md px-3 py-1 capitalize", filter === f ? "bg-card text-navy-800 shadow-sm" : "text-muted")}>{f}</button>
+            <button key={f} onClick={() => setFilter(f)} className={cx("rounded-md px-3 py-1 capitalize", filter === f ? "bg-white text-navy-800 shadow-sm" : "text-muted")}>{f}</button>
           ))}
         </div>
       </div>
@@ -58,7 +58,7 @@ export function ImportPreview({ importId, items, committed, resource }: { import
         {shown.map((it) => {
           const ok = !it.errors.length && !it.duplicateOf;
           return (
-            <li key={it.index} className={cx("rounded-2xl border bg-card p-4", ok ? "border-line" : it.duplicateOf ? "border-amber-200" : "border-red-200")}>
+            <li key={it.index} className={cx("rounded-2xl border bg-white p-4", ok ? "border-line" : it.duplicateOf ? "border-amber-200" : "border-red-200")}>
               <div className="flex flex-wrap items-start gap-3">
                 {!committed && <input type="checkbox" aria-label={`Include ${it.source}`} disabled={!ok} className="mt-1 size-5 accent-royal-600" checked={sel.includes(it.index)} onChange={() => setSel((x) => (x.includes(it.index) ? x.filter((y) => y !== it.index) : [...x, it.index]))} />}
                 <div className="min-w-0 flex-1">

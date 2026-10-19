@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, ExternalLink, FileText, Headphones, PlayCircle, Target } from "lucide-react";
 import { requireStudentPage, reqCtx } from "@/server/http";
 import { openLesson } from "@/server/services/study";
+import { autoFigure } from "@/core/auto-figure";
+import { listTopicAudio } from "@/server/services/topic-audio";
 import { toPublicError } from "@/server/errors";
 import { RichText } from "@/components/rich-text";
 import { renderQuestion } from "@/components/exam/render";
@@ -44,6 +46,8 @@ export default async function LessonPage({ params }: PageProps<"/student/study/l
     );
   }
   const l = v.lesson;
+  const figure = autoFigure(l.title, v.topic, l.body, l.examples);
+  const audio = await listTopicAudio(s.user.schoolId, l.topicId);
   const embed = l.videoUrl ? youtubeEmbed(l.videoUrl) : null;
   const done = v.progress?.status === "COMPLETED";
   return (
@@ -58,7 +62,7 @@ export default async function LessonPage({ params }: PageProps<"/student/study/l
       <ol className="mb-6 flex flex-wrap gap-2 text-xs font-semibold" aria-label="Learning path">
         {["Lesson", "Study material", "Classwork", "Assessment", "Next lesson"].map((step, i) => (
           <li key={step} className="flex items-center gap-2">
-            <span className={`rounded-full px-3 py-1 ${i === 0 || (i <= 3 && done) ? "bg-navy-800 text-white" : "bg-card text-muted ring-1 ring-line"}`}>{step}</span>
+            <span className={`rounded-full px-3 py-1 ${i === 0 || (i <= 3 && done) ? "bg-navy-800 text-white" : "bg-white text-muted ring-1 ring-line"}`}>{step}</span>
             {i < 4 && <span className="text-muted" aria-hidden>→</span>}
           </li>
         ))}
@@ -70,11 +74,30 @@ export default async function LessonPage({ params }: PageProps<"/student/study/l
         </div>
       )}
       <Card className="p-6 sm:p-8">
+        {figure && (
+          <figure className="mb-6 rounded-2xl border border-royal-100 bg-royal-50 p-4">
+            <RichText text={`[[diagram: ${figure.spec} || ${figure.caption}]]`} />
+          </figure>
+        )}
         <RichText text={l.body} />
         {l.examples && (
           <section className="mt-8 rounded-2xl border border-gold-400/40 bg-gold-50 p-5">
             <h2 className="text-sm font-extrabold uppercase tracking-wide text-gold-600">Worked examples</h2>
             <RichText text={l.examples} className="mt-2" />
+          </section>
+        )}
+        {audio.length > 0 && (
+          <section className="mt-8 rounded-2xl border border-royal-100 bg-royal-50 p-5" aria-labelledby="audio-h">
+            <h2 id="audio-h" className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-wide text-royal-700"><Headphones className="size-4" aria-hidden /> Listen to the explanation</h2>
+            <p className="mt-1 text-xs text-muted">Press play. The sound loads a little at a time, so it uses very little data.</p>
+            <ul className="mt-3 space-y-3">
+              {audio.map((a) => (
+                <li key={a.id}>
+                  <p className="text-sm font-semibold text-navy-800">{a.title}</p>
+                  <audio controls preload="none" controlsList="nodownload" src={`/api/v1/audio/${a.id}`} className="mt-1 w-full" />
+                </li>
+              ))}
+            </ul>
           </section>
         )}
         {l.audioUrl && (
@@ -95,7 +118,7 @@ export default async function LessonPage({ params }: PageProps<"/student/study/l
           <ul className="mt-3 space-y-2">
             {v.resources.map((r) => (
               <li key={r.id}>
-                <a href={r.url ?? `/api/v1/assets/${r.assetId}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-navy-800 hover:bg-surface">
+                <a href={r.url ?? `/student/study/attachment/${r.id}`} target={r.url ? "_blank" : undefined} rel="noopener noreferrer" className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-navy-800 hover:bg-surface">
                   <FileText className="size-4 text-royal-600" /> {r.title} <ExternalLink className="ml-auto size-3.5 text-muted" />
                 </a>
               </li>

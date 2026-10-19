@@ -58,7 +58,7 @@ export function ExamForm({ exam, subjects, classes, departments, topics, years, 
     >
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <TextField className="sm:col-span-2" label="Title" name="title" required defaultValue={exam?.title} placeholder="e.g. 2025 Mathematics Examination" />
-        <SelectField label="Examination type" name="examType" defaultValue={exam?.examType ?? "MOCK"} options={["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "CONTINUOUS_ASSESSMENT", "JAMB", "WAEC", "NECO", "BECE", "CUSTOM", "IELTS", "TOEFL", "SAT", "CHECKPOINT"].map((v) => ({ value: v, label: v.replace(/_/g, " ") }))} />
+        <SelectField label="Examination type" name="examType" defaultValue={exam?.examType ?? "MOCK"} options={["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "CONTINUOUS_ASSESSMENT", "JAMB", "WAEC", "NECO", "BECE", "CUSTOM", "IELTS", "TOEFL", "SAT", "CHECKPOINT", "COMMON_ENTRANCE", "JUPEB", "IJMB", "PreciousPS_EXAM"].map((v) => ({ value: v, label: v.replace(/_/g, " ") }))} />
         <SelectField label="Subject" name="subjectId" required placeholder="Select" options={subjects} value={subjectId} onChange={(e) => setSubjectId(e.target.value)} />
         <SelectField label="Class" name="classId" placeholder="All classes" options={classes} defaultValue={exam?.classId ?? ""} />
         <SelectField label="Department" name="departmentId" placeholder="All departments" options={departments} defaultValue={exam?.departmentId ?? ""} />

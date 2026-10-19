@@ -116,7 +116,7 @@ export async function requestChildLink(parent: Actor, identifier: string, relati
       .select({ id: users.id })
       .from(users)
       .innerJoin(students, eq(students.userId, users.id))
-      .where(and(eq(users.schoolId, parent.schoolId), eq(users.userType, "STUDENT"), isNull(users.deletedAt), sql`(lower(${students.studentNumber}) = ${key} OR lower(${students.username}) = ${key} OR lower(${users.email}) = ${key})`));
+      .where(and(eq(users.schoolId, parent.schoolId), eq(users.userType, "STUDENT"), isNull(users.deletedAt), eq(students.accountKind, "STUDENT"), sql`(lower(${students.studentNumber}) = ${key} OR lower(${students.username}) = ${key} OR lower(${users.email}) = ${key})`));
     studentUserId = st?.id ?? null;
   }
   if (!studentUserId) {
@@ -224,6 +224,12 @@ export async function listParentRequests(parentUserId: string) {
     .orderBy(desc(guardianRequests.requestedAt))
     .limit(30);
   return rows;
+}
+
+/** How many parent requests are waiting for this student's answer: the badge on the menu. Read-only. */
+export async function pendingLinkCount(studentUserId: string) {
+  const [{ n }] = await getDb().select({ n: sql<number>`count(*)::int` }).from(guardianRequests).where(and(eq(guardianRequests.studentUserId, studentUserId), eq(guardianRequests.status, "PENDING"), isNull(guardianRequests.childAccepted), sql`${guardianRequests.expiresAt} > now()`));
+  return n;
 }
 
 /** What the student sees under Parent Connections. */

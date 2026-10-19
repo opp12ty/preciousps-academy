@@ -31,7 +31,7 @@ export default async function ContactPage() {
       <div className="mx-auto grid max-w-6xl gap-6 px-4 py-14 sm:px-6 lg:grid-cols-[1fr_1.1fr]">
         <div className="space-y-4">
           {items.map((i) => (
-            <div key={i.label} className="flex items-start gap-4 rounded-2xl border border-line bg-card p-5">
+            <div key={i.label} className="flex items-start gap-4 rounded-2xl border border-line bg-white p-5">
               <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-gold-500 text-navy-900">
                 <i.icon className="size-5" aria-hidden />
               </span>
@@ -52,7 +52,7 @@ export default async function ContactPage() {
             <p className="font-semibold text-navy-800">{c.accessNote}</p>
           </div>
         </div>
-        <section aria-labelledby="enquiry-title" className="rounded-3xl border border-line bg-card p-6 sm:p-8">
+        <section aria-labelledby="enquiry-title" className="rounded-3xl border border-line bg-white p-6 sm:p-8">
           <h2 id="enquiry-title" className="text-xl font-bold text-navy-800">
             Send us a message
           </h2>

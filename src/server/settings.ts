@@ -91,6 +91,16 @@ export const SETTING_SCHEMAS = {
     calculatorEnabled: z.boolean(),
     /** Subject codes whose examinations show the on-screen calculator. */
     calculatorSubjectCodes: z.string().max(600),
+    /** Questions in each subject's standard JAMB test; a subject with fewer approved questions uses all it has. */
+    jambQuestions: z.number().int().min(1).max(500),
+    /** Questions in each subject's standard BECE and Common Entrance papers. */
+    beceQuestions: z.number().int().min(1).max(500),
+    commonEntranceQuestions: z.number().int().min(1).max(500),
+    /** Questions in each termly Precious PS Examination, by level. */
+    fodanLowerPrimary: z.number().int().min(1).max(500),
+    fodanUpperPrimary: z.number().int().min(1).max(500),
+    fodanJunior: z.number().int().min(1).max(500),
+    fodanSenior: z.number().int().min(1).max(500),
   }),
   forum: z
     .object({
@@ -120,12 +130,25 @@ export const SETTING_SCHEMAS = {
     idiomsEnabled: z.boolean(),
     clichesEnabled: z.boolean(),
     phrasalVerbsEnabled: z.boolean(),
+    proverbsEnabled: z.boolean(),
+    commonErrorsEnabled: z.boolean(),
     gamesEnabled: z.boolean(),
     wordScramble: z.boolean(),
     memoryMatch: z.boolean(),
     meaningMatch: z.boolean(),
     mathsSprint: z.boolean(),
     numberPatterns: z.boolean(),
+    sudoku: z.boolean(),
+    slidingPuzzle: z.boolean(),
+    wordSearch: z.boolean(),
+    hangman: z.boolean(),
+    hanoi: z.boolean(),
+    spotError: z.boolean(),
+    proverbGame: z.boolean(),
+    statesQuiz: z.boolean(),
+    typingTest: z.boolean(),
+    ticTacToe: z.boolean(),
+    colourMemory: z.boolean(),
     roundQuestions: z.number().int().min(5).max(30),
     secondsPerRound: z.number().int().min(30).max(900),
   }),
@@ -166,6 +189,8 @@ export const SETTING_SCHEMAS = {
     quizQuestions: z.number().int().min(5).max(50),
     dailyQuestions: z.number().int().min(3).max(20),
     showCorrectAnswer: z.boolean(),
+    /** Questions drawn at random for each parent General Knowledge Exam. */
+    parentExamQuestions: z.number().int().min(5).max(200),
   }),
   learning: z.object({
     masteryThreshold: z.number().min(1).max(100),
@@ -287,6 +312,13 @@ export const SETTING_DEFAULTS: { [K in SettingKey]: SettingValue<K> } = {
     lockdownRulesPopup: true,
     lockdownRules:
       "Stay on this examination screen until you submit.\nDo not open another tab, app, window or website, and do not leave full screen.\nDo not use a phone, notes, books or any other person's help.\nThe first time you leave the screen you will be warned; after that your examination is submitted automatically.\nThe timer keeps running even if you leave, so stay focused on your paper.",
+    jambQuestions: 50,
+    beceQuestions: 50,
+    commonEntranceQuestions: 50,
+    fodanLowerPrimary: 40,
+    fodanUpperPrimary: 60,
+    fodanJunior: 90,
+    fodanSenior: 120,
     studentIdAuto: true,
     studentIdPrefix: "PPS",
     studentIdIncludeYear: true,
@@ -311,7 +343,7 @@ export const SETTING_DEFAULTS: { [K in SettingKey]: SettingValue<K> } = {
       "Be respectful. Keep to school work: admissions, examinations, subjects and study tips. Never share a phone number, e-mail, home address, location or social-media contact. No adult content, insults, betting or examination malpractice. Staff can read every message.",
   },
   grading: { scale: DEFAULT_GRADING },
-  learningHub: { dictionaryEnabled: true, idiomsEnabled: true, clichesEnabled: true, phrasalVerbsEnabled: true, gamesEnabled: true, wordScramble: true, memoryMatch: true, meaningMatch: true, mathsSprint: true, numberPatterns: true, roundQuestions: 10, secondsPerRound: 120 },
+  learningHub: { dictionaryEnabled: true, idiomsEnabled: true, clichesEnabled: true, phrasalVerbsEnabled: true, proverbsEnabled: true, commonErrorsEnabled: true, gamesEnabled: true, wordScramble: true, memoryMatch: true, meaningMatch: true, mathsSprint: true, numberPatterns: true, sudoku: true, slidingPuzzle: true, wordSearch: true, hangman: true, hanoi: true, spotError: true, proverbGame: true, statesQuiz: true, typingTest: true, ticTacToe: true, colourMemory: true, roundQuestions: 10, secondsPerRound: 120 },
   premium: {
     enabled: true,
     title: "International & Advanced",
@@ -322,7 +354,7 @@ export const SETTING_DEFAULTS: { [K in SettingKey]: SettingValue<K> } = {
   parents: { registrationOpen: true, showResults: true, showStudyProgress: true, welcome: "Follow your child's learning, results and study timetable. To add a child, send a link request with the child's Student ID; it becomes active once it is confirmed.", linkPolicy: "CHILD", childCanRemove: false, communityEnabled: true, communityRules: "This community is for education and parenting only. Be respectful. Never share a phone number, e-mail, home address, location or social-media contact, and do not invite anyone to talk elsewhere. No flirting, dating, adult content, insults, adverts or money requests. Do not try to contact students here. To reach the school, use Contact School Administration. Moderators can read every message." },
   // Nigerian school year: third term ends late July, the new session begins in mid-September.
   promotion: { enabled: true, mode: "REQUEST", windowStart: "08-01", windowEnd: "10-31" },
-  knowledgeHub: { enabled: true, sessionMinutes: 30, cooldownMinutes: 60, quizQuestions: 20, dailyQuestions: 5, showCorrectAnswer: true },
+  knowledgeHub: { enabled: true, sessionMinutes: 30, cooldownMinutes: 60, quizQuestions: 20, dailyQuestions: 5, showCorrectAnswer: true, parentExamQuestions: 50 },
   learning: { masteryThreshold: 70, weeklyGoalDays: 5, enforcePrerequisites: true, allowRetry: true },
   results: { defaultVisibility: "IMMEDIATE", showHistoricalAfterExpiry: true },
   certificates: { enabled: false, numberPrefix: "PPA", minimumPercentage: 50 },
@@ -352,7 +384,32 @@ export const SETTING_DEFAULTS: { [K in SettingKey]: SettingValue<K> } = {
   },
 };
 
+/**
+ * Settings are read on almost every page, several at a time. Each value is kept in memory for a few
+ * seconds so that a page does not ask the database for the same row again and again. A change made
+ * in the backend clears the copy at once on the server that saved it and reaches the others within
+ * the time below.
+ */
+const SETTING_TTL_MS = 15_000;
+const settingMemo = new Map<string, { at: number; value: unknown }>();
+export function clearSettingCache() {
+  settingMemo.clear();
+}
+
 export async function getSetting<K extends SettingKey>(schoolId: string, key: K, db: Executor = getDb()): Promise<SettingValue<K>> {
+  // Inside a transaction the live row is always read.
+  const shared = db === getDb();
+  const memoKey = `${schoolId}:${key}`;
+  if (shared) {
+    const hit = settingMemo.get(memoKey);
+    if (hit && Date.now() - hit.at < SETTING_TTL_MS) return hit.value as SettingValue<K>;
+  }
+  const value = await readSetting(schoolId, key, db);
+  if (shared) settingMemo.set(memoKey, { at: Date.now(), value });
+  return value;
+}
+
+async function readSetting<K extends SettingKey>(schoolId: string, key: K, db: Executor): Promise<SettingValue<K>> {
   const [row] = await db
     .select({ value: settings.value })
     .from(settings)
@@ -387,6 +444,7 @@ export async function putSetting<K extends SettingKey>(
     .insert(settings)
     .values({ schoolId, key, value: parsed.data, updatedBy })
     .onConflictDoUpdate({ target: [settings.schoolId, settings.key], set: { value: parsed.data, updatedBy, updatedAt: new Date() } });
+  settingMemo.delete(`${schoolId}:${key}`);
   return parsed.data as SettingValue<K>;
 }
 

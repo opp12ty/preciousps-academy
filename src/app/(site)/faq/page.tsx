@@ -12,7 +12,7 @@ export default async function FaqPage() {
     <>
       <PageHero eyebrow="Help" title={faq.title} />
       <div className="mx-auto max-w-3xl px-4 py-14 sm:px-6">
-        <div className="divide-y divide-line rounded-2xl border border-line bg-card shadow-card">
+        <div className="divide-y divide-line rounded-2xl border border-line bg-white shadow-card">
           {faq.items.map((f, i) => (
             <details key={f.q} className="group px-5 py-4 sm:px-6 [&_summary::-webkit-details-marker]:hidden" open={i === 0}>
               <summary className="flex cursor-pointer items-center justify-between gap-4 text-[1.02rem] font-semibold text-navy-800">

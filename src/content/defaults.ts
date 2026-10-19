@@ -359,6 +359,36 @@ We may update these terms. Continued use means you accept the updated terms.`,
     highlights: ["Students: enter the code on your dashboard", "Parents: enter the code on the Parent access page", "Keep your code private"],
     cta: { label: "Sign in to enter a code", href: "/login" },
   } satisfies PageBlock,
+  /** The moving banner at the top of the parent's first page. Every slide can be edited or removed. */
+  "parent-promo": {
+    enabled: true,
+    seconds: 6,
+    slides: [
+      { eyebrow: "Precious PS SOFTNET", title: "A reliable computer makes learning easier", body: "Buy good, dependable laptops and desktop computers for school work and CBT practice, with a warranty you can trust.", cta: "Call 08169267383", link: "tel:08169267383", icon: "laptop" },
+      { eyebrow: "Precious PS SOFTNET", title: "Tablets and phones for learners", body: "Sturdy tablets and smartphones with good batteries and clear screens, chosen with students in mind.", cta: "Call 08169267383", link: "tel:08169267383", icon: "tablet" },
+      { eyebrow: "Precious PS SOFTNET", title: "Printers for homework and projects", body: "Print notes, past questions and projects at home. Printers, ink and paper are available.", cta: "Call 08169267383", link: "tel:08169267383", icon: "printer" },
+      { eyebrow: "Precious PS SOFTNET", title: "Power banks, earbuds and accessories", body: "Keep lessons going through power cuts and let your child listen without disturbing the house: power banks, earbuds, chargers and more.", cta: "Call 08169267383", link: "tel:08169267383", icon: "battery" },
+    ],
+  },
+  "auth-pictures": {
+    yorubaAssetId: "",
+    yorubaCaption: "Yoruba heritage",
+    awolowoAssetId: "",
+    awolowoCaption: "Chief Obafemi Awolowo, pioneer of free education",
+    libraryAssetId: "",
+    libraryCaption: "Library",
+    commerceAssetId: "",
+    commerceCaption: "Commerce",
+    literatureAssetId: "",
+    literatureCaption: "Literature",
+    refineryAssetId: "",
+    refineryCaption: "Refinery",
+    /** Extra pictures: press "Add item" for each new one. Only items with an uploaded picture are shown. */
+    moreRegisterPictures: [{ imageAssetId: "", caption: "" }],
+    moreLoginPictures: [{ imageAssetId: "", caption: "" }],
+    /** The administrator sign-in shows the four login pictures above plus these. */
+    moreAdminLoginPictures: [{ imageAssetId: "", caption: "" }],
+  },
   footer: {
     about: "The digital learning and assessment platform of Precious PS Academy.",
     learnTitle: "Learn",

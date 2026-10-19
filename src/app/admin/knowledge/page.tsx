@@ -155,6 +155,7 @@ async function Settings({ schoolId }: { schoolId: string }) {
     { key: "sessionMinutes", label: "Length of one student session (minutes)", type: "number", min: 5, max: 600, hint: "The default. A single access code can be given a different length, or unlimited access, under Access Codes → Features." },
     { key: "cooldownMinutes", label: "Wait before the next session (minutes)", type: "number", min: 0, max: 1440 },
     { key: "quizQuestions", label: "Questions in a Quiz Arena or parent game (5–50)", type: "number", min: 5, max: 50 },
+    { key: "parentExamQuestions", label: "Questions in each parent General Knowledge Exam (5–200)", type: "number", min: 5, max: 200, hint: "Drawn at random from every parent knowledge question (over 400 are built in)." },
     { key: "dailyQuestions", label: "Questions in the Daily Challenge (3–20)", type: "number", min: 3, max: 20 },
   ];
   return (

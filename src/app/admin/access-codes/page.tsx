@@ -23,7 +23,7 @@ export default async function AccessCodesPage({ searchParams }: PageProps<"/admi
   const tabs = ["", "UNUSED", "ACTIVE", "EXPIRED", "SUSPENDED", "REVOKED"];
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Access" title="Access codes" description={`Each code grants ${cfg.defaultDays} days (default) of CBT, Study Centre, practice, assignments and analytics — starting at first activation. One code, one student. Parent codes open the parent portal: one code, one parent.`} />
+      <PageHeader eyebrow="Access" title="Access codes" description={`Each code grants ${cfg.defaultDays} days (default) of CBT, Study Centre, practice, assignments and analytics — starting at first activation. One code, one student. Parent codes open the parent portal and school codes open a school account; each kind of code works only on its own kind of account.`} />
       {can(a, "codes.generate") && (
         <Card>
           <CardHeader title="Generate codes" description="Cryptographically random, unique, non-sequential. Bulk generation supported." />
@@ -42,13 +42,13 @@ export default async function AccessCodesPage({ searchParams }: PageProps<"/admi
       )}
       <nav aria-label="Status" className="no-scrollbar flex gap-2 overflow-x-auto">
         {tabs.map((t) => (
-          <Link key={t || "all"} href={`/admin/access-codes${qs({ ...sp, status: t || undefined, page: undefined })}`} className={cx("whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-semibold ring-1", (sp.status ?? "") === t ? "bg-navy-800 text-white ring-navy-800" : "bg-card text-navy-800 ring-line hover:bg-surface")}>
+          <Link key={t || "all"} href={`/admin/access-codes${qs({ ...sp, status: t || undefined, page: undefined })}`} className={cx("whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-semibold ring-1", (sp.status ?? "") === t ? "bg-navy-800 text-white ring-navy-800" : "bg-white text-navy-800 ring-line hover:bg-surface")}>
             {t ? t.toLowerCase().replace(/^\w/, (c) => c.toUpperCase()) : "All"} <span className="opacity-70">{t ? (list.counts[t] ?? 0) : Object.values(list.counts).reduce((x, y) => x + y, 0)}</span>
           </Link>
         ))}
       </nav>
       <nav aria-label="Who the code is for" className="no-scrollbar flex gap-2 overflow-x-auto">
-        {[["", "Everyone"], ["STUDENT", "Student codes"], ["PARENT", "Parent codes"]].map(([v, l]) => (
+        {[["", "Everyone"], ["STUDENT", "Student codes"], ["PARENT", "Parent codes"], ["SCHOOL", "School codes"]].map(([v, l]) => (
           <Link key={v || "all"} href={`/admin/access-codes${qs({ ...sp, audience: v || undefined, page: undefined })}`} className={cx("whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-semibold ring-1", (sp.audience ?? "") === v ? "bg-royal-600 text-white ring-royal-600" : "bg-white text-navy-800 ring-line hover:bg-surface")}>
             {l}
           </Link>
@@ -75,7 +75,7 @@ export default async function AccessCodesPage({ searchParams }: PageProps<"/admi
                 <tr key={r.id} className="align-top">
                   <Td className="font-mono text-sm font-bold text-navy-800">…{r.suffix}{r.note && <p className="font-sans text-xs font-normal text-muted">{r.note}</p>}</Td>
                   <Td><StatusBadge status={r.status} /></Td>
-                  <Td>{r.durationDays}{r.tier === "PREMIUM" && <Badge tone="gold" className="ml-1.5">Premium</Badge>}{r.audience === "PARENT" && <Badge tone="blue" className="ml-1.5">Parent</Badge>}</Td>
+                  <Td>{r.durationDays}{r.tier === "PREMIUM" && <Badge tone="gold" className="ml-1.5">Premium</Badge>}{r.audience === "PARENT" && <Badge tone="blue" className="ml-1.5">Parent</Badge>}{r.audience === "SCHOOL" && <Badge tone="navy" className="ml-1.5">School</Badge>}</Td>
                   <Td className="whitespace-nowrap text-xs text-muted">{fmt(r.createdAt)}</Td>
                   <Td>{r.studentId ? <Link href={r.audience === "PARENT" ? "/admin/parents?tab=parents" : `/admin/students/${r.studentId}`} className="text-sm font-semibold text-royal-600 hover:underline">{r.studentName}</Link> : <span className="text-muted">—</span>}</Td>
                   <Td className="whitespace-nowrap text-xs">{fmt(r.activatedAt)}</Td>

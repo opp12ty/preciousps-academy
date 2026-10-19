@@ -29,7 +29,7 @@ import {
 import { activateCode, adjustAccess, generateCodes, getAccessState, listCodes, requireActiveAccess } from "@/server/services/access";
 import { createAdmin, listRoles, revokeOtherOwnSessions, setAdminRoles, studentProfileAdmin, updateStudentAdmin, upsertRole } from "@/server/services/people";
 import { createQuestion, reviewQuestions } from "@/server/services/questions";
-import { createExam, getAttemptView, getStudentResult, listStudentResults, jambOverview, listResults, listStudentExams, saveAnswers, setExamStatus, setupJambTests, startAttempt, submitAttempt, updateExam } from "@/server/services/exams";
+import { createExam, getAttemptView, getStudentResult, JAMB_ONLY_FROM, listStudentResults, jambOverview, listResults, listStudentExams, saveAnswers, setExamStatus, setupJambTests, setupStandardPapers, startAttempt, submitAttempt, updateExam } from "@/server/services/exams";
 import { upsertTopic } from "@/server/services/curriculum";
 import { completeReading, mySubjects, openLesson, subjectOutline, submitClasswork } from "@/server/services/study";
 import { broadcast, listNotifications } from "@/server/services/notifications";
@@ -39,7 +39,7 @@ import { commitImport, previewImport } from "@/server/services/imports";
 import { approvePackQuestions, commitPack, previewPack, publishPack } from "@/server/services/content-packs";
 import { resultSlipPdf, toCsv } from "@/server/services/exports";
 import { can } from "@/core/permissions";
-import { getDefaultSchoolId, putSetting, SETTING_DEFAULTS } from "@/server/settings";
+import { getDefaultSchoolId, getSetting, putSetting, SETTING_DEFAULTS } from "@/server/settings";
 import { createDefaultRooms, forumState, liftSuspension, listMessagesAdmin, listStudentRooms, moderateMessage, postMessage, roomFeed, suspendStudent } from "@/server/services/forum";
 import { recordAttemptEvent } from "@/server/services/exams";
 import { registerParent } from "@/server/services/auth";
@@ -49,14 +49,31 @@ import { assignAccessToClass, assignAccessToParent, getParentAccess, requireFeat
 import { importStudentRows, previewStudentImport, STUDENT_IMPORT_COLUMNS, studentImportTemplate } from "@/server/services/student-import";
 import { appealOfResult, decideAppeal, listAppeals, openAppealCount, submitAppeal } from "@/server/services/appeals";
 import { REPORTS, runReport } from "@/server/services/analytics";
+import { examTypeAllowsClass, programmesForClass } from "@/core/exam-programmes";
+import { examClassesFor, isSchoolAccount, registerSchool, switchSchoolClass } from "@/server/services/school-accounts";
+import { addAudioPart, audioForPlayback, beginAudio, deleteAudio, finishAudio, listTopicAudio, readAudioRange } from "@/server/services/topic-audio";
+import { studentScope } from "@/server/services/scope";
+import { certificateFor, computeAwards, listAwards, publishAwards, reportCard, syncLoyalty, termScore, termWindows } from "@/server/services/records";
+import { cancelRsvp, listEventsForParent, listExpertsForParent, rsvpEvent, upsertEvent, upsertExpert } from "@/server/services/family";
+import { seedHubExtras } from "@/server/services/hub";
+import { ensureParentRooms } from "@/server/services/community";
+import { MORE_ARTICLES } from "@/content/hub-more";
+import { moveStudentClass } from "@/server/services/promotions";
+import { parseStarQuestions } from "@/core/question-parser";
+import { setupPrepProgrammes } from "@/server/services/international";
+import { PREP_ARTICLES, PREP_PROGRAMMES, MORE_WORDS } from "@/content/advanced-prep";
+import { seedMoreWords } from "@/server/services/wordbank";
+import { listErrors, recordError } from "@/server/services/developer";
+import { deleteGame, listGamesForParent, listGamesForStudent, parseGameItems, upsertGame } from "@/server/services/games";
 import { sendDailyReminders } from "@/server/services/reminders";
 import { featureWithheld } from "@/server/services/access";
 import { answerQuiz, getStudentArticle, hubState, listParentArticles, listStudentArticles, restoreArticleVersion, startHubSession, startQuiz, upsertArticle } from "@/server/services/hub";
 import { createParentRooms, listParentRooms, listReports, parentPost, parentRoomFeed, reportMessage } from "@/server/services/community";
 import { createSchedule, listSchedulesForStudent, respondToSchedule } from "@/server/services/schedules";
 import { gameData, gradeOf, listEntriesForStudent, loadStarterEntries, upsertEntry } from "@/server/services/wordbank";
-import { setupInternational } from "@/server/services/international";
-import { CENTRAL_COLUMNS, centralTemplateWorkbook, importCentralExtras, previewCentral, RESOURCE_COLUMNS, WORD_COLUMNS } from "@/server/services/central";
+import { internationalOverview, setupInternational } from "@/server/services/international";
+import { CENTRAL_COLUMNS, centralTemplateWorkbook, HOLIDAY_COLUMNS, importCentralExtras, previewCentral, RESOURCE_COLUMNS, WORD_COLUMNS } from "@/server/services/central";
+import { HOLIDAYS } from "@/content/holiday";
 import type { AttemptQuestionSnapshot } from "@/core/exam-engine";
 
 const ctx = { ip: "127.0.0.1", userAgent: "vitest" };
@@ -590,29 +607,40 @@ describe("Junior Secondary (JSS1–JSS3)", () => {
     await expectCode(startAttempt(ss, exam.id, crypto.randomUUID(), jssCtx), "FORBIDDEN");
   });
 
-  it("offers JAMB-only tests of 50 questions that draw nothing but JAMB questions", async () => {
+  it("offers a JAMB test in every subject, sized to its pool and drawn at random", async () => {
     const row = (await jambOverview(superAdmin)).filter((r) => r.approved >= 5).sort((a, b) => b.approved - a.approved)[0];
     expect(row).toBeTruthy();
     const first = await setupJambTests(superAdmin, [row.id], ctx);
     expect(first.created).toBe(1);
     const find = async () => (await db.select().from(S.examinations).where(and(eq(S.examinations.subjectId, row.id), eq(S.examinations.title, `JAMB ${row.name}`))))[0];
     let test = await find();
-    expect(test.questionCount).toBe(50);
     expect(test.examType).toBe("JAMB");
-    // Too few approved JAMB questions: the test waits as a draft instead of padding with other questions.
-    if (row.approved < 50) {
-      expect(first.waiting).toHaveLength(1);
-      expect(test.status).toBe("DRAFT");
-      expect((await listStudentExams(ss, { jambOnly: true })).map((e) => e.title)).not.toContain(test.title);
-    }
-    await db.update(S.examinations).set({ questionCount: 5 }).where(eq(S.examinations.id, test.id));
+    // A small pool never holds the test back: it is published with what there is, at 48 seconds a question.
+    expect(first.published).toBe(1);
+    expect(test.status).toBe("PUBLISHED");
+    expect(test.questionCount).toBeLessThanOrEqual(50);
+    expect(test.durationMinutes).toBe(Math.max(5, Math.ceil(test.questionCount * 0.8)));
+    const jambOnly = row.approved >= Math.max(JAMB_ONLY_FROM, 50);
+    // Below the threshold the subject's standard SS2–SS3 questions join the JAMB ones.
+    expect(Boolean((test.poolFilter as { orClasses?: boolean }).orClasses)).toBe(!jambOnly);
     const again = await setupJambTests(superAdmin, [row.id], ctx);
     expect(again.created).toBe(0);
     expect((await find()).status).toBe("PUBLISHED");
     // Editing through the ordinary exam form must not drop the JAMB-only restriction.
     await updateExam(superAdmin, test.id, { title: test.title, subjectId: row.id, level: "SENIOR_SECONDARY", examType: "JAMB", questionCount: 5, durationMinutes: 10, maxAttempts: 100, poolFilter: null }, ctx);
     test = await find();
-    expect(test.poolFilter).toEqual({ examTypes: ["JAMB"] });
+    expect(test.poolFilter).toMatchObject({ examTypes: ["JAMB"], standard: true, autoSize: false });
+    // The Super Admin sets the standard size; tests follow it, except one whose count was set by hand.
+    const exam = await getSetting(superAdmin.schoolId, "examination");
+    await putSetting(superAdmin.schoolId, "examination", { ...exam, jambQuestions: 3 }, superAdmin.id);
+    await setupJambTests(superAdmin, [row.id], ctx);
+    expect((await find()).questionCount).toBe(5); // set by hand: kept
+    await db.update(S.examinations).set({ poolFilter: { ...(test.poolFilter as object), autoSize: true } }).where(eq(S.examinations.id, test.id));
+    await setupJambTests(superAdmin, [row.id], ctx);
+    expect((await find()).questionCount).toBe(3); // following the standard
+    expect((await find()).durationMinutes).toBe(5);
+    await putSetting(superAdmin.schoolId, "examination", exam, superAdmin.id);
+    await db.update(S.examinations).set({ questionCount: 5, poolFilter: test.poolFilter }).where(eq(S.examinations.id, test.id));
 
     const ssTitles = (await listStudentExams(ss, { jambOnly: true })).map((e) => e.title);
     expect(ssTitles).toContain(test.title);
@@ -624,7 +652,26 @@ describe("Junior Secondary (JSS1–JSS3)", () => {
     const { attemptId } = await startAttempt(ss, test.id, crypto.randomUUID(), jssCtx);
     const picked = await db.select({ examType: S.questions.examType }).from(S.attemptQuestions).innerJoin(S.questions, eq(S.questions.id, S.attemptQuestions.questionId)).where(eq(S.attemptQuestions.attemptId, attemptId));
     expect(picked).toHaveLength(5);
-    expect(picked.every((q) => q.examType === "JAMB")).toBe(true);
+    if (jambOnly) expect(picked.every((q) => q.examType === "JAMB")).toBe(true);
+  });
+
+  it("publishes a paper with a small pool at the same time per question, and keeps BECE and Common Entrance papers in every subject", async () => {
+    const mth = (await db.select().from(S.subjects).where(eq(S.subjects.code, "MTH")))[0];
+    const small = await createExam(superAdmin, { title: "Tiny pool paper", subjectId: mth.id, level: "SENIOR_SECONDARY", examType: "PRACTICE", questionCount: 500, durationMinutes: 500, maxAttempts: 3 }, ctx);
+    await setExamStatus(superAdmin, small.id, "PUBLISHED", ctx);
+    const [after] = await db.select().from(S.examinations).where(eq(S.examinations.id, small.id));
+    expect(after.status).toBe("PUBLISHED");
+    expect(after.questionCount).toBeLessThan(500);
+    expect(after.durationMinutes).toBe(Math.max(5, after.questionCount)); // one minute a question, as set
+    const empty = await createExam(superAdmin, { title: "Empty pool paper", subjectId: mth.id, level: "SENIOR_SECONDARY", examType: "PRACTICE", questionCount: 10, durationMinutes: 10, maxAttempts: 3, poolFilter: { years: [1901] } }, ctx);
+    await expectCode(setExamStatus(superAdmin, empty.id, "PUBLISHED", ctx), "VALIDATION");
+
+    const first = await setupStandardPapers(superAdmin, ctx);
+    const papers = await db.select().from(S.examinations).where(and(inArray(S.examinations.examType, ["BECE", "COMMON_ENTRANCE"]), eq(S.examinations.status, "PUBLISHED")));
+    expect(first.created).toBeGreaterThan(0);
+    expect(papers.some((p) => p.title.includes("Standard Paper"))).toBe(true);
+    for (const p of papers.filter((x) => x.title.includes("Standard Paper"))) expect(p.durationMinutes).toBeGreaterThanOrEqual(5);
+    expect((await setupStandardPapers(superAdmin, ctx)).created).toBe(0); // never doubled
   });
 
   it("keeps the Study Centre, assignments and resources within the student's section", async () => {
@@ -924,11 +971,11 @@ describe("Primary school, parents, Premium and the learning hub", () => {
   it("shows dictionary entries by class and builds games from them", async () => {
     expect((await loadStarterEntries(superAdmin.schoolId, superAdmin.id)).created).toBe(0); // seeded already
     const [b5] = await db.select().from(S.classes).where(eq(S.classes.code, "BASIC5"));
-    await upsertEntry(superAdmin, null, { kind: "WORD", term: "harvest", partOfSpeech: "noun", meaning: "The time when crops are gathered.", picture: "🌾", classId: b5.id }, at(4));
-    await expectCode(upsertEntry(superAdmin, null, { kind: "WORD", term: "Harvest", meaning: "Again." }, at(4)), "DUPLICATE");
+    await upsertEntry(superAdmin, null, { kind: "WORD", term: "granary", partOfSpeech: "noun", meaning: "A building where harvested grain is stored.", picture: "🌾", classId: b5.id }, at(4));
+    await expectCode(upsertEntry(superAdmin, null, { kind: "WORD", term: "Granary", meaning: "Again." }, at(4)), "DUPLICATE");
     const mine = await listEntriesForStudent(pupil, { kind: "WORD" });
     expect(mine.length).toBeGreaterThan(100);
-    expect(mine.map((e) => e.term)).not.toContain("harvest"); // Basic 5 only
+    expect(mine.map((e) => e.term)).not.toContain("granary"); // Basic 5 only
     const game = await gameData(pupil);
     expect(game.grade).toBe(4);
     expect(game.words.length).toBeGreaterThan(50);
@@ -962,9 +1009,10 @@ describe("Primary school, parents, Premium and the learning hub", () => {
     const st = await register("premiumss", "SS3", "SCI", at(7));
     const [standard] = (await generateCodes(superAdmin, { count: 1 }, at(7))).codes;
     await activateCode(st, standard, at(7));
-    const setup = await setupInternational(superAdmin, at(7));
-    expect(setup.exams).toBe(7);
-    expect(setup.questions).toBeGreaterThan(100);
+    await setupInternational(superAdmin, at(7)); // the install already loads them; running again is harmless
+    const overview = await internationalOverview(superAdmin.schoolId);
+    expect(overview.length).toBe(7);
+    expect(overview.every((x) => x.exam && x.approved >= 9)).toBe(true);
     expect((await setupInternational(superAdmin, at(7))).exams).toBe(0); // safe to run again
     expect((await listStudentExams(st)).some((e) => e.examType === "IELTS")).toBe(false); // never in the ordinary lists
     const intl = await listStudentExams(st, { premium: true });
@@ -991,7 +1039,7 @@ describe("Central upload workbook", () => {
 
   it("offers a template that lists every Primary subject", async () => {
     const wb = XLSX.read(await centralTemplateWorkbook(superAdmin.schoolId), { type: "buffer" });
-    expect(wb.SheetNames).toEqual(["Read Me", "Subjects", "Classes", "Scheme of Work", "Lessons", "Questions", "Exams", "Assignments", "Dictionary", "Idioms", "Cliches", "Phrasal Verbs", "Resources", "Articles", "Quiz Questions"]);
+    expect(wb.SheetNames).toEqual(["Read Me", "Subjects", "Classes", "Lists", "Coverage", "Scheme of Work", "Lessons", "Questions", "Exams", "Assignments", "Dictionary", "Idioms", "Cliches", "Phrasal Verbs", "Proverbs", "Common Errors", "Holiday Tasks", "Resources", "Articles", "Quiz Questions"]);
     const scheme = XLSX.utils.sheet_to_json<Record<string, string>>(wb.Sheets["Scheme of Work"], { defval: "" });
     const codes = new Set(scheme.map((r) => r.Subject));
     for (const code of ["MTH", "ENG", "QRE", "VRE", "BST", "SCS", "PHE", "CRS", "IRS", "HIS", "CCA", "BDL", "PVS", "FRE", "ARB", "YOR", "IGB", "HAU"]) expect(codes.has(code), code).toBe(true);
@@ -999,7 +1047,7 @@ describe("Central upload workbook", () => {
     expect(scheme.filter((r) => r.Subject === "BDL").map((r) => r.Class)).not.toContain("Basic 1"); // starts in Basic 4
     expect(Object.keys(scheme[0])).toEqual(CENTRAL_COLUMNS.scheme);
     const words = XLSX.read(await centralTemplateWorkbook(superAdmin.schoolId, "words"), { type: "buffer" });
-    expect(words.SheetNames).toEqual(["Read Me", "Dictionary", "Idioms", "Cliches", "Phrasal Verbs"]);
+    expect(words.SheetNames).toEqual(["Read Me", "Dictionary", "Idioms", "Cliches", "Phrasal Verbs", "Proverbs", "Common Errors"]);
   });
 
   it("sends each row of one workbook to the section it belongs to", async () => {
@@ -1229,6 +1277,12 @@ describe("Secure family linking, entitlements, hubs and communities", () => {
     await expectCode(startQuiz(childB, "PARENTING", at(2), "2026-10-05"), "FORBIDDEN");
     await expectCode(startQuiz(mum, "QUIZ", at(3), "2026-10-05"), "FORBIDDEN");
     expect((await startQuiz(mum, "PARENTING", at(3), "2026-10-05")).questions.length).toBeGreaterThan(5); // free for parents
+    // The General Knowledge Exam draws 50 of the 400+ built-in questions, a different set each time.
+    const { PARENT_GK } = await import("@/content/parent-gk");
+    expect(PARENT_GK.length).toBeGreaterThan(400);
+    const gk = await startQuiz(mum, "PARENT_GK", at(3), "2026-10-05");
+    expect(gk.questions).toHaveLength(50);
+    await expectCode(startQuiz(childB, "PARENT_GK", at(2), "2026-10-05"), "FORBIDDEN");
   });
 
   it("runs parent content through review and keeps earlier versions", async () => {
@@ -1247,10 +1301,10 @@ describe("Secure family linking, entitlements, hubs and communities", () => {
   });
 
   it("keeps the parent community and the student forum completely separate", async () => {
-    expect((await createParentRooms(superAdmin, at(6))).created).toBe(4);
+    // The starter rooms are created when the platform is set up, so the button finds nothing to add.
     expect((await createParentRooms(superAdmin, at(6))).created).toBe(0);
     const { rooms } = await listParentRooms(mum);
-    expect(rooms).toHaveLength(4);
+    expect(rooms.length).toBeGreaterThanOrEqual(4);
     await expectCode(listParentRooms(childB), "FORBIDDEN");
     await expectCode(roomFeed(childB, rooms[0].id), "NOT_FOUND"); // a student cannot open a parent room
     await expectCode(postMessage(childB, rooms[0].id, "Hello parents", at(2)), "NOT_FOUND");
@@ -1625,5 +1679,508 @@ describe("Feature switches for results and resources, and daily reminders", () =
     await sendDailyReminders();
     expect(await count()).toBe(1); // class notices are not repeated
     await db.update(S.examinations).set({ startsAt: null, endsAt: null }).where(eq(S.examinations.id, exam.id));
+  });
+});
+
+describe("Exam programmes by class, school accounts and topic audio", () => {
+  const at = (n: number) => ({ ip: `10.100.0.${n}`, userAgent: "vitest" });
+
+  it("offers each examination programme only to its own classes", async () => {
+    expect(programmesForClass("BASIC5")).toEqual(["COMMON_ENTRANCE", "PreciousPS_EXAM"]);
+    expect(programmesForClass("JSS3")).toEqual(["BECE", "PreciousPS_EXAM"]);
+    expect(programmesForClass("SS2")).toEqual(["WAEC", "NECO", "JAMB", "JUPEB", "IJMB", "PreciousPS_EXAM"]);
+    expect(programmesForClass("JSS1")).toEqual(["PreciousPS_EXAM"]); // termly Precious PS revision papers are for every class
+    expect(programmesForClass("SS1")).toEqual(["PreciousPS_EXAM"]);
+    expect(examTypeAllowsClass("PRACTICE", "JSS1")).toBe(true);
+    const [bece] = await db.select().from(S.examinations).where(eq(S.examinations.status, "PUBLISHED")).limit(1);
+    expect(bece).toBeTruthy();
+    const original = { examType: bece.examType, classId: bece.classId, departmentId: bece.departmentId, level: bece.level };
+    const jss1 = await register("progjssone", "JSS1", "JSS", at(2));
+    const jss3 = await register("progjssthree", "JSS3", "JSS", at(3));
+    const ss3 = await register("progssthree", "SS3", "SCI", at(4));
+    const sees = async (a: Actor) => (await listStudentExams(a)).some((e) => e.id === bece.id);
+    await db.update(S.examinations).set({ examType: "BECE", classId: null, departmentId: null, level: null }).where(eq(S.examinations.id, bece.id));
+    expect(await sees(jss3)).toBe(true);
+    expect(await sees(jss1)).toBe(false);
+    expect(await sees(ss3)).toBe(false);
+    // The rule is enforced when the attempt starts, not only in the list.
+    await expectCode(startAttempt(jss1, bece.id, null, at(2)), "FORBIDDEN");
+    await db.update(S.examinations).set({ examType: "JUPEB" }).where(eq(S.examinations.id, bece.id));
+    expect(await sees(ss3)).toBe(true);
+    expect(await sees(jss3)).toBe(false);
+    await expectCode(startAttempt(jss3, bece.id, null, at(3)), "FORBIDDEN");
+    await db.update(S.examinations).set(original).where(eq(S.examinations.id, bece.id));
+  });
+
+  it("registers a school, signs it in by School Code and keeps the three kinds of code apart", async () => {
+    const reg = await registerSchool({ schoolName: "Bright Future Academy", address: "12 Market Road, Ibadan", email: "office@brightfuture.test", phone: "08031112222", adminName: "Mrs Ade Bello", category: "SECONDARY", username: "brightfuture", password: STRONG, confirmPassword: STRONG, acceptTerms: true }, at(5));
+    expect(reg.schoolCode).toMatch(/^FSC-[A-Z2-9]{6}$/);
+    const school = (await session((await login({ identifier: reg.schoolCode.toLowerCase(), password: STRONG }, "student", at(5))).token)).actor;
+    expect(school.userType).toBe("STUDENT");
+    expect(await isSchoolAccount(school.id)).toBe(true);
+    const [studentCode] = (await generateCodes(superAdmin, { count: 1 }, at(6))).codes;
+    const [parentCode] = (await generateCodes(superAdmin, { count: 1, audience: "PARENT" }, at(6))).codes;
+    const [schoolCode] = (await generateCodes(superAdmin, { count: 1, audience: "SCHOOL" }, at(6))).codes;
+    await expectCode(activateCode(school, studentCode, at(5)), "INVALID_CODE");
+    await expectCode(activateCode(school, parentCode, at(5)), "INVALID_CODE");
+    const pupil = await register("schoolcodepupil", "JSS2", "JSS", at(7));
+    await expectCode(activateCode(pupil, schoolCode, at(7)), "INVALID_CODE");
+    await activateCode(school, schoolCode, at(5));
+    expect((await getAccessState(school.id)).status).toBe("ACTIVE");
+    // Examination classes only, and the class can be switched among them.
+    const allowed = await examClassesFor(school.schoolId, "SECONDARY");
+    expect(allowed.map((c) => c.code)).toEqual(["JSS2", "JSS3", "SS2", "SS3"]);
+    const [ss1] = await db.select().from(S.classes).where(eq(S.classes.code, "SS1"));
+    await expectCode(switchSchoolClass(school, ss1.id, undefined, at(5)), "FORBIDDEN");
+    const jss2 = allowed.find((c) => c.code === "JSS2")!;
+    await switchSchoolClass(school, jss2.id, undefined, at(5));
+    expect((await studentScope(school.id)).classCode).toBe("JSS2");
+    await expectCode(switchSchoolClass(pupil, jss2.id, undefined, at(7)), "FORBIDDEN");
+    // A school account can never be linked to a parent.
+    await registerParent({ firstName: "Pat", lastName: "Schoollink", email: "schoollink@parents.test", phone: "08031110000", password: STRONG, confirmPassword: STRONG, acceptTerms: true }, at(8));
+    const mum = (await session((await login({ identifier: "schoollink@parents.test", password: STRONG }, "student", at(8))).token)).actor;
+    await openPortal(mum, at(8));
+    await requestChildLink(mum, reg.schoolCode, "Mother", at(8));
+    expect(await listParentRequests(mum.id)).toHaveLength(0);
+    await expectCode(requestPromotion(school, {}, at(5)), "FORBIDDEN");
+    await expectCode(registerSchool({ schoolName: "Bright Future Academy", address: "12 Market Road, Ibadan", email: "second@brightfuture.test", phone: "08031112222", adminName: "Mrs Ade Bello", category: "PRIMARY", username: "BrightFuture", password: STRONG, confirmPassword: STRONG, acceptTerms: true }, at(9)), "DUPLICATE");
+  });
+
+  it("uploads an MP3 in parts and plays it back by range to the right class only", async () => {
+    const [basic5] = await db.select().from(S.classes).where(eq(S.classes.code, "BASIC5"));
+    const [mth] = await db.select().from(S.subjects).where(eq(S.subjects.code, "MTH"));
+    const [topic] = await db.insert(S.topics).values({ schoolId: superAdmin.schoolId, subjectId: mth.id, classId: basic5.id, title: "Audio test topic" }).returning();
+    const file = Buffer.concat([Buffer.from("ID3"), Buffer.alloc(5000, 7), Buffer.alloc(3000, 9)]);
+    await expectCode(beginAudio(superAdmin, { topicId: topic.id, title: "Explanation", fileName: "talk.wav", size: file.length }, at(10)), "VALIDATION");
+    const { id } = await beginAudio(superAdmin, { topicId: topic.id, title: "Explanation by the teacher", fileName: "talk.mp3", size: file.length }, at(10));
+    expect(await listTopicAudio(superAdmin.schoolId, topic.id)).toHaveLength(0); // not visible until finished
+    await addAudioPart(superAdmin, id, 0, file.subarray(0, 4000));
+    await addAudioPart(superAdmin, id, 1, file.subarray(4000));
+    await finishAudio(superAdmin, id, at(10));
+    expect((await listTopicAudio(superAdmin.schoolId, topic.id)).map((a) => a.title)).toEqual(["Explanation by the teacher"]);
+    expect((await readAudioRange(id, 0, file.length - 1)).equals(file)).toBe(true);
+    expect((await readAudioRange(id, 3990, 4010)).equals(file.subarray(3990, 4011))).toBe(true);
+    const own = await register("audiobfive", "BASIC5", "PRY", at(11));
+    const other = await register("audiobsix", "BASIC6", "PRY", at(12));
+    const asViewer = (a: Actor) => ({ id: a.id, schoolId: a.schoolId, userType: "STUDENT" });
+    expect(await audioForPlayback(asViewer(own), id)).toBeNull(); // no access code yet
+    await activateCode(own, (await generateCodes(superAdmin, { count: 1 }, at(13))).codes[0], at(11));
+    await activateCode(other, (await generateCodes(superAdmin, { count: 1 }, at(13))).codes[0], at(12));
+    expect((await audioForPlayback(asViewer(own), id))?.size).toBe(file.length);
+    expect(await audioForPlayback(asViewer(other), id)).toBeNull(); // another class
+    // An upload that never completes is refused and removed.
+    const bad = await beginAudio(superAdmin, { topicId: topic.id, title: "Half a file", fileName: "half.mp3", size: 9000 }, at(10));
+    await addAudioPart(superAdmin, bad.id, 0, Buffer.concat([Buffer.from("ID3"), Buffer.alloc(2000)]));
+    await expectCode(finishAudio(superAdmin, bad.id, at(10)), "VALIDATION");
+    await deleteAudio(superAdmin, id, at(10));
+    expect(await listTopicAudio(superAdmin.schoolId, topic.id)).toHaveLength(0);
+  });
+});
+
+describe("Report cards, awards, loyalty and certificates", () => {
+  const at = (n: number) => ({ ip: `10.101.0.${n}`, userAgent: "vitest" });
+  let top: Actor;
+  let second: Actor;
+  let examId: string;
+  let subjectId: string;
+  let cal: Awaited<ReturnType<typeof termWindows>>;
+
+  /** Writes a released result straight into the records, dated inside a term. */
+  const result = async (user: Actor, percentage: number, when: Date) => {
+    const [a] = await db.insert(S.examinationAttempts).values({ schoolId: user.schoolId, examinationId: examId, examinationVersion: 1, userId: user.id, attemptNumber: Math.floor(Math.random() * 1e6) + 10, status: "SUBMITTED", startedAt: new Date(when.getTime() - 600_000), deadlineAt: when, submittedAt: when, examSnapshot: { title: "Records test", resultVisibility: "IMMEDIATE", showExplanations: false, passMark: 50 } } as typeof S.examinationAttempts.$inferInsert).returning();
+    const [r] = await db.insert(S.results).values({ schoolId: user.schoolId, attemptId: a.id, userId: user.id, examinationId: examId, score: percentage, totalMarks: 100, percentage, grade: percentage >= 70 ? "A" : "C", passed: percentage >= 50, correctCount: 0, incorrectCount: 0, unansweredCount: 0, timeUsedSec: 60, attemptNumber: a.attemptNumber, gradingScale: [], releasedAt: when, verificationCode: `REC${a.id.slice(0, 10)}`, createdAt: when }).returning();
+    return r;
+  };
+
+  beforeAll(async () => {
+    cal = await termWindows(superAdmin.schoolId);
+    const [exam] = await db.select().from(S.examinations).limit(1);
+    examId = exam.id;
+    subjectId = exam.subjectId;
+    top = await register("recordstop", "JSS1", "JSS", at(1));
+    second = await register("recordssecond", "JSS1", "JSS", at(2));
+  });
+
+  it("builds a cumulative report card: each later term carries the earlier ones", async () => {
+    expect(cal.terms.map((t) => t.name)).toEqual(["First Term", "Second Term", "Third Term"]);
+    expect(termScore(80, 50)).toBeCloseTo(71);
+    expect(termScore(null, 50)).toBe(50);
+    const mid = (i: number) => new Date((cal.terms[i].start.getTime() + cal.terms[i].end.getTime()) / 2);
+    await result(top, 80, mid(0));
+    await result(top, 60, mid(1));
+    await result(second, 50, mid(0));
+    const first = await reportCard(superAdmin.schoolId, top.id, 0);
+    expect(first.terms).toHaveLength(1);
+    expect(first.termAverage).toBe(80);
+    expect(first.position).toEqual({ place: 1, outOf: 2 });
+    const secondTerm = await reportCard(superAdmin.schoolId, top.id, 1);
+    expect(secondTerm.terms.map((t) => t.name)).toEqual(["First Term", "Second Term"]);
+    expect(secondTerm.subjects[0].byTerm).toEqual([80, 60]);
+    expect(secondTerm.termAverage).toBe(60);
+    expect(secondTerm.cumulativeAverage).toBe(70);
+    const third = await reportCard(superAdmin.schoolId, top.id, 2);
+    expect(third.terms).toHaveLength(3);
+    expect(third.termAverage).toBeNull();
+    expect(third.cumulativeAverage).toBe(70); // the session so far
+    expect((await reportCard(superAdmin.schoolId, second.id, 0)).position).toEqual({ place: 2, outOf: 2 });
+  });
+
+  it("works out, rewards and announces the best students, once", async () => {
+    const [jss1] = await db.select().from(S.classes).where(eq(S.classes.code, "JSS1"));
+    const r = await computeAwards(superAdmin, "First Term", at(3));
+    expect(r.count).toBeGreaterThanOrEqual(2);
+    const mine = (await listAwards(superAdmin.schoolId, { term: "First Term", classId: jss1.id })).filter((x) => x.a.userId === top.id);
+    expect(mine.map((x) => x.a.scope).sort()).toEqual(["CLASS", "SUBJECT"]);
+    expect(mine.find((x) => x.a.scope === "SUBJECT")!.a.subjectId).toBe(subjectId);
+    // Students see nothing until the school announces.
+    expect(await listAwards(superAdmin.schoolId, { term: "First Term", classId: jss1.id, publishedOnly: true })).toHaveLength(0);
+    await publishAwards(superAdmin, "First Term", at(3));
+    expect((await listAwards(superAdmin.schoolId, { userId: top.id, publishedOnly: true })).length).toBe(2);
+    await expectCode(computeAwards(superAdmin, "First Term", at(3)), "CONFLICT"); // announced awards are final
+    await expectCode(publishAwards(superAdmin, "First Term", at(3)), "CONFLICT");
+    const session = await computeAwards(superAdmin, null, at(3));
+    expect(session.term).toBeNull();
+    expect((await listAwards(superAdmin.schoolId, { term: null, classId: jss1.id })).some((x) => x.a.scope === "CLASS" && x.a.userId === top.id && x.a.average === 70)).toBe(true);
+  });
+
+  it("counts loyalty points once and issues one numbered certificate per result", async () => {
+    const a = await syncLoyalty(superAdmin.schoolId, top.id);
+    // two results (10 each), one of them 70% or more (+10), two awards (50 each)
+    expect(a.total).toBe(130);
+    expect(a.level.name).toBe("Bronze");
+    expect((await syncLoyalty(superAdmin.schoolId, top.id)).total).toBe(130);
+    const [good] = await db.select().from(S.results).where(and(eq(S.results.userId, top.id), eq(S.results.percentage, 80)));
+    const c1 = await certificateFor({ id: top.id, schoolId: top.schoolId, staff: false }, good.id);
+    expect(c1.number).toMatch(/^[A-Z]+-\d{4}-\d{6}$/);
+    expect((await certificateFor({ id: top.id, schoolId: top.schoolId, staff: false }, good.id)).number).toBe(c1.number);
+    await expectCode(certificateFor({ id: second.id, schoolId: second.schoolId, staff: false }, good.id), "NOT_FOUND");
+    const low = await result(second, 20, new Date());
+    await expectCode(certificateFor({ id: second.id, schoolId: second.schoolId, staff: false }, low.id), "FORBIDDEN");
+  });
+});
+
+describe("Family activities, experts and the wider parent library", () => {
+  const at = (n: number) => ({ ip: `10.102.0.${n}`, userAgent: "vitest" });
+  const mkParent = async (tag: string, n: number, open = true) => {
+    await registerParent({ firstName: "Fam", lastName: tag, email: `${tag}@parents.test`, phone: "08031110000", password: STRONG, confirmPassword: STRONG, acceptTerms: true }, at(n));
+    const a = (await session((await login({ identifier: `${tag}@parents.test`, password: STRONG }, "student", at(n))).token)).actor;
+    if (open) await openPortal(a, at(n));
+    return a;
+  };
+
+  it("lets parents book places on a published activity, within the places available", async () => {
+    const one = await mkParent("famone", 1);
+    const two = await mkParent("famtwo", 2);
+    const locked = await mkParent("famlocked", 3, false);
+    const soon = new Date(Date.now() + 5 * 86_400_000);
+    const id = await upsertEvent(superAdmin, null, { kind: "PICNIC", title: "Family picnic", description: "Bring a mat.", venue: "Agodi Gardens", startsAt: soon, capacity: 5, status: "DRAFT" }, at(4));
+    expect(await listEventsForParent(one)).toHaveLength(0); // drafts are hidden
+    await upsertEvent(superAdmin, id, { kind: "PICNIC", title: "Family picnic", description: "Bring a mat.", venue: "Agodi Gardens", startsAt: soon, capacity: 5, status: "PUBLISHED" }, at(4));
+    await expectCode(listEventsForParent(locked), "ACCESS_REQUIRED");
+    await expectCode(listEventsForParent(studentA), "FORBIDDEN");
+    await rsvpEvent(one, id, { adults: 2, children: 1 }, at(1));
+    await expectCode(rsvpEvent(two, id, { adults: 2, children: 2 }, at(2)), "CONFLICT"); // only two places left
+    await rsvpEvent(two, id, { adults: 1, children: 1 }, at(2));
+    await rsvpEvent(one, id, { adults: 1, children: 2 }, at(1)); // changing a booking does not count twice
+    const [seen] = await listEventsForParent(one);
+    expect(seen.booked).toBe(5);
+    expect(seen.mine).toMatchObject({ adults: 1, children: 2 });
+    await cancelRsvp(two, id);
+    expect((await listEventsForParent(two))[0].booked).toBe(3);
+    await expectCode(rsvpEvent(one, id, { adults: 0, children: 0 }, at(1)), "VALIDATION");
+  });
+
+  it("lists published experts by profession and needs a way to reach each one", async () => {
+    const mum = await mkParent("famexpert", 5);
+    await expectCode(upsertExpert(superAdmin, null, { profession: "DOCTOR", name: "Dr No Contact", topics: "Fever", status: "PUBLISHED" }, at(4)), "VALIDATION");
+    await upsertExpert(superAdmin, null, { profession: "DOCTOR", name: "Dr Amina Yusuf", title: "Paediatrician", topics: "Fever\nGrowth", phone: "08030000001", status: "PUBLISHED" }, at(4));
+    await upsertExpert(superAdmin, null, { profession: "LAWYER", name: "Barr Tunde Ade", topics: "Family law", email: "tunde@example.com", status: "PUBLISHED" }, at(4));
+    await upsertExpert(superAdmin, null, { profession: "COUNSELLOR", name: "Hidden Draft", topics: "x", phone: "0803", status: "DRAFT" }, at(4));
+    expect((await listExpertsForParent(mum)).map((e) => e.name).sort()).toEqual(["Barr Tunde Ade", "Dr Amina Yusuf"]);
+    expect((await listExpertsForParent(mum, "LAWYER")).map((e) => e.name)).toEqual(["Barr Tunde Ade"]);
+  });
+
+  it("adds the further articles and rooms once, and never twice", async () => {
+    expect(MORE_ARTICLES.length).toBeGreaterThanOrEqual(20);
+    for (const a of MORE_ARTICLES) {
+      expect(a.body.length, a.title).toBeGreaterThan(400);
+      if (a.audience === "PARENT") expect(a.body, a.title).toContain("## When to see a professional");
+    }
+    expect(new Set(MORE_ARTICLES.map((a) => a.title)).size).toBe(MORE_ARTICLES.length);
+    await seedHubExtras(superAdmin.schoolId);
+    expect(await seedHubExtras(superAdmin.schoolId)).toBe(0);
+    await ensureParentRooms(superAdmin.schoolId);
+    expect(await ensureParentRooms(superAdmin.schoolId)).toBe(0);
+    const mum = await mkParent("famreader", 6);
+    const cats = new Set((await listParentArticles(mum)).map((a) => a.category));
+    for (const c of ["Financial Stability", "Home Management", "Peaceful Home", "Digital Skills"]) expect(cats.has(c), c).toBe(true);
+    const rooms = (await listParentRooms(mum)).rooms.map((r) => r.name);
+    expect(rooms).toContain("Family fun and outings");
+    expect(rooms).toContain("Digital skills for parents");
+  });
+});
+
+describe("Demotion with a clean start, question files, advanced practice and the error log", () => {
+  const at = (n: number) => ({ ip: `10.103.0.${n}`, userAgent: "vitest" });
+
+  it("staff can move a student down; work is cleared, results are voided and the access code is untouched", async () => {
+    const st = await register("demoteme", "SS2", "SCI", at(1));
+    const [code] = (await generateCodes(superAdmin, { count: 1, durationDays: 90 }, at(2))).codes;
+    await activateCode(st, code, at(1));
+    const before = await getAccessState(st.id);
+    const [exam] = await db.select().from(S.examinations).limit(1);
+    const [lesson] = await db.select().from(S.lessons).limit(1);
+    const [a] = await db.insert(S.examinationAttempts).values({ schoolId: st.schoolId, examinationId: exam.id, examinationVersion: 1, userId: st.id, attemptNumber: 991, status: "SUBMITTED", startedAt: new Date(Date.now() - 600_000), deadlineAt: new Date(), submittedAt: new Date(), examSnapshot: { title: "x", resultVisibility: "IMMEDIATE", showExplanations: false, passMark: 50 } } as typeof S.examinationAttempts.$inferInsert).returning();
+    await db.insert(S.results).values({ schoolId: st.schoolId, attemptId: a.id, userId: st.id, examinationId: exam.id, score: 80, totalMarks: 100, percentage: 80, grade: "A", passed: true, correctCount: 0, incorrectCount: 0, unansweredCount: 0, timeUsedSec: 60, attemptNumber: 991, gradingScale: [], releasedAt: new Date(), verificationCode: `DEM${a.id.slice(0, 10)}` });
+    if (lesson) await db.insert(S.learningProgress).values({ userId: st.id, lessonId: lesson.id, status: "COMPLETED" });
+    await syncLoyalty(st.schoolId, st.id);
+    const [ss1] = await db.select().from(S.classes).where(eq(S.classes.code, "SS1"));
+    const [sci] = await db.select().from(S.departments).where(eq(S.departments.code, "SCI"));
+    // Never available to the student or to staff without the permission's route; the service itself needs a reason.
+    await expectCode(moveStudentClass(superAdmin, st.id, { classId: ss1.id, departmentId: sci.id, reason: "x" }, at(2)), "VALIDATION");
+    const r = await moveStudentClass(superAdmin, st.id, { classId: ss1.id, departmentId: sci.id, reason: "Chose SS2 by mistake at registration" }, at(2));
+    expect(r).toMatchObject({ direction: "DEMOTED", to: "SSS 1" });
+    expect((await studentScope(st.id)).classCode).toBe("SS1");
+    expect(await db.select().from(S.learningProgress).where(eq(S.learningProgress.userId, st.id))).toHaveLength(0);
+    expect((await db.select().from(S.loyaltyPoints).where(eq(S.loyaltyPoints.userId, st.id)))).toHaveLength(0);
+    const [res] = await db.select().from(S.results).where(eq(S.results.userId, st.id));
+    expect(res.isVoided).toBe(true); // kept for the record, no longer counted
+    expect((await listStudentResults(st)).every((x) => x.isVoided)).toBe(true);
+    const after = await getAccessState(st.id);
+    expect(after.status).toBe("ACTIVE");
+    expect(after.expiresAt).toBe(before.expiresAt); // the code and its days are unchanged
+    expect(after.codeSuffix).toBe(before.codeSuffix);
+    await expectCode(moveStudentClass(superAdmin, st.id, { classId: ss1.id, departmentId: sci.id, reason: "Same class again" }, at(2)), "CONFLICT");
+    await expectCode(requestPromotion(st, {}, at(1)), "FORBIDDEN"); // the correction used the session's one move
+  });
+
+  it("an asterisk in front of an option marks the correct answer, and maths asterisks are left alone", async () => {
+    const qs = parseStarQuestions("1. What is 3 * 4?\nA. 7\n*B. 12\nC. 34\nD. 1\n\n2. The capital of Nigeria is\n(a) Lagos\n* (b) Abuja\n(c) Kano\n(d) Jos");
+    expect(qs).toHaveLength(2);
+    expect(qs[0].stem).toContain("3 * 4");
+    expect(qs[0].options.map((o) => o.isCorrect)).toEqual([false, true, false, false]);
+    expect(qs[0].options[1].text).toBe("12");
+    expect(qs[1].options.map((o) => o.isCorrect)).toEqual([false, true, false, false]);
+    expect(qs.every((q) => q.errors.length === 0)).toBe(true);
+  });
+
+  it("loads the JUPEB and IJMB practice sets once, for SS 2 and SS 3 only", async () => {
+    for (const p of PREP_PROGRAMMES) {
+      expect(p.questions.length, p.key).toBeGreaterThanOrEqual(12);
+      for (const q of p.questions) {
+        expect(new Set(q.slice(2, 6)).size, q[1]).toBe(4); // four different options
+        expect(q[6].length, q[1]).toBeGreaterThan(15);
+      }
+    }
+    expect(PREP_ARTICLES.length).toBeGreaterThanOrEqual(9);
+    const first = await setupPrepProgrammes(superAdmin, at(3));
+    const again = await setupPrepProgrammes(superAdmin, at(3));
+    expect(first.questions + again.questions).toBeLessThanOrEqual(PREP_PROGRAMMES.reduce((n, p) => n + p.questions.length, 0));
+    expect(again).toEqual({ questions: 0, exams: 0 });
+    const ss3 = await register("prepssthree", "SS3", "SCI", at(4));
+    const ss1 = await register("prepssone", "SS1", "SCI", at(5));
+    const titles = async (a: Actor) => (await listStudentExams(a)).map((e) => e.title);
+    expect(await titles(ss3)).toContain("JUPEB-style Mathematics Practice");
+    expect(await titles(ss3)).toContain("IJMB-style Chemistry Practice");
+    expect(await titles(ss1)).not.toContain("JUPEB-style Mathematics Practice");
+    expect(new Set(MORE_WORDS.map((w) => w[1])).size).toBe(MORE_WORDS.length);
+    await seedMoreWords(superAdmin.schoolId);
+    expect(await seedMoreWords(superAdmin.schoolId)).toBe(0);
+  });
+
+  it("records a server error with its reference and hides secrets", async () => {
+    await recordError({ digest: "4132738174", message: "column users.parent_grace_until does not exist token=abc123secret", stack: "Error: x\n at page", path: "/student?token=abc", method: "GET", routePath: "/student", routeType: "render" });
+    const [e] = await listErrors("4132738174");
+    expect(e.message).toContain("does not exist");
+    expect(e.message).not.toContain("abc123secret");
+    expect(e.path).toBe("/student");
+    expect((await listErrors("no-such-reference")).length).toBe(0);
+  });
+});
+
+describe("Games added in the backend", () => {
+  const at = (n: number) => ({ ip: `10.104.0.${n}`, userAgent: "vitest" });
+
+  it("turns typed lines into a game and shows it only to the right players", async () => {
+    expect(parseGameItems("MATCH", "Abuja = capital of Nigeria\n\nno equals sign\nAccra=capital of Ghana\nabuja = repeated")).toEqual([["Abuja", "capital of Nigeria"], ["Accra", "capital of Ghana"]]);
+    expect(parseGameItems("WORD_SEARCH", "oxygen\nto\nplanet = a clue\nwatermelonjuice")).toEqual([["oxygen", "A word from your lesson"], ["planet", "a clue"]]);
+    expect(parseGameItems("HANGMAN", "oxygen\nmagnet = pulls iron")).toEqual([["magnet", "pulls iron"]]);
+    await expectCode(upsertGame(superAdmin, null, { kind: "MATCH", title: "Too few", items: "a = b", status: "PUBLISHED" }, at(1)), "VALIDATION");
+    const [jss1] = await db.select().from(S.classes).where(eq(S.classes.code, "JSS1"));
+    const forJss1 = await upsertGame(superAdmin, null, { kind: "MATCH", title: "Capitals of West Africa", items: "Abuja = Nigeria\nAccra = Ghana\nDakar = Senegal", classId: jss1.id, status: "PUBLISHED" }, at(1));
+    expect(forJss1.usable).toBe(3);
+    await upsertGame(superAdmin, null, { kind: "RIDDLE", title: "Family riddles", audience: "PARENT", items: "What has hands but cannot clap? = A clock", status: "PUBLISHED" }, at(1));
+    await upsertGame(superAdmin, null, { kind: "HANGMAN", title: "Hidden draft", items: "oxygen = a gas\nplanet = a body\nmagnet = pulls iron", status: "DRAFT" }, at(1));
+    const inClass = await register("gamejssone", "JSS1", "JSS", at(2));
+    const other = await register("gamessthree", "SS3", "SCI", at(3));
+    await expectCode(listGamesForStudent(inClass), "ACCESS_REQUIRED"); // no access code yet
+    for (const st of [inClass, other]) await activateCode(st, (await generateCodes(superAdmin, { count: 1 }, at(4))).codes[0], at(st === inClass ? 2 : 3));
+    expect((await listGamesForStudent(inClass)).map((g) => g.title)).toEqual(["Capitals of West Africa"]);
+    expect(await listGamesForStudent(other)).toEqual([]); // another class, and the riddles are for parents
+    await registerParent({ firstName: "Game", lastName: "Parent", email: "gameparent@parents.test", phone: "08031110000", password: STRONG, confirmPassword: STRONG, acceptTerms: true }, at(5));
+    const mum = (await session((await login({ identifier: "gameparent@parents.test", password: STRONG }, "student", at(5))).token)).actor;
+    await expectCode(listGamesForParent(mum), "ACCESS_REQUIRED");
+    await openPortal(mum, at(5));
+    expect((await listGamesForParent(mum)).map((g) => g.title)).toEqual(["Family riddles"]);
+    await deleteGame(superAdmin, forJss1.id, at(1));
+    expect(await listGamesForStudent(inClass)).toEqual([]);
+  });
+});
+
+describe("Deleting accounts", () => {
+  const at = (n: number) => ({ ip: `10.105.0.${n}`, userAgent: "vitest" });
+
+  it("lets the Super Admin delete an account and frees the e-mail for a new registration", async () => {
+    const { deleteAccount, deleteOwnAccount } = await import("@/server/services/people");
+    await registerParent({ firstName: "Gone", lastName: "Parent", email: "goneparent@parents.test", phone: "08031112222", password: STRONG, confirmPassword: STRONG, acceptTerms: true }, at(1));
+    const mum = (await session((await login({ identifier: "goneparent@parents.test", password: STRONG }, "student", at(1))).token)).actor;
+    await expectCode(deleteAccount(mum, mum.id, "duplicate account", at(2)), "FORBIDDEN");
+    await expectCode(deleteAccount(superAdmin, superAdmin.id, "testing self", at(2)), "VALIDATION");
+    await deleteAccount(superAdmin, mum.id, "duplicate account", at(2));
+    await expect(login({ identifier: "goneparent@parents.test", password: STRONG }, "student", at(1))).rejects.toThrow();
+    await registerParent({ firstName: "Gone", lastName: "Again", email: "goneparent@parents.test", phone: "08031112222", password: STRONG, confirmPassword: STRONG, acceptTerms: true }, at(3));
+    const again = (await session((await login({ identifier: "goneparent@parents.test", password: STRONG }, "student", at(3))).token)).actor;
+    await expectCode(deleteOwnAccount(again, "wrong password", at(3)), "VALIDATION");
+    await deleteOwnAccount(again, STRONG, at(3));
+    await expect(login({ identifier: "goneparent@parents.test", password: STRONG }, "student", at(3))).rejects.toThrow();
+  });
+});
+
+describe("Holiday Programme", () => {
+  const at = (n: number) => ({ ip: `10.106.0.${n}`, userAgent: "vitest" });
+
+  it("gives learners revision, next-term topics and tasks from the school and their own parents", async () => {
+    const h = await import("@/server/services/holiday");
+    const kid = await register("holidaykid", "JSS2", "JSS", at(1));
+    const other = await register("holidayother", "SS2", "SCI", at(2));
+    await registerParent({ firstName: "Holi", lastName: "Mum", email: "holimum@parents.test", phone: "08031112233", password: STRONG, confirmPassword: STRONG, acceptTerms: true }, at(3));
+    const mum = (await session((await login({ identifier: "holimum@parents.test", password: STRONG }, "student", at(3))).token)).actor;
+    await openPortal(mum, at(3));
+    const { code } = await generateGuardianCode(superAdmin, kid.id, at(3));
+    await linkChild(mum, code, "Mother", at(3));
+    const [req] = (await listStudentConnections(kid.id)).pending;
+    await respondToLinkRequest(kid, req.id, true, at(3));
+
+    // Calendar: the usual Nigerian dates when Terms carry none.
+    expect((await h.holidayCalendar(superAdmin.schoolId, "2026-12-20")).key).toBe("CHRISTMAS");
+    expect((await h.holidayCalendar(superAdmin.schoolId, "2027-04-10")).key).toBe("EASTER");
+    expect((await h.holidayCalendar(superAdmin.schoolId, "2027-08-01")).active).toBe(true);
+
+    const start = await h.studentHoliday(kid);
+    expect(start.school.length).toBeGreaterThan(5); // the built-in Precious PS activities
+    expect(start.parents).toHaveLength(0);
+
+    // Parents set tasks only for their own children.
+    await expectCode(h.createParentTask(mum, { studentUserId: other.id, title: "Not my child" }, at(3)), "FORBIDDEN");
+    const task = await h.createParentTask(mum, { studentUserId: kid.id, kind: "REVISION", title: "Twenty fractions questions" }, at(3));
+    const mine = await h.studentHoliday(kid);
+    expect(mine.parents.map((t) => t.title)).toEqual(["Twenty fractions questions"]);
+    expect((await h.studentHoliday(other)).parents).toHaveLength(0);
+    await expectCode(h.markHolidayTask(other, task.id, true), "NOT_FOUND");
+    await h.markHolidayTask(kid, task.id, true, "Done all twenty");
+    const view = await h.parentHoliday(mum);
+    expect(view.children[0].items.find((i) => i.id === task.id)?.done?.note).toBe("Done all twenty");
+
+    // The school targets a class; the built-in activities can be edited and removed in the backend.
+    const { getCatalog } = await import("@/server/services/curriculum");
+    const jss2 = (await getCatalog(superAdmin.schoolId)).classes.find((c) => c.code === "JSS2")!;
+    const now = await h.holidayCalendar(superAdmin.schoolId);
+    const st = await h.upsertSchoolTask(superAdmin, null, { holiday: now.key, title: "JSS2 science project", classId: jss2.id, everyYear: true, active: true }, at(4));
+    expect((await h.studentHoliday(kid)).school.some((t) => t.id === st.id)).toBe(true);
+    expect((await h.studentHoliday(other)).school.some((t) => t.id === st.id)).toBe(false);
+    const builtIn = (await h.listHolidayTasksAdmin(superAdmin.schoolId, now.key)).rows.find((r) => !r.t.createdBy)!;
+    await h.upsertSchoolTask(superAdmin, builtIn.t.id, { holiday: now.key, title: "Edited activity", everyYear: true, active: false }, at(4));
+    expect((await h.studentHoliday(kid)).school.some((t) => t.id === builtIn.t.id)).toBe(false);
+    await h.deleteSchoolTask(superAdmin, builtIn.t.id, at(4));
+    expect(await h.seedHolidayProgramme(superAdmin.schoolId)).toBe(0); // never re-added after staff changes
+
+    // Holiday tasks travel in the central workbook too.
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([HOLIDAY_COLUMNS, [HOLIDAYS[now.key].label, "Reading", "Read two chapters a day", "", "JSS2", "", "", "", "Yes", "Yes"], ["Harmattan", "Reading", "Bad holiday", "", "", "", "", "", "", ""]]), "Holiday Tasks");
+    const file = { name: "holiday.xlsx", bytes: XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer };
+    const report = await previewCentral(superAdmin, file, at(5));
+    expect(report.holiday.count).toBe(1);
+    expect(report.holiday.issues).toHaveLength(1);
+    expect((await importCentralExtras(superAdmin, file, at(5))).holidayAdded).toBe(1);
+    expect((await importCentralExtras(superAdmin, file, at(5))).holidaySkipped).toBe(1);
+    expect((await h.studentHoliday(kid)).school.some((t) => t.title === "Read two chapters a day")).toBe(true);
+  });
+});
+
+describe("Precious PS Examinations", () => {
+  const at = (n: number) => ({ ip: `10.107.0.${n}`, userAgent: "vitest" });
+
+  it("sets a revision paper for every class and term, ranks the first attempts and fills the score book", async () => {
+    const fx = await import("@/server/services/preciousps-exams");
+    const first = await fx.setupFodanExams(superAdmin, at(1));
+    const papers = await db.select().from(S.examinations).where(eq(S.examinations.examType, "PreciousPS_EXAM"));
+    const classCount = (await db.select().from(S.classes)).filter((c) => !c.archivedAt).length;
+    expect(papers.length).toBe(classCount * 3);
+    expect(first.created).toBe(classCount * 3);
+    expect((await fx.setupFodanExams(superAdmin, at(1))).created).toBe(0); // never doubled
+    const live = papers.filter((p) => p.status === "PUBLISHED" || first.published > 0);
+    expect(live.length).toBeGreaterThan(0);
+    const [paper] = (await db.select().from(S.examinations).where(and(eq(S.examinations.examType, "PreciousPS_EXAM"), eq(S.examinations.status, "PUBLISHED")))).sort((a, b) => b.questionCount - a.questionCount);
+    expect(paper).toBeTruthy();
+    expect((paper.poolFilter as { allSubjects?: boolean }).allSubjects).toBe(true);
+    const [cls] = await db.select().from(S.classes).where(eq(S.classes.id, paper.classId!));
+    const dep = (await db.select().from(S.departments)).find((d) => d.level === cls.level);
+
+    // Three learners sit it; their first attempts decide the places.
+    const takers: Actor[] = [];
+    for (const [i, tag] of ["fdxa", "fdxb", "fdxc"].entries()) {
+      const st = await register(tag, cls.code, dep?.code ?? "SCI", at(10 + i));
+      const [code] = (await generateCodes(superAdmin, { count: 1 }, at(10 + i))).codes;
+      await activateCode(st, code, at(10 + i));
+      takers.push(st);
+    }
+    const sit = async (st: Actor, right: number, n: number) => {
+      const { attemptId } = await startAttempt(st, paper.id, crypto.randomUUID(), at(n));
+      const qs = await db.select().from(S.attemptQuestions).where(eq(S.attemptQuestions.attemptId, attemptId));
+      const answers = qs.map((q, i) => {
+        const sn = q.snapshot as AttemptQuestionSnapshot;
+        const wrong = sn.options.find((o) => !sn.correctOptionIds.includes(o.id));
+        return { attemptQuestionId: q.id, response: { optionId: i < right ? sn.correctOptionIds[0] : (wrong ?? sn.options[0]).id } };
+      });
+      await saveAnswers(st, attemptId, { answers }, at(n));
+      return submitAttempt(st, attemptId, at(n));
+    };
+    const total = Math.min(paper.questionCount, 3);
+    await sit(takers[0], total, 20);
+    await sit(takers[1], 0, 21);
+    await sit(takers[2], 1, 22);
+    await sit(takers[1], total, 23); // a second attempt never changes the places
+    const { classes } = await fx.fodanRankings(superAdmin.schoolId);
+    const mine = classes.find((c) => c.classId === cls.id)!;
+    const term = mine.terms.find((t) => t.examId === paper.id)!;
+    expect(term.ranking.map((r) => r.userId)).toEqual([takers[0].id, takers[2].id, takers[1].id]);
+    expect(term.ranking[0].position).toBe(1);
+    expect(mine.overall[0].userId).toBe(takers[0].id);
+
+    const book = await fx.scoreBook(superAdmin.schoolId);
+    const wb = XLSX.read(book.buffer, { type: "buffer" });
+    expect(wb.SheetNames.slice(0, 2)).toEqual(["Students", "All scores"]);
+    const scores = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets["All scores"]);
+    expect(scores.filter((r) => r.Examination === paper.title)).toHaveLength(4);
+    const places = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[2]]);
+    expect(places.some((r) => r.Position === 1 && String(r.Name).includes("FDXA"))).toBe(true);
+  });
+});
+
+describe("Ideas Box", () => {
+  const at = (n: number) => ({ ip: `10.108.0.${n}`, userAgent: "vitest" });
+
+  it("takes ideas from learners and parents and returns staff replies to the sender", async () => {
+    const ideas = await import("@/server/services/ideas");
+    const kid = await register("ideakid", "JSS2", "JSS", at(1));
+    await expect(ideas.submitIdea(kid, { category: "GAMES", text: "short" }, at(1))).rejects.toThrow(); // at least 10 characters
+    const idea = await ideas.submitIdea(kid, { category: "GAMES", text: "Please add a Yoruba word game for JSS students." }, at(1));
+    expect(idea).toMatchObject({ role: "STUDENT", status: "NEW" });
+    await expectCode(ideas.submitIdea(superAdmin, { text: "Staff should use the backend instead." }, at(2)), "FORBIDDEN");
+    const { rows } = await ideas.listIdeasAdmin(superAdmin.schoolId, "NEW");
+    expect(rows.some((r) => r.s.id === idea.id)).toBe(true);
+    await ideas.answerIdea(superAdmin, idea.id, { status: "PLANNED", reply: "Great idea: it is on our list for next term." }, at(2));
+    const [mine] = await ideas.myIdeas(kid);
+    expect(mine).toMatchObject({ status: "PLANNED", reply: "Great idea: it is on our list for next term." });
   });
 });

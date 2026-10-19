@@ -8,7 +8,7 @@ import { fmtLagos } from "@/server/services/access";
 import { childReport } from "@/server/services/guardians";
 import { ACTIVITIES, FLAGS, listSchedulesForParent } from "@/server/services/schedules";
 import { RemoveChildButton, ScheduleDelete, ScheduleForm } from "@/components/family-controls";
-import { Alert, Badge, Card, CardHeader, EmptyState, PageHeader, Stat, Table, Td, Th } from "@/components/ui/primitives";
+import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState, PageHeader, Stat, Table, Td, Th } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Child Activity" };
 
@@ -25,6 +25,7 @@ export default async function ChildPage({ params }: PageProps<"/parent/child/[id
     <div className="space-y-6">
       <Link href="/parent" className="inline-flex items-center gap-1.5 text-sm font-semibold text-royal-600 hover:underline"><ArrowLeft className="size-4" /> My children</Link>
       <PageHeader eyebrow={[child.className, child.department].filter(Boolean).join(" · ") || "Student"} title={`${child.firstName} ${child.lastName}`} description={`Student ID ${child.studentNumber}. Last sign-in: ${child.lastLoginAt ? fmtLagos(child.lastLoginAt) : "not yet"}.`} />
+      {cfg.showResults && <Link href={`/parent/child/${id}/report-card`} className={buttonClass("primary", "sm")}>Open report card</Link>}
       {child.status !== "ACTIVE" && <Alert tone="warning">This account is suspended. Please contact the school.</Alert>}
       {child.access.status !== "ACTIVE" && <Alert tone="warning">Your child has no active access code, so lessons and tests are locked. Please contact the school for an access code.</Alert>}
       {report.forumSuspension && <Alert tone="warning">Suspended from the student forum{report.forumSuspension.until ? ` until ${fmtLagos(report.forumSuspension.until)}` : ""}: {report.forumSuspension.reason}</Alert>}

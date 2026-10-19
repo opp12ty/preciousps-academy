@@ -1,48 +1,36 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Award, BookOpen, CheckCircle2, ClipboardList, Flame, MonitorCheck, Play, Sparkles, Target, TrendingUp, Users } from "lucide-react";
+import { ArrowRight, Award, BookOpen, CheckCircle2, ClipboardList, MonitorCheck, Sparkles, Target, TrendingUp } from "lucide-react";
 import { requireStudentPage } from "@/server/http";
 import { getBrand } from "@/server/brand";
-import { getSetting } from "@/server/settings";
 import { getAccessState } from "@/server/services/access";
 import { listStudentExams, listStudentResults } from "@/server/services/exams";
 import { learningSummary } from "@/server/services/study";
 import { listStudentAssignments } from "@/server/services/assignments";
 import { recommendedPractice, studentPerformance } from "@/server/services/analytics";
-import { studentIdentity } from "@/server/services/auth";
-import { studyActivity } from "@/server/services/engagement";
 import { listNotifications } from "@/server/services/notifications";
 import { AccessCard } from "@/components/student/access-card";
-import { TrendChart } from "@/components/charts";
-import { Alert, Badge, buttonClass, Card, CardHeader, cx, EmptyState, ProgressBar, StatusBadge } from "@/components/ui/primitives";
+import { Ring, TrendChart } from "@/components/charts";
+import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState, Stat, StatusBadge } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
 const fmtDate = (d: Date | string) => new Intl.DateTimeFormat("en-NG", { timeZone: "Africa/Lagos", dateStyle: "medium" }).format(new Date(d));
 
-function GoalRing({ value, goal }: { value: number; goal: number }) {
-  const pct = Math.min(1, value / goal);
-  const r = 34;
-  const c = 2 * Math.PI * r;
-  return (
-    <svg viewBox="0 0 84 84" className="size-24" role="img" aria-label={`${value} of ${goal} study days this week`}>
-      <circle cx="42" cy="42" r={r} fill="none" stroke="rgb(255 255 255 / 0.18)" strokeWidth="9" />
-      <circle cx="42" cy="42" r={r} fill="none" stroke="#ffcb2e" strokeWidth="9" strokeLinecap="round" strokeDasharray={`${c * pct} ${c}`} transform="rotate(-90 42 42)" />
-      <text x="42" y="40" textAnchor="middle" className="fill-white font-display text-[17px] font-bold">
-        {value}/{goal}
-      </text>
-      <text x="42" y="54" textAnchor="middle" className="fill-white/70 text-[8px]">
-        days
-      </text>
-    </svg>
-  );
-}
+import { studentIdentity } from "@/server/services/auth";
+import { examClassesFor, schoolProfileOf } from "@/server/services/school-accounts";
+import { studentScope } from "@/server/services/scope";
+import { getCatalog } from "@/server/services/curriculum";
+import { SchoolPanel } from "@/components/student/school-panel";
+import { dailyBites, lagosDay } from "@/server/services/daily";
+import { holidayCalendar } from "@/server/services/holiday";
+import { classChampions } from "@/server/services/preciousps-exams";
+import { ClassChampions, DailyBites, HolidayBanner } from "@/components/daily-bites";
 
 export default async function StudentDashboard({ searchParams }: PageProps<"/student">) {
   const s = await requireStudentPage();
   const sp = await searchParams;
-  const learningCfg = await getSetting(s.user.schoolId, "learning");
-  const [brand, access, exams, results, learning, assignments, perf, rec, notes, study] = await Promise.all([
+  const [brand, access, exams, results, learning, assignments, perf, rec, notes] = await Promise.all([
     getBrand(),
     getAccessState(s.user.id),
     listStudentExams(s.actor),
@@ -52,15 +40,23 @@ export default async function StudentDashboard({ searchParams }: PageProps<"/stu
     studentPerformance(s.user.id),
     recommendedPractice(s.user.id, s.user.schoolId),
     listNotifications(s.user.id, s.user.schoolId, 5),
-    studyActivity(s.user.id, learningCfg.weeklyGoalDays),
   ]);
-  const ident = await studentIdentity(s.user.id);
+  const scope = await studentScope(s.user.id);
+  const [ident, bites, holiday, champs] = await Promise.all([
+    studentIdentity(s.user.id),
+    dailyBites(s.user.schoolId, lagosDay(), scope.level).catch(() => []),
+    holidayCalendar(s.user.schoolId).catch(() => null),
+    classChampions(s.user.schoolId, scope.classId, s.user.id).catch(() => null),
+  ]);
+  // A code set up without Results shows no scores anywhere on the dashboard.
+  const scoresHidden = access.status === "ACTIVE" && !access.features.includes("RESULTS");
+  const school = await schoolProfileOf(s.user.id);
+  const schoolSetup = school ? await Promise.all([examClassesFor(s.user.schoolId, school.category), getCatalog(s.user.schoolId), studentScope(s.user.id)]) : null;
   const hour = Number(new Intl.DateTimeFormat("en-NG", { timeZone: "Africa/Lagos", hour: "numeric", hour12: false }).format(new Date()));
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const available = exams.filter((e) => e.canStart);
   const released = results.filter((r) => r.releasedAt && !r.isVoided);
   const pending = assignments.filter((a) => a.state === "PENDING" || a.state === "IN_PROGRESS");
-  const nextStep = learning.current ? { href: `/student/study/lesson/${learning.current.id}`, label: "Continue learning", sub: learning.current.title } : { href: "/student/study", label: "Open the Study Centre", sub: "Start your first lesson" };
 
   return (
     <div className="space-y-6">
@@ -69,63 +65,43 @@ export default async function StudentDashboard({ searchParams }: PageProps<"/stu
           Your account is ready.{ident ? <> Your Student ID is <strong>{ident.studentNumber}</strong> — write it down. You can sign in with it{ident.username ? <>, your username <strong>{ident.username}</strong></> : null} or your e-mail.</> : null} Activate your access code below to unlock CBT, the Study Centre and more.
         </Alert>
       )}
-
-      {/* Hero banner */}
-      <section className="relative overflow-hidden rounded-3xl bg-navy-800 p-6 text-white sm:p-8">
-        <div className="bg-dots absolute inset-0 opacity-40" aria-hidden />
-        <div className="absolute -right-20 -top-24 size-72 rounded-full bg-royal-600/40 blur-3xl" aria-hidden />
-        <div className="relative grid items-center gap-6 md:grid-cols-[1fr_auto]">
+      {sp.welcome === "school" && sp.code === "failed" && <Alert tone="warning" title="The access code was not accepted">The school account was created. Check the code and enter it in the access box below. A school account needs a school access code.</Alert>}
+      {school && schoolSetup && (
+        <SchoolPanel schoolName={school.schoolName} schoolCode={school.schoolCode} category={school.category} classes={schoolSetup[0].map((c) => ({ id: c.id, name: c.name, level: c.level }))} departments={schoolSetup[1].departments.map((d) => ({ id: d.id, name: d.name, level: d.level ?? null }))} classId={schoolSetup[2].classId} departmentId={schoolSetup[2].departmentId} />
+      )}
+      <section className="pop relative overflow-hidden rounded-3xl bg-gradient-to-br from-navy-900 via-navy-800 to-royal-700 p-5 text-white shadow-lift sm:p-7">
+        <div aria-hidden className="bg-grid absolute inset-0 opacity-40" />
+        <div aria-hidden className="float absolute -right-10 -top-10 size-48 rounded-full bg-gold-400/20 blur-2xl" />
+        <div className="relative grid items-center gap-6 lg:grid-cols-[1.1fr_1fr]">
           <div>
             <p className="text-sm font-semibold text-gold-400">{greeting},</p>
-            <h1 className="mt-1 text-3xl font-extrabold tracking-tight sm:text-4xl">{s.user.firstName}</h1>
-            <p className="mt-2 max-w-xl text-sm text-white/70">{brand.tagline}</p>
-            <div className="mt-5 flex flex-wrap items-center gap-3">
-              <Link href={nextStep.href} className={buttonClass("gold", "lg")}>
-                <Play className="size-4" aria-hidden /> {nextStep.label}
-              </Link>
-              <Link href="/student/exams" className={buttonClass("outlineLight", "lg")}>
-                <MonitorCheck className="size-4" aria-hidden /> Take an exam
-              </Link>
+            <h1 className="mt-0.5 text-2xl font-extrabold tracking-tight sm:text-4xl">{s.user.firstName} 👋</h1>
+            <p className="mt-2 max-w-md text-sm text-white/75">{brand.tagline} Here is your learning at a glance.</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link href="/student/study" className="rounded-xl bg-gold-400 px-4 py-2 text-sm font-extrabold text-navy-900 hover:bg-gold-500">Continue learning</Link>
+              <Link href="/student/exam-prep" className="rounded-xl bg-white/10 px-4 py-2 text-sm font-bold ring-1 ring-white/25 hover:bg-white/20">Exam preparation</Link>
+              <Link href="/student/rewards" className="rounded-xl bg-white/10 px-4 py-2 text-sm font-bold ring-1 ring-white/25 hover:bg-white/20">Rewards</Link>
             </div>
-            <p className="mt-3 truncate text-xs text-white/60">{nextStep.sub}</p>
           </div>
-          <div className="flex items-center gap-5 rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
-            <GoalRing value={study.activeThisWeek} goal={study.weeklyGoalDays} />
-            <div>
-              <p className="flex items-center gap-1.5 font-display text-2xl font-bold">
-                <Flame className="size-6 text-gold-400" aria-hidden /> {study.streak}
-                <span className="text-sm font-semibold text-white/70">day streak</span>
-              </p>
-              <p className="mt-1 text-xs text-white/65">Best: {study.best} day{study.best === 1 ? "" : "s"} · {study.active30} active in 30 days</p>
-              <div className="mt-3 flex gap-1.5" aria-label="Last 7 days">
-                {study.week.map((d) => (
-                  <span key={d.date} title={d.date} className={cx("grid size-6 place-items-center rounded-md text-[0.6rem] font-bold", d.active ? "bg-gold-500 text-navy-900" : "bg-white/10 text-white/50", d.today && "ring-2 ring-white/60")}>
-                    {d.label.slice(0, 1)}
-                  </span>
-                ))}
-              </div>
-            </div>
+          <div className="grid grid-cols-3 gap-3 rounded-2xl bg-white p-4 text-navy-800">
+            <Ring value={scoresHidden ? null : perf.overall.avg} label="Average score" colour="#1d4ed8" size={84} />
+            <Ring value={scoresHidden ? null : perf.overall.best} label="Best score" colour="#c8a02f" size={84} />
+            <Ring value={learning.classworkAverage === null ? null : Math.round(Number(learning.classworkAverage))} label="Classwork average" colour="#047857" size={84} sub={`${learning.completed} lesson${learning.completed === 1 ? "" : "s"} done`} />
           </div>
         </div>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-[1.15fr_1fr]">
+      {holiday && <HolidayBanner label={holiday.label} active={holiday.active} daysToGo={holiday.daysToGo} daysLeft={holiday.daysLeft} href="/student/holiday" />}
+      {champs && <ClassChampions className={champs.className} title={champs.title} top={champs.top} />}
+      <DailyBites bites={bites} linkBase="/student/materials" />
+
+      <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
         <AccessCard initial={access} contact={brand.accessCodeContact} />
         <div className="grid grid-cols-2 gap-4">
-          {[
-            { label: "Available exams", value: available.length, icon: MonitorCheck, tone: "bg-royal-50 text-royal-600" },
-            { label: "Completed exams", value: released.length, icon: CheckCircle2, tone: "bg-success-50 text-success-600" },
-            { label: "Average score", value: perf.overall.avg !== null ? `${perf.overall.avg}%` : "—", icon: TrendingUp, tone: "bg-gold-100 text-gold-600" },
-            { label: "Best score", value: perf.overall.best !== null ? `${perf.overall.best}%` : "—", icon: Award, tone: "bg-navy-800 text-gold-400" },
-          ].map((k) => (
-            <Card key={k.label} className="p-4">
-              <span className={cx("grid size-9 place-items-center rounded-lg", k.tone)}>
-                <k.icon className="size-[1.1rem]" aria-hidden />
-              </span>
-              <p className="mt-3 font-display text-[1.7rem] font-bold leading-none text-navy-800">{k.value}</p>
-              <p className="mt-1 text-xs text-muted">{k.label}</p>
-            </Card>
-          ))}
+          <Stat label="Available exams" value={available.length} icon={<MonitorCheck className="size-5" />} />
+          <Stat label="Completed exams" value={released.length} icon={<CheckCircle2 className="size-5" />} tone="green" />
+          <Stat label="Average score" value={!scoresHidden && perf.overall.avg !== null ? `${perf.overall.avg}%` : "—"} icon={<TrendingUp className="size-5" />} tone="gold" />
+          <Stat label="Best score" value={!scoresHidden && perf.overall.best !== null ? `${perf.overall.best}%` : "—"} icon={<Award className="size-5" />} tone="navy" />
         </div>
       </div>
 
@@ -139,31 +115,27 @@ export default async function StudentDashboard({ searchParams }: PageProps<"/stu
         <Card>
           <CardHeader title="Learning progress" />
           <div className="space-y-4 p-5">
-            <div>
-              <div className="mb-1.5 flex justify-between text-xs font-semibold text-muted">
-                <span>Weekly goal</span>
-                <span>
-                  {study.activeThisWeek}/{study.weeklyGoalDays} days
-                </span>
-              </div>
-              <ProgressBar value={(study.activeThisWeek / study.weeklyGoalDays) * 100} tone="gold" label="Weekly study goal" />
-            </div>
             <div className="grid grid-cols-2 gap-3 text-center">
               <div className="rounded-xl bg-surface p-3">
-                <p className="font-display text-2xl font-bold text-navy-800">{learning.completed}</p>
+                <p className="text-2xl font-extrabold text-navy-800">{learning.completed}</p>
                 <p className="text-xs text-muted">Lessons completed</p>
               </div>
               <div className="rounded-xl bg-surface p-3">
-                <p className="font-display text-2xl font-bold text-navy-800">
-                  {learning.classworkAverage ?? "—"}
-                  {learning.classworkAverage !== null && "%"}
-                </p>
+                <p className="text-2xl font-extrabold text-navy-800">{learning.classworkAverage ?? "—"}{learning.classworkAverage !== null && "%"}</p>
                 <p className="text-xs text-muted">Classwork average</p>
               </div>
             </div>
-            <Link href="/student/family" className="flex items-center gap-2 rounded-xl border border-dashed border-gold-400 bg-gold-50 p-3 text-sm font-semibold text-navy-800 hover:bg-gold-100">
-              <Users className="size-4 text-gold-600" aria-hidden /> Share a progress report with a parent
-            </Link>
+            {learning.current ? (
+              <Link href={`/student/study/lesson/${learning.current.id}`} className="block rounded-xl border border-royal-100 bg-royal-50 p-4 hover:bg-royal-100/60">
+                <p className="text-xs font-bold uppercase tracking-wide text-royal-700">Continue learning</p>
+                <p className="mt-1 font-bold text-navy-800">{learning.current.title}</p>
+                <p className="text-xs text-muted">{learning.current.topic}</p>
+              </Link>
+            ) : (
+              <Link href="/student/study" className={buttonClass("secondary", "md", "w-full")}>
+                <BookOpen className="size-4" /> Open the Study Centre
+              </Link>
+            )}
           </div>
         </Card>
       </div>
@@ -278,7 +250,7 @@ export default async function StudentDashboard({ searchParams }: PageProps<"/stu
               {notes.map((n) => (
                 <li key={n.id} className="px-5 py-3">
                   <p className="flex items-center gap-2 text-sm font-semibold text-navy-800">
-                    {!n.read && <span className="size-2 rounded-full bg-gold-500" aria-label="Unread" />}
+                    {!n.read && <span className="size-2 rounded-full bg-royal-600" aria-label="Unread" />}
                     {n.title}
                   </p>
                   <p className="line-clamp-2 text-xs text-muted">{n.body}</p>
@@ -290,7 +262,7 @@ export default async function StudentDashboard({ searchParams }: PageProps<"/stu
           )}
           <div className="border-t border-line px-5 py-3">
             <Link href="/student/study" className="inline-flex items-center gap-1 text-sm font-semibold text-royal-600">
-              <BookOpen className="size-4" aria-hidden /> Continue your learning journey <ArrowRight className="size-4" aria-hidden />
+              Continue your learning journey <ArrowRight className="size-4" aria-hidden />
             </Link>
           </div>
         </Card>

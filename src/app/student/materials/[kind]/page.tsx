@@ -20,6 +20,8 @@ const INTRO = {
   IDIOM: "Idioms are phrases whose meaning is different from the meaning of the separate words.",
   CLICHE: "Clichés are sayings that are used very often. Know what they mean, and use them sparingly in your own writing.",
   PHRASAL_VERB: "A phrasal verb is a verb joined to a small word such as up, off or after, giving a new meaning.",
+  PROVERB: "Proverbs are short wise sayings handed down through generations, from Nigeria, Africa and around the world.",
+  COMMON_ERROR: "Mistakes people often make in English, the correct form, and why. Read a few every day and you will stop making them.",
 } as const;
 
 export default async function WordsPage({ params, searchParams }: PageProps<"/student/materials/[kind]">) {
@@ -31,7 +33,7 @@ export default async function WordsPage({ params, searchParams }: PageProps<"/st
   const q = typeof sp.q === "string" ? sp.q : "";
   const letter = typeof sp.letter === "string" && /^[A-Z]$/.test(sp.letter) ? sp.letter : "";
   const [access, hub, scope, cat] = await Promise.all([getAccessState(s.user.id), getSetting(s.user.schoolId, "learningHub"), studentScope(s.user.id), getCatalog(s.user.schoolId)]);
-  const on = { WORD: hub.dictionaryEnabled, IDIOM: hub.idiomsEnabled, CLICHE: hub.clichesEnabled, PHRASAL_VERB: hub.phrasalVerbsEnabled }[kind];
+  const on = { WORD: hub.dictionaryEnabled, IDIOM: hub.idiomsEnabled, CLICHE: hub.clichesEnabled, PHRASAL_VERB: hub.phrasalVerbsEnabled, PROVERB: hub.proverbsEnabled !== false, COMMON_ERROR: hub.commonErrorsEnabled !== false }[kind];
   if (!on) notFound();
   // Open only while a code is running and that code includes Learning Resources.
   const active = access.status === "ACTIVE" && access.features.includes("LEARNING_RESOURCES");
@@ -66,10 +68,21 @@ export default async function WordsPage({ params, searchParams }: PageProps<"/st
                 {e.imageAssetId ? <img src={`/api/v1/assets/${e.imageAssetId}`} alt="" className="size-full object-cover" /> : (e.picture ?? "📘")}
               </div>
               <div className="min-w-0">
-                <h2 className="text-lg font-extrabold text-navy-800">{e.term}</h2>
-                {e.partOfSpeech && kind === "WORD" && <p className="text-xs font-semibold italic text-royal-600">{e.partOfSpeech}</p>}
-                <p className="mt-1 text-sm text-navy-800">{e.meaning}</p>
-                {e.example && <p className="mt-1.5 border-l-2 border-gold-400 pl-2 text-sm italic text-muted">{e.example}</p>}
+                {kind === "COMMON_ERROR" ? (
+                  <>
+                    {e.partOfSpeech && <p className="text-[0.68rem] font-bold uppercase tracking-wide text-gold-600">{e.partOfSpeech}</p>}
+                    <p className="text-sm font-semibold text-danger-600"><span aria-hidden>✗ </span><span className="sr-only">Wrong: </span><span className="line-through decoration-danger-600/60">{e.term}</span></p>
+                    {e.example && <p className="mt-1 text-base font-extrabold text-emerald-700"><span aria-hidden>✓ </span><span className="sr-only">Correct: </span>{e.example}</p>}
+                    <p className="mt-1 text-sm text-muted">{e.meaning}</p>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="text-lg font-extrabold text-navy-800">{e.term}</h2>
+                    {e.partOfSpeech && (kind === "WORD" || kind === "PROVERB") && <p className="text-xs font-semibold italic text-royal-600">{e.partOfSpeech}</p>}
+                    <p className="mt-1 text-sm text-navy-800">{e.meaning}</p>
+                    {e.example && <p className="mt-1.5 border-l-2 border-gold-400 pl-2 text-sm italic text-muted">{e.example}</p>}
+                  </>
+                )}
               </div>
             </Card>
           ))}

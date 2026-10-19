@@ -268,3 +268,29 @@ describe("Excel row validation", () => {
     expect(questionFingerprint("What is 2+2?", [{ text: "4" }, { text: "3" }])).toBe(questionFingerprint("what is 22", [{ text: "3" }, { text: "4" }]));
   });
 });
+
+describe("Game Zone puzzles", () => {
+  it("makes Sudoku grids that obey every rule, at each size", async () => {
+    const { makeSudoku, sudokuClashes } = await import("@/components/game-zone");
+    for (const n of [4, 6, 9]) {
+      for (let i = 0; i < 20; i++) {
+        const full = makeSudoku(n, 0);
+        expect(full.flat().every((v) => v >= 1 && v <= n)).toBe(true);
+        expect(sudokuClashes(full, n).size, `${n} x ${n}`).toBe(0);
+        for (const row of full) expect(new Set(row).size).toBe(n);
+      }
+      const puzzle = makeSudoku(n, n === 4 ? 8 : n === 6 ? 18 : 44);
+      expect(puzzle.flat().filter((v) => v === 0).length).toBe(n === 4 ? 8 : n === 6 ? 18 : 44);
+    }
+    const wrong = [[1, 1, 3, 4], [3, 4, 1, 2], [2, 3, 4, 1], [4, 2, 0, 3]];
+    expect(sudokuClashes(wrong, 4).has("0,0")).toBe(true);
+  });
+
+  it("hides every word of a word search where it says it is", async () => {
+    const { buildSearch } = await import("@/components/game-zone");
+    const { grid, placed } = buildSearch(["OXYGEN", "PLANET", "MAGNET", "ENERGY"], 10);
+    expect(placed.length).toBe(4);
+    for (const p of placed) expect(p.cells.map(([r, c]) => grid[r][c]).join("")).toBe(p.word);
+    expect(grid.flat().every((ch) => /^[A-Z]$/.test(ch))).toBe(true);
+  });
+});

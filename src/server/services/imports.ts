@@ -9,6 +9,9 @@ import { audit, securityEvent, type Actor, type ReqCtx } from "../audit";
 import { AppError } from "../errors";
 import { sha256 } from "../crypto";
 import { validateUpload, type FileKind } from "../files";
+import { EXAM_TYPES } from "@/core/question-parser";
+import { PROGRAMME_KEYS, PROGRAMMES } from "@/core/exam-programmes";
+import { DIAGRAM_HELP } from "@/core/diagrams";
 import { rateLimit } from "../rate-limit";
 import { getSetting } from "../settings";
 import { createQuestion } from "./questions";
@@ -70,7 +73,7 @@ const ALLOWED: FileKind[] = ["docx", "doc", "xlsx", "xls", "pptx", "ppt", "pdf",
 
 /* ------------------------------------------------------------ extractors */
 
-async function wordText(kind: "docx" | "doc", bytes: Buffer): Promise<{ text: string; notices: string[] }> {
+export async function wordText(kind: "docx" | "doc", bytes: Buffer): Promise<{ text: string; notices: string[] }> {
   const notices: string[] = [];
   if (kind === "docx") {
     const mammoth = await import("mammoth");
@@ -89,7 +92,7 @@ async function wordText(kind: "docx" | "doc", bytes: Buffer): Promise<{ text: st
   return { text: doc.getBody(), notices };
 }
 
-async function pptxSlides(bytes: Buffer): Promise<string[]> {
+export async function pptxSlides(bytes: Buffer): Promise<string[]> {
   const zip = await JSZip.loadAsync(bytes);
   const slides = Object.keys(zip.files)
     .filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))
@@ -104,7 +107,7 @@ async function pptxSlides(bytes: Buffer): Promise<string[]> {
   return out;
 }
 
-async function pdfText(bytes: Buffer): Promise<string> {
+export async function pdfText(bytes: Buffer): Promise<string> {
   const { extractText, getDocumentProxy } = await import("unpdf");
   const pdf = await getDocumentProxy(new Uint8Array(bytes));
   const { text } = await extractText(pdf, { mergePages: false });
@@ -472,7 +475,9 @@ export function excelTemplate(): Buffer {
     ["Subject", "Required. Must match a subject name or code in the platform."],
     ["Class / Department", "Optional. Must match existing names or codes (e.g. SS2, Science)."],
     ["Year", "Optional. 4-digit year, e.g. 2025."],
-    ["Exam Type", "Optional. PRACTICE, MOCK, SCHOOL_EXAM, CLASS_TEST, CONTINUOUS_ASSESSMENT, JAMB, WAEC, NECO, CUSTOM."],
+    ["Exam Type", `Optional. One of: ${EXAM_TYPES.join(", ")}.`],
+    ["Exam Type and class", PROGRAMME_KEYS.map((k) => `${k} is shown to ${PROGRAMMES[k].classes.join(", ")} only`).join("; ") + "."],
+    ["Pictures", `Type a diagram inside a question or explanation, e.g. ${DIAGRAM_HELP.slice(0, 6).map((d) => d.example).join("  ")}`],
     ["Topic / Subtopic", "Optional. New topics are created automatically."],
     ["Question, A–D", "Question and at least options A and B are required. Use $…$ for maths, e.g. $\\frac{1}{2}$."],
     ["Correct Answer", "Required. A, B, C or D."],

@@ -17,6 +17,7 @@ export default async function ParentRegisterPage() {
   const cfg = await getSetting(brand.schoolId, "parents");
   return (
     <AuthShell
+      scene="register"
       wide
       title="Parent / guardian registration"
       subtitle={

@@ -1,7 +1,9 @@
 /* eslint-disable @next/next/no-img-element */
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Clock, Download, Hourglass } from "lucide-react";
+import Link from "next/link";
+import { Award, Clock, Download, Hourglass } from "lucide-react";
+import { certificateEligible } from "@/server/services/records";
 import { requireStudentPage, reqCtx } from "@/server/http";
 import { getBrand } from "@/server/brand";
 import { getStudentResult } from "@/server/services/exams";
@@ -41,6 +43,7 @@ export default async function ResultPage({ params, searchParams }: PageProps<"/s
   }
   const res = r.result;
   const [appeal, win] = await Promise.all([appealOfResult(s.user.id, res.id), appealWindow(res)]);
+  const canCertify = (await certificateEligible(s.user.schoolId, s.user.id)).has(res.id);
   const minutes = Math.floor(res.timeUsedSec / 60);
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -56,6 +59,11 @@ export default async function ResultPage({ params, searchParams }: PageProps<"/s
           actions={
             <>
               <PrintButton />
+              {canCertify && (
+                <Link href={`/student/certificate/${res.id}`} className={buttonClass("secondary")}>
+                  <Award className="size-4" /> Certificate
+                </Link>
+              )}
               <a href={`/api/v1/results/${res.id}/slip`} className={buttonClass("primary")} target="_blank" rel="noopener">
                 <Download className="size-4" /> Result slip (PDF)
               </a>
@@ -65,8 +73,8 @@ export default async function ResultPage({ params, searchParams }: PageProps<"/s
       </div>
       {/* Printable result slip */}
       <Card className="overflow-hidden">
-        <div className="flex flex-col items-center gap-2 border-b border-line bg-card px-6 py-6 text-center">
-          <img src={brand.logoUrl} alt="Precious PS Academy logo" className="size-24 rounded-xl object-contain" />
+        <div className="flex flex-col items-center gap-2 border-b border-line bg-white px-6 py-6 text-center">
+          <img src={brand.logoUrl} alt="Precious PS Academy logo" className="h-24 w-auto object-contain" />
           <p className="text-lg font-extrabold tracking-wide text-navy-800">Precious PS Academy</p>
           <p className="text-xs font-bold tracking-[0.18em] text-gold-600">{brand.schoolName}</p>
         </div>
@@ -101,7 +109,7 @@ export default async function ResultPage({ params, searchParams }: PageProps<"/s
             { l: "Unanswered", v: res.unansweredCount, c: "text-slate-600" },
             { l: "Time used", v: `${minutes}m ${res.timeUsedSec % 60}s`, c: "text-navy-800" },
           ].map((x) => (
-            <div key={x.l} className="bg-card px-4 py-4 text-center">
+            <div key={x.l} className="bg-white px-4 py-4 text-center">
               <p className={`text-2xl font-extrabold ${x.c}`}>{x.v}</p>
               <p className="text-xs text-muted">{x.l}</p>
             </div>

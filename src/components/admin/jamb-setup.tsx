@@ -23,7 +23,7 @@ export function JambSetupButton({ subjectId, variant = "secondary", children }: 
           if (!r.ok) return toast("error", r.error);
           const { created, published, waiting } = r.data!;
           const parts = [created && `${created} created`, published && `${published} published`].filter(Boolean);
-          if (waiting.length) toast("error", `Not published yet — needs more approved JAMB questions: ${waiting.join(", ")}.`);
+          if (waiting.length) toast("error", `Not published yet — no approved questions: ${waiting.join(", ")}.`);
           if (parts.length || !waiting.length) toast("success", parts.length ? `JAMB tests: ${parts.join(", ")}.` : "Already up to date.");
           router.refresh();
         })

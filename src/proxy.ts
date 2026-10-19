@@ -20,6 +20,8 @@ export function proxy(request: NextRequest) {
     "connect-src 'self'",
     "media-src 'self' https:",
     "frame-src https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com",
+    "worker-src 'self'",
+    "manifest-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -47,7 +49,7 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     {
-      source: "/((?!api|_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|brand/|manifest.webmanifest|robots.txt|sitemap.xml).*)",
+      source: "/((?!api|_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|brand/|sw.js|manifest.webmanifest|robots.txt|sitemap.xml).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },

@@ -78,6 +78,10 @@ export const examTypeEnum = pgEnum("exam_type", [
   "TOEFL",
   "SAT",
   "CHECKPOINT",
+  "COMMON_ENTRANCE",
+  "JUPEB",
+  "IJMB",
+  "PreciousPS_EXAM",
 ]);
 export const resultVisibilityEnum = pgEnum("result_visibility", ["IMMEDIATE", "AFTER_RELEASE", "HIDDEN"]);
 export const attemptStatusEnum = pgEnum("attempt_status", ["IN_PROGRESS", "SUBMITTED", "AUTO_SUBMITTED", "VOIDED"]);
@@ -169,6 +173,8 @@ export const students = pgTable(
     state: text("state"),
     country: text("country").default("Nigeria"),
     allowConcurrentCodes: boolean("allow_concurrent_codes").notNull().default(false),
+    /** STUDENT | SCHOOL — a school account uses the student area for its examination classes. */
+    accountKind: text("account_kind").notNull().default("STUDENT"),
     createdAt: createdAt(),
   },
   (t) => [
@@ -1616,4 +1622,300 @@ export const resultAppeals = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("result_appeals_once_uq").on(t.resultId), index("result_appeals_status_idx").on(t.schoolId, t.status)],
+);
+
+/* ---------------------------------------------------------- school accounts */
+
+/** A school that registered to prepare its examination classes. One row per school account. */
+export const schoolProfiles = pgTable("school_profiles", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  schoolId: schoolRef(),
+  /** Generated at registration (e.g. FSC-4K7Q2M); also accepted at sign-in. */
+  schoolCode: text("school_code").notNull().unique(),
+  schoolName: text("school_name").notNull(),
+  address: text("address").notNull(),
+  adminName: text("admin_name").notNull(),
+  /** PRIMARY | SECONDARY */
+  category: text("category").notNull(),
+  createdAt: createdAt(),
+});
+
+/* ------------------------------------------------------------- topic audio */
+
+/** MP3 explanations a teacher attaches to a topic. The sound itself is stored in parts. */
+export const topicAudio = pgTable(
+  "topic_audio",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    topicId: uuid("topic_id")
+      .notNull()
+      .references(() => topics.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    fileName: text("file_name").notNull(),
+    size: integer("size").notNull().default(0),
+    /** False until every part has arrived; unfinished uploads are never shown to students. */
+    ready: boolean("ready").notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdBy: uuid("created_by"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("topic_audio_topic_idx").on(t.topicId, t.sortOrder)],
+);
+
+export const topicAudioParts = pgTable(
+  "topic_audio_parts",
+  {
+    audioId: uuid("audio_id")
+      .notNull()
+      .references(() => topicAudio.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    /** Byte position of this part in the whole file. */
+    offset: integer("offset").notNull(),
+    size: integer("size").notNull(),
+    data: bytea("data").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.audioId, t.seq] })],
+);
+
+/* ------------------------------------------------------ rewards and loyalty */
+
+/** One winner: best in a class, or best in a subject within a class, for a term or a whole session. */
+export const awards = pgTable(
+  "awards",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    session: text("session").notNull(),
+    /** Term name, or null for the whole session. */
+    term: text("term"),
+    /** CLASS | SUBJECT */
+    scope: text("scope").notNull(),
+    classId: uuid("class_id")
+      .notNull()
+      .references(() => classes.id, { onDelete: "cascade" }),
+    subjectId: uuid("subject_id").references(() => subjects.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    position: integer("position").notNull().default(1),
+    average: real("average").notNull(),
+    papers: integer("papers").notNull().default(0),
+    /** What the student receives, written by the school (optional). */
+    reward: text("reward"),
+    publishedAt: ts("published_at"),
+    createdBy: uuid("created_by"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("awards_period_idx").on(t.schoolId, t.session, t.term), index("awards_user_idx").on(t.userId)],
+);
+
+/** Points a student earns for steady work; shown as a loyalty level. */
+export const loyaltyPoints = pgTable(
+  "loyalty_points",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    points: integer("points").notNull(),
+    reason: text("reason").notNull(),
+    /** Stops the same event being counted twice (e.g. "result:<id>"). */
+    ref: text("ref").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("loyalty_ref_uq").on(t.userId, t.ref), index("loyalty_user_idx").on(t.userId)],
+);
+
+/* ------------------------------------------------- family events and experts */
+
+/** Bonding activities the school arranges for families: picnic, cinema, holiday, games, hangouts. */
+export const familyEvents = pgTable(
+  "family_events",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    /** PICNIC | CINEMA | HOLIDAY | GAMES | HANGOUT | WORKSHOP | OTHER */
+    kind: text("kind").notNull().default("OTHER"),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    venue: text("venue"),
+    startsAt: ts("starts_at"),
+    endsAt: ts("ends_at"),
+    cost: text("cost"),
+    contact: text("contact"),
+    capacity: integer("capacity"),
+    status: contentStatusEnum("status").notNull().default("DRAFT"),
+    createdBy: uuid("created_by"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("family_events_idx").on(t.schoolId, t.status, t.startsAt)],
+);
+
+export const familyEventRsvps = pgTable(
+  "family_event_rsvps",
+  {
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => familyEvents.id, { onDelete: "cascade" }),
+    parentUserId: uuid("parent_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    adults: integer("adults").notNull().default(1),
+    children: integer("children").notNull().default(0),
+    note: text("note"),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.eventId, t.parentUserId] })],
+);
+
+/** "Meet an Expert": counsellors, doctors, lawyers and other professionals parents can contact. */
+export const experts = pgTable(
+  "experts",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    /** COUNSELLOR | DOCTOR | LAWYER | FINANCE | EDUCATION | TECHNOLOGY | OTHER */
+    profession: text("profession").notNull().default("OTHER"),
+    name: text("name").notNull(),
+    title: text("title"),
+    /** What this expert helps with: topics, one per line. */
+    topics: text("topics").notNull().default(""),
+    bio: text("bio").notNull().default(""),
+    phone: text("phone"),
+    email: text("email"),
+    availability: text("availability"),
+    /** PARENT | STUDENT | BOTH: who sees this expert. */
+    audience: text("audience").notNull().default("PARENT"),
+    website: text("website"),
+    /** Feedback from people this expert has helped, one per line, typed in by staff. */
+    testimonials: text("testimonials").notNull().default(""),
+    sortOrder: integer("sort_order").notNull().default(0),
+    status: contentStatusEnum("status").notNull().default("DRAFT"),
+    createdBy: uuid("created_by"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("experts_idx").on(t.schoolId, t.status, t.sortOrder)],
+);
+
+/* --------------------------------------------------------------- error log */
+
+/** Server errors as they happen, with the reference number shown to the user on the error page. */
+export const errorLogs = pgTable(
+  "error_logs",
+  {
+    id: id(),
+    /** The "Reference" on the error page. */
+    digest: text("digest"),
+    message: text("message").notNull(),
+    stack: text("stack"),
+    path: text("path"),
+    method: text("method"),
+    routePath: text("route_path"),
+    routeType: text("route_type"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("error_logs_time_idx").on(t.createdAt), index("error_logs_digest_idx").on(t.digest)],
+);
+
+/* --------------------------------------------------------------- game sets */
+
+/** A game the school made in the backend: a word search, a spelling game, a matching game or riddles. */
+export const gameSets = pgTable(
+  "game_sets",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    /** WORD_SEARCH | HANGMAN | MATCH | RIDDLE */
+    kind: text("kind").notNull(),
+    /** STUDENT | PARENT | BOTH */
+    audience: text("audience").notNull().default("STUDENT"),
+    title: text("title").notNull(),
+    description: text("description"),
+    /** One item per line, written "word = clue", "term = meaning" or "riddle = answer". */
+    items: text("items").notNull(),
+    /** Section the game is for; null = everyone. */
+    level: text("level"),
+    classId: uuid("class_id").references(() => classes.id, { onDelete: "set null" }),
+    status: contentStatusEnum("status").notNull().default("DRAFT"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdBy: uuid("created_by"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("game_sets_idx").on(t.schoolId, t.status, t.sortOrder)],
+);
+
+/* --------------------------------------------------------- holiday programme */
+
+/**
+ * A holiday task set by a parent (for one child) or by the school (for a class or section).
+ * Holidays: CHRISTMAS (after First Term), EASTER (after Second Term), LONG (after Third Term).
+ */
+export const holidayTasks = pgTable(
+  "holiday_tasks",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    /** Null for the built-in Precious PS activities loaded on deploy. */
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "cascade" }),
+    /** PARENT | SCHOOL */
+    setBy: text("set_by").notNull(),
+    /** One child (parent tasks); null for school tasks. */
+    studentUserId: uuid("student_user_id").references(() => users.id, { onDelete: "cascade" }),
+    /** School tasks: one class, or a whole section when only level is set, or everyone. */
+    classId: uuid("class_id").references(() => classes.id, { onDelete: "set null" }),
+    level: text("level"),
+    holiday: text("holiday").notNull(),
+    /** 0 = every year (the built-in programme and repeating school tasks). */
+    year: integer("year").notNull().default(0),
+    /** REVISION | NEXT_TERM | READING | PROJECT | ACTIVITY | CHORE */
+    kind: text("kind").notNull().default("ACTIVITY"),
+    title: text("title").notNull(),
+    instructions: text("instructions"),
+    link: text("link"),
+    dueOn: text("due_on"),
+    active: boolean("active").notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (t) => [index("holiday_tasks_idx").on(t.schoolId, t.holiday, t.year), index("holiday_tasks_student_idx").on(t.studentUserId)],
+);
+
+/** What a student has ticked off: a set task ("task:<id>") or a built-in activity ("act:<holiday>-<year>-<code>"). */
+export const holidayProgress = pgTable(
+  "holiday_progress",
+  {
+    studentUserId: uuid("student_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    itemKey: text("item_key").notNull(),
+    note: text("note"),
+    doneAt: ts("done_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.studentUserId, t.itemKey] })],
+);
+
+/* ---------------------------------------------------------------- ideas box */
+
+/** A suggestion from a student, parent or school account, answered by staff in the backend. */
+export const suggestions = pgTable(
+  "suggestions",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    /** STUDENT | PARENT | SCHOOL */
+    role: text("role").notNull(),
+    /** LEARNING | CONTENT | GAMES | DESIGN | PROBLEM | OTHER */
+    category: text("category").notNull().default("OTHER"),
+    text: text("text").notNull(),
+    /** NEW | PLANNED | DONE | DECLINED */
+    status: text("status").notNull().default("NEW"),
+    reply: text("reply"),
+    repliedAt: ts("replied_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("suggestions_idx").on(t.schoolId, t.status, t.createdAt)],
 );

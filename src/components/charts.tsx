@@ -158,3 +158,23 @@ export function Donut({ segments, label, size = 150 }: { segments: { label: stri
 }
 
 export const GRADE_COLORS: Record<string, string> = { A: "#047857", B: "#1d4ed8", C: "#2f66ea", D: "#c8a02f", E: "#b45309", F: "#c62828" };
+
+/** A progress ring with the number in the middle: a figure and its picture together. */
+export function Ring({ value, label, size = 96, colour = "#1d4ed8", suffix = "%", sub }: { value: number | null; label: string; size?: number; colour?: string; suffix?: string; sub?: string }) {
+  const r = 42;
+  const c = 2 * Math.PI * r;
+  const v = value === null ? 0 : Math.max(0, Math.min(100, value));
+  return (
+    <figure className="flex flex-col items-center text-center">
+      <svg viewBox="0 0 100 100" width={size} height={size} role="img" aria-label={`${label}: ${value === null ? "no data" : `${Math.round(v)}${suffix}`}`}>
+        <circle cx="50" cy="50" r={r} fill="none" stroke="#e3e8f2" strokeWidth="10" />
+        {v > 0 && <circle cx="50" cy="50" r={r} fill="none" stroke={colour} strokeWidth="10" strokeLinecap="round" strokeDasharray={`${(v / 100) * c} ${c}`} transform="rotate(-90 50 50)" />}
+        <text x="50" y="50" textAnchor="middle" dominantBaseline="central" fontSize="22" fontWeight="800" fill="#0b1f4b">
+          {value === null ? "—" : `${Math.round(v)}${suffix}`}
+        </text>
+      </svg>
+      <figcaption className="mt-1.5 text-xs font-semibold text-navy-800">{label}</figcaption>
+      {sub && <p className="text-[0.7rem] text-muted">{sub}</p>}
+    </figure>
+  );
+}

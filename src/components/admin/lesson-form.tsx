@@ -65,7 +65,7 @@ export function LessonForm({
           <span className="text-sm font-semibold text-navy-800">Lesson notes</span>
           <div className="flex rounded-lg bg-surface p-0.5 text-xs font-semibold">
             {(["write", "preview"] as const).map((t) => (
-              <button key={t} type="button" onClick={() => setTab(t)} className={cx("rounded-md px-3 py-1", tab === t ? "bg-card text-navy-800 shadow-sm" : "text-muted")}>
+              <button key={t} type="button" onClick={() => setTab(t)} className={cx("rounded-md px-3 py-1", tab === t ? "bg-white text-navy-800 shadow-sm" : "text-muted")}>
                 {t === "write" ? "Write" : "Preview"}
               </button>
             ))}

@@ -1,6 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { seededRng } from "@/core/exam-engine";
 import { getDb } from "../db";
+import { seedHolidayProgramme } from "../services/holiday";
 import {
   assignmentQuestions,
   assignments,
@@ -28,7 +29,10 @@ import { generateMathBank, toOptions } from "./math-bank";
 import { SUBJECT_BANK } from "./subject-bank";
 import { LESSONS } from "./lessons";
 import { seedStarterEntriesIfEmpty } from "../services/wordbank";
-import { seedHubIfEmpty } from "../services/hub";
+import { seedHubExtras, seedHubIfEmpty, seedParentGk } from "../services/hub";
+import { ensureParentRooms } from "../services/community";
+import { seedMoreWords, seedWordbankMore } from "../services/wordbank";
+import { setupInternational, setupPrepProgrammes } from "../services/international";
 import { generateJssMathBank, JSS_LESSONS, JSS_SUBJECT_BANK } from "./jss-bank";
 
 export const SYSTEM_ACTOR_ID = "00000000-0000-0000-0000-000000000000";
@@ -159,10 +163,28 @@ export async function seedPlatform(opts: { sampleContent?: boolean; primarySchoo
   if (starter.created) log(`${starter.created} dictionary, idiom and phrasal-verb entries added`);
   const hub = await seedHubIfEmpty(schoolId);
   if (hub.articles || hub.questions) log(`${hub.articles} hub articles and ${hub.questions} quiz questions added`);
+  const extras = await seedHubExtras(schoolId);
+  if (extras) log(`${extras} further hub articles added`);
+  const wbMore = await seedWordbankMore(schoolId);
+  if (wbMore) log(`${wbMore} proverbs, common errors and further study-material entries added`);
+  const gk = await seedParentGk(schoolId);
+  if (gk) log(`${gk} parent General Knowledge questions added`);
+  const holidays = await seedHolidayProgramme(schoolId);
+  if (holidays) log(`${holidays} holiday programme activities added`);
+  const words = await seedMoreWords(schoolId);
+  if (words) log(`${words} dictionary words added`);
+  // JUPEB- and IJMB-style practice needs the subjects above; it is skipped quietly if they are missing.
+  const prep = await setupPrepProgrammes({ id: SYSTEM_ACTOR_ID, schoolId, userType: "SUPER_ADMIN", permissions: new Set(), name: "System", email: "system@preciousps.local" }, { ip: null, userAgent: "seed" }).catch(() => ({ questions: 0, exams: 0 }));
+  if (prep.questions || prep.exams) log(`${prep.questions} JUPEB/IJMB/Common Entrance questions and ${prep.exams} examinations added`);
+  const intl = await setupInternational({ id: SYSTEM_ACTOR_ID, schoolId, userType: "SUPER_ADMIN", permissions: new Set(), name: "System", email: "system@preciousps.local" }, { ip: null, userAgent: "seed" }).catch(() => ({ questions: 0, exams: 0 }));
+  if (intl.questions || intl.exams) log(`${intl.questions} IELTS/TOEFL/SAT/Checkpoint questions and ${intl.exams} examinations added`);
+  const rooms = await ensureParentRooms(schoolId);
+  if (rooms) log(`${rooms} parent community rooms added`);
   log("academic structure ready");
 
   if (!opts.sampleContent) return { schoolId };
-  const [{ n: existing }] = await db.select({ n: sql<number>`count(*)::int` }).from(questions).where(eq(questions.schoolId, schoolId));
+  const [{ n: existing }] = await db.select({ n: sql<number>`count(*)::int` }).from(questions).where(and(eq(questions.schoolId, schoolId), sql`${questions.examType} IS NULL OR ${questions.examType} NOT IN ('JUPEB', 'IJMB', 'COMMON_ENTRANCE', 'IELTS', 'TOEFL', 'SAT', 'CHECKPOINT')`));
+  // The JUPEB and IJMB practice sets are loaded above on every install, so they do not count as sample content.
   if (existing > 0) {
     log("sample content already present — skipped");
     return { schoolId };

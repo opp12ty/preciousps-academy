@@ -37,7 +37,7 @@ export default async function ExamDetail({ params }: PageProps<"/admin/examinati
         </div>
         <ExamStatusControls id={e.id} status={e.status} canPublish={can(a, "exams.publish")} canRelease={can(a, "results.manage")} resultVisibility={e.resultVisibility} />
       </Card>
-      {pool < e.questionCount && <Alert tone="warning" title="Pool too small">This exam needs {e.questionCount} approved questions but only {pool} match. <Link className="font-bold underline" href="/admin/questions?status=PENDING_REVIEW">Review pending questions</Link> or lower the count.</Alert>}
+      {pool < e.questionCount && <Alert tone={pool ? "info" : "warning"} title={pool ? "Fewer questions than set" : "No questions yet"}>{pool ? <>The pool has {pool} approved question{pool === 1 ? "" : "s"}, fewer than the {e.questionCount} set. The paper can still be published: it will use all {pool}, and the time is shortened to keep the same time per question. </> : <>No approved questions match this exam yet. </>}<Link className="font-bold underline" href="/admin/questions?status=PENDING_REVIEW">Review pending questions</Link> to add more.</Alert>}
       {pool >= e.questionCount && pool < e.questionCount * 2 && e.randomizeQuestions && <Alert tone="info">Tip: with a pool only {Math.round((pool / e.questionCount) * 10) / 10}× the question count, students will see many of the same questions. A pool of 3× or more gives better variety.</Alert>}
       {can(a, "exams.manage") && (
         <Card className="p-5 sm:p-6">

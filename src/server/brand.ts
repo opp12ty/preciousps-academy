@@ -46,7 +46,7 @@ export const getBrand = cache(async (): Promise<Brand> => {
     accessCodeContact: s.school.accessCodeContact,
     email: s.school.email,
     address: s.school.address,
-    logoUrl: asset(s.branding.logoAssetId) ?? "/brand/logo-full-480.png",
+    logoUrl: asset(s.branding.logoAssetId) ?? "/brand/logo-full-480.webp",
     markUrl: asset(s.branding.logoAssetId) ?? "/brand/logo-mark-128.png",
     heroUrl: asset(s.branding.heroAssetId) ?? DEFAULT_HERO_URL,
     examBannerUrl: asset(s.branding.examBannerAssetId),

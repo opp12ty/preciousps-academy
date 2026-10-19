@@ -4,13 +4,13 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { buttonClass, inputClass } from "@/components/ui/primitives";
 import { ActionForm, CheckboxField, NewPasswordPair, PasswordField, SelectField, SubmitButton, TextField } from "@/components/ui/form";
-import { backendLoginAction, forgotAction, mfaAction, ownerCheckAction, registerAction, registerParentAction, resetAction, setupAction, studentLoginAction } from "./actions";
+import { backendLoginAction, forgotAction, mfaAction, ownerCheckAction, registerAction, registerParentAction, registerSchoolAction, resetAction, setupAction, studentLoginAction } from "./actions";
 
 export function LoginForm({ portal, next }: { portal: "student" | "backend"; next?: string }) {
   return (
     <ActionForm action={portal === "student" ? studentLoginAction : backendLoginAction} className="space-y-4">
       {next && <input type="hidden" name="next" value={next} />}
-      <TextField label={portal === "student" ? "Email, Student ID or username (parents: email)" : "Email address"} name="identifier" autoComplete="username" required autoFocus />
+      <TextField label={portal === "student" ? "Email, Student ID, School Code or username" : "Email address"} name="identifier" autoComplete="username" required autoFocus />
       <PasswordField label="Password" name="password" autoComplete="current-password" />
       <div className="flex justify-end">
         <Link href="/forgot-password" className="text-sm font-semibold text-royal-600 hover:underline">
@@ -249,6 +249,53 @@ export function OwnerSetupForm() {
       <NewPasswordPair label="Create your password" context={[email.split("@")[0]]} />
       <SubmitButton className="w-full" size="lg" pendingText="Creating your account…">
         Create my account and sign in
+      </SubmitButton>
+    </ActionForm>
+  );
+}
+
+export function SchoolRegisterForm() {
+  const [names, setNames] = useState<string[]>([]);
+  return (
+    <ActionForm action={registerSchoolAction} className="space-y-5">
+      <fieldset className="space-y-4">
+        <legend className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-gold-600">The school</legend>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextField className="sm:col-span-2" label="School name" name="schoolName" autoComplete="organization" required onBlur={(e) => setNames((n) => [e.target.value, n[1] ?? ""])} />
+          <TextField className="sm:col-span-2" label="School address" name="address" autoComplete="street-address" required />
+          <TextField label="Email address" name="email" type="email" autoComplete="email" required />
+          <TextField label="Phone number" name="phone" type="tel" autoComplete="tel" inputMode="tel" placeholder="0803 000 0000" required />
+          <TextField label="School administrator's name" name="adminName" autoComplete="name" required />
+          <SelectField label="School type" name="category" required placeholder="Choose" options={[{ value: "PRIMARY", label: "Primary (Basic 4 to 6)" }, { value: "SECONDARY", label: "Secondary (JSS 2-3 and SS 2-3)" }]} hint="A school account works with the examination classes only." />
+        </div>
+      </fieldset>
+      <fieldset className="space-y-4">
+        <legend className="mb-1 text-xs font-bold uppercase tracking-[0.14em] text-gold-600">Sign-in details</legend>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextField label="Username" name="username" autoComplete="username" required onBlur={(e) => setNames((n) => [n[0] ?? "", e.target.value])} hint="Letters, numbers, dot, dash or underscore." />
+          <TextField label="School access code (optional)" name="accessCode" placeholder="PPS-XXXX-XXXX-XXXX" autoComplete="off" autoCapitalize="characters" spellCheck={false} hint="From Precious PS. You can also enter it after you sign in." />
+        </div>
+        <p className="rounded-xl bg-royal-50 px-4 py-3 text-sm text-navy-800">Your <strong>School Code</strong> is created automatically when you register and is shown on your dashboard. You can sign in with the School Code, your username or your e-mail.</p>
+        <NewPasswordPair context={names} />
+      </fieldset>
+      <CheckboxField
+        name="acceptTerms"
+        label={
+          <>
+            I agree to the{" "}
+            <Link href="/terms" className="text-royal-600 underline" target="_blank">
+              Terms
+            </Link>{" "}
+            and{" "}
+            <Link href="/privacy" className="text-royal-600 underline" target="_blank">
+              Privacy Policy
+            </Link>
+            .
+          </>
+        }
+      />
+      <SubmitButton className="w-full" size="lg" pendingText="Creating the school account…">
+        Create school account
       </SubmitButton>
     </ActionForm>
   );

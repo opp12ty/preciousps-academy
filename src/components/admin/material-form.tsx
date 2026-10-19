@@ -24,7 +24,7 @@ export interface MaterialData {
   fileName: string | null;
 }
 
-const ACCEPT = ".pdf,.docx,.doc,.pptx,.ppt,.xlsx,.xls";
+const ACCEPT = ".pdf,.docx,.doc,.pptx,.ppt,.xlsx,.xls,.mp3";
 /** The hosting platform refuses requests above about 4.5 MB, whatever the upload setting says. */
 export const HOSTING_LIMIT_MB = 4;
 

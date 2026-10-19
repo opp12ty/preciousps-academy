@@ -15,6 +15,9 @@ import { clearAllRateLimits } from "@/server/rate-limit";
 import * as authSvc from "@/server/services/auth";
 import * as access from "@/server/services/access";
 import * as people from "@/server/services/people";
+import * as holiday from "@/server/services/holiday";
+import { setupFodanExams } from "@/server/services/preciousps-exams";
+import { answerIdea } from "@/server/services/ideas";
 import * as curriculum from "@/server/services/curriculum";
 import * as questions from "@/server/services/questions";
 import * as exams from "@/server/services/exams";
@@ -37,6 +40,11 @@ import * as community from "@/server/services/community";
 import * as promo from "@/server/services/promotions";
 import * as studentImport from "@/server/services/student-import";
 import * as appeals from "@/server/services/appeals";
+import * as topicAudio from "@/server/services/topic-audio";
+import * as records from "@/server/services/records";
+import * as family from "@/server/services/family";
+import * as developer from "@/server/services/developer";
+import * as games from "@/server/services/games";
 import type { Permission } from "@/core/permissions";
 import { revokeSession } from "@/server/auth/session";
 import { getDb } from "@/server/db";
@@ -97,6 +105,14 @@ export async function forcePasswordChangeAction(userId: string) {
 export async function revokeUserSessionsAction(userId: string) {
   return action({ role: "staff", perm: "students.security" }, async (a, ctx) => ({ count: await authSvc.adminRevokeSessions(a, userId, ctx) }), "All sessions revoked.");
 }
+export async function deleteAccountAction(userId: string, reason: string) {
+  return action({ role: "staff", perm: "super.admins" }, async (a, ctx) => {
+    await people.deleteAccount(a, userId, reason, ctx);
+    revalidatePath("/admin/parents");
+    revalidatePath("/admin/administrators");
+    revalidatePath("/admin/students");
+  }, "Account deleted.");
+}
 export async function removeStudentAction(userId: string, reason: string) {
   return action({ role: "staff", perm: "super.admins" }, (a, ctx) => people.softDeleteStudent(a, userId, reason, ctx), "Student removed.");
 }
@@ -150,6 +166,121 @@ export async function appealDecideAction(id: string, outcome: "UPHELD" | "REJECT
     await appeals.decideAppeal(a, id, outcome, response, ctx);
     revalidatePath("/admin/appeals");
   }, "Reply sent to the student.");
+}
+/* -------------------------------------------------------------------- games */
+export async function gameSetAction(id: string | null, _: ActionResult | null, f: FormData) {
+  return action({ role: "staff", perm: "learning.manage" }, async (a, ctx) => {
+    const r = await games.upsertGame(a, id, { kind: str(f, "kind"), audience: str(f, "audience"), title: str(f, "title"), description: str(f, "description"), items: String(f.get("items") ?? ""), level: str(f, "level"), classId: str(f, "classId") || undefined, status: str(f, "status"), sortOrder: num(f, "sortOrder") ?? 0 }, ctx);
+    revalidatePath("/admin/games");
+    return r;
+  }, "Game saved.");
+}
+export async function gameSetDeleteAction(id: string) {
+  return action({ role: "staff", perm: "learning.manage" }, async (a, ctx) => {
+    await games.deleteGame(a, id, ctx);
+    revalidatePath("/admin/games");
+  }, "Game removed.");
+}
+/* ------------------------------------------------- class correction (demotion) */
+export async function moveStudentAction(userId: string, _: ActionResult | null, f: FormData) {
+  return action({ role: "staff", perm: "students.manage" }, async (a, ctx) => {
+    const r = await promo.moveStudentClass(a, userId, { classId: str(f, "classId") ?? "", departmentId: str(f, "departmentId") || null, reason: str(f, "reason") ?? "" }, ctx);
+    revalidatePath("/admin", "layout");
+    return r;
+  }, "Class changed. The student starts afresh; the access code is unchanged.");
+}
+/* ---------------------------------------------------------------- developer */
+const superOnly = (a: { userType: string }) => {
+  if (a.userType !== "SUPER_ADMIN") throw new AppError("FORBIDDEN", "The Developer segment is for the Super Admin.");
+};
+export async function devAskAction(history: developer.ChatTurn[], question: string) {
+  return action({ role: "staff", perm: "super.settings" }, (a, ctx) => developer.askAssistant(a, Array.isArray(history) ? history : [], question, ctx));
+}
+export async function devRedeployAction() {
+  return action({ role: "staff", perm: "super.settings" }, async (a, ctx) => {
+    superOnly(a);
+    return developer.triggerRedeploy(a, ctx);
+  }, "A new deployment has started. It usually takes three to five minutes.");
+}
+export async function devClearErrorsAction() {
+  return action({ role: "staff", perm: "super.settings" }, async (a, ctx) => {
+    superOnly(a);
+    await developer.clearErrors(a, ctx);
+    revalidatePath("/admin/developer");
+  }, "Error log cleared.");
+}
+/* --------------------------------------------- family activities and experts */
+const dt = (f: FormData, k: string) => (str(f, k) ? new Date(`${str(f, k)}${/T/.test(str(f, k)!) ? "" : "T00:00"}+01:00`) : undefined);
+export async function familyEventAction(id: string | null, _: ActionResult | null, f: FormData) {
+  return action({ role: "staff", perm: "parents.manage" }, async (a, ctx) => {
+    await family.upsertEvent(a, id, { kind: str(f, "kind"), title: str(f, "title"), description: str(f, "description") ?? "", venue: str(f, "venue"), startsAt: dt(f, "startsAt"), endsAt: dt(f, "endsAt"), cost: str(f, "cost"), contact: str(f, "contact"), capacity: num(f, "capacity"), status: str(f, "status") }, ctx);
+    revalidatePath("/admin/family");
+  }, "Activity saved.");
+}
+export async function familyEventDeleteAction(id: string) {
+  return action({ role: "staff", perm: "parents.manage" }, async (a, ctx) => {
+    await family.deleteEvent(a, id, ctx);
+    revalidatePath("/admin/family");
+  }, "Activity removed.");
+}
+export async function familyEventAnnounceAction(id: string) {
+  return action({ role: "staff", perm: "parents.manage" }, (a) => family.announceEvent(a, id), "Parents have been told.");
+}
+export async function expertAction(id: string | null, _: ActionResult | null, f: FormData) {
+  return action({ role: "staff", perm: "parents.manage" }, async (a, ctx) => {
+    await family.upsertExpert(a, id, { profession: str(f, "profession"), name: str(f, "name"), title: str(f, "title"), topics: str(f, "topics") ?? "", bio: str(f, "bio") ?? "", phone: str(f, "phone"), email: str(f, "email"), availability: str(f, "availability"), audience: str(f, "audience"), website: str(f, "website"), testimonials: str(f, "testimonials") ?? "", sortOrder: num(f, "sortOrder") ?? 0, status: str(f, "status") }, ctx);
+    revalidatePath("/admin/family");
+  }, "Expert saved.");
+}
+export async function expertDeleteAction(id: string) {
+  return action({ role: "staff", perm: "parents.manage" }, async (a, ctx) => {
+    await family.deleteExpert(a, id, ctx);
+    revalidatePath("/admin/family");
+  }, "Expert removed.");
+}
+/* ------------------------------------------------------ rewards and awards */
+export async function awardsComputeAction(term: string | null) {
+  return action({ role: "staff", perm: "results.manage" }, async (a, ctx) => {
+    const r = await records.computeAwards(a, term, ctx);
+    revalidatePath("/admin/rewards");
+    return r;
+  }, "Winners worked out. Check them, add rewards, then announce.");
+}
+export async function awardsPublishAction(term: string | null) {
+  return action({ role: "staff", perm: "results.manage" }, async (a, ctx) => {
+    const r = await records.publishAwards(a, term, ctx);
+    revalidatePath("/admin/rewards");
+    return r;
+  }, "Winners announced. Each winner has been notified.");
+}
+export async function awardRewardAction(id: string, _: ActionResult | null, f: FormData) {
+  return action({ role: "staff", perm: "results.manage" }, async (a) => {
+    await records.setAwardReward(a, id, str(f, "reward") ?? "");
+    revalidatePath("/admin/rewards");
+  }, "Reward saved.");
+}
+/* ------------------------------------------------------------- topic audio */
+export async function audioBeginAction(input: { topicId: string; title: string; fileName: string; size: number }) {
+  return action({ role: "staff", perm: "curriculum.manage" }, (a, ctx) => topicAudio.beginAudio(a, input, ctx));
+}
+export async function audioPartAction(f: FormData) {
+  return action({ role: "staff", perm: "curriculum.manage" }, async (a) => {
+    const part = f.get("part");
+    if (!(part instanceof Blob)) throw new AppError("VALIDATION", "Missing data.");
+    await topicAudio.addAudioPart(a, String(f.get("id") ?? ""), Number(f.get("seq")), Buffer.from(await part.arrayBuffer()));
+  });
+}
+export async function audioFinishAction(id: string) {
+  return action({ role: "staff", perm: "curriculum.manage" }, async (a, ctx) => {
+    await topicAudio.finishAudio(a, id, ctx);
+    revalidatePath("/admin/curriculum");
+  }, "Recording uploaded. Students can listen now.");
+}
+export async function audioDeleteAction(id: string) {
+  return action({ role: "staff", perm: "curriculum.manage" }, async (a, ctx) => {
+    await topicAudio.deleteAudio(a, id, ctx);
+    revalidatePath("/admin/curriculum");
+  }, "Recording removed.");
 }
 /* ------------------------------------------------------ bulk student import */
 export async function studentImportPreviewAction(f: FormData) {
@@ -458,6 +589,11 @@ export async function saveSettingAction(key: SettingKey, value: unknown) {
   return action({ role: "staff", perm: SETTING_PERMS[key] ?? "super.settings" }, async (a, ctx) => {
     await putSetting(a.schoolId, key, value, a.id);
     await audit({ actor: a, action: "settings.updated", entityType: "setting", entityId: key, metadata: value }, ctx);
+    // A new standard JAMB size reaches every JAMB test at once.
+    if (key === "examination") {
+      await exams.setupStandardPapers(a, ctx);
+      await setupFodanExams(a, ctx);
+    }
     revalidatePath("/", "layout");
   }, "Settings saved.");
 }
@@ -766,6 +902,45 @@ export async function promotionBulkAction(classId: string, _: ActionResult | nul
     revalidatePath("/admin/promotions");
     return r;
   }, "Class promoted.");
+}
+
+export async function holidaySchoolTaskAction(id: string | null, _: ActionResult | null, form: FormData) {
+  return action({ role: "staff", perm: "assignments.manage" }, async (a, ctx) => {
+    await holiday.upsertSchoolTask(a, id, {
+      holiday: String(form.get("holiday") ?? ""),
+      everyYear: form.get("everyYear") === "on",
+      kind: String(form.get("kind") ?? "ACTIVITY"),
+      title: String(form.get("title") ?? ""),
+      instructions: String(form.get("instructions") ?? ""),
+      link: String(form.get("link") ?? ""),
+      classId: String(form.get("classId") ?? ""),
+      level: String(form.get("level") ?? ""),
+      dueOn: String(form.get("dueOn") ?? ""),
+      active: form.get("active") === "on",
+    }, ctx);
+    revalidatePath("/admin/holiday");
+  }, "Holiday task saved.");
+}
+export async function holidaySchoolTaskDeleteAction(id: string) {
+  return action({ role: "staff", perm: "assignments.manage" }, async (a, ctx) => {
+    await holiday.deleteSchoolTask(a, id, ctx);
+    revalidatePath("/admin/holiday");
+  }, "Holiday task deleted.");
+}
+
+export async function setupFodanExamsAction() {
+  return action({ role: "staff", perm: "exams.publish" }, async (a, ctx) => {
+    const r = await setupFodanExams(a, ctx);
+    revalidatePath("/admin/preciousps-exams");
+    return r;
+  });
+}
+
+export async function answerIdeaAction(id: string, _: ActionResult | null, form: FormData) {
+  return action({ role: "staff", perm: "content.manage" }, async (a, ctx) => {
+    await answerIdea(a, id, { status: String(form.get("status") ?? "NEW"), reply: String(form.get("reply") ?? "") }, ctx);
+    revalidatePath("/admin/ideas");
+  }, "Saved. The sender has been told.");
 }
 
 export async function setPrimarySchoolAction(on: boolean) {

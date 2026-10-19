@@ -34,7 +34,6 @@ export default async function CbtPage({ params }: PageProps<"/cbt/[attemptId]">)
       examTitle={view.examTitle}
       studentName={view.studentName}
       markUrl={brand.markUrl}
-      platformName={brand.platformName}
       serverNow={view.serverNow}
       deadlineAt={view.deadlineAt}
       autosaveSeconds={view.autosaveSeconds}
@@ -53,7 +52,7 @@ export default async function CbtPage({ params }: PageProps<"/cbt/[attemptId]">)
 function Closed({ title, message }: { title: string; message: string }) {
   return (
     <main id="main" className="grid min-h-dvh place-items-center bg-surface p-4">
-      <div className="w-full max-w-md rounded-2xl border border-line bg-card p-8 text-center shadow-card">
+      <div className="w-full max-w-md rounded-2xl border border-line bg-white p-8 text-center shadow-card">
         <CheckCircle2 className="mx-auto size-10 text-royal-600" aria-hidden />
         <h1 className="mt-3 text-xl font-extrabold text-navy-800">{title}</h1>
         <p className="mt-2 text-sm text-muted">{message}</p>

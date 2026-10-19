@@ -358,12 +358,18 @@ const picture = (args: string) => (args.trim() ? `<span class="fig-emoji" role="
 const DRAW: Record<string, (args: string) => string | null> = { fraction, numberline, bars, pie, shape, shapes, clock, array, counters, sequence, flow, puzzle, placevalue, angle, tally, bond, alphabet, picture };
 
 /** Matches one figure token; use with the `g` flag to find them inside running text. */
-export const FIGURE_TOKEN = /\[\[(diagram|image):\s*([^\]\n]{1,400})\]\]/;
+export const FIGURE_TOKEN = /\[\[(diagram|image|listen):\s*([^\]\n]{1,2000})\]\]/;
 
 /** HTML for one figure token. Unknown or malformed diagrams show their own text, so authors can see and fix them. */
 export function renderFigure(kind: string, body: string): string {
   const [spec, captionRaw = ""] = body.split("||");
   const caption = captionRaw.trim() ? `<span class="fig-cap">${esc(captionRaw.trim())}</span>` : "";
+  if (kind === "listen") {
+    // Spoken by the reader's own device (speech synthesis): no audio file to download.
+    const text = spec.trim();
+    if (text.length < 3) return `<span class="fig fig-missing">${esc(`[[listen: ${body}]]`)}</span>`;
+    return `<span class="listen"><button type="button" class="listen-btn" data-say="${esc(text)}" aria-label="Play the recording">&#128266; Listen</button>${caption}</span>`;
+  }
   if (kind === "image") {
     const src = spec.trim();
     const url = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(src) ? `/api/v1/assets/${src}` : /^https:\/\/[^\s"'<>]+$/i.test(src) ? src : null;

@@ -37,13 +37,13 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
       <div className="grid gap-6 lg:grid-cols-[14rem_1fr]">
         <nav aria-label="Settings sections" className="no-scrollbar flex gap-1 overflow-x-auto lg:flex-col">
           {SECTIONS.map(([k, l]) => (
-            <Link key={k} href={`/admin/settings?section=${k}`} className={cx("whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold", section === k ? "bg-navy-800 text-white" : "text-navy-800 hover:bg-card")}>
+            <Link key={k} href={`/admin/settings?section=${k}`} className={cx("whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold", section === k ? "bg-navy-800 text-white" : "text-navy-800 hover:bg-white")}>
               {l}
             </Link>
           ))}
-          <Link href="/admin/school" className="whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-navy-800 hover:bg-card">School →</Link>
-          <Link href="/admin/branding" className="whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-navy-800 hover:bg-card">Branding →</Link>
-          <Link href="/admin/feature-flags" className="whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-navy-800 hover:bg-card">Feature flags →</Link>
+          <Link href="/admin/school" className="whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-navy-800 hover:bg-white">School →</Link>
+          <Link href="/admin/branding" className="whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-navy-800 hover:bg-white">Branding →</Link>
+          <Link href="/admin/feature-flags" className="whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-navy-800 hover:bg-white">Feature flags →</Link>
         </nav>
         <div className="space-y-6">
           {section === "general" && (
@@ -114,6 +114,13 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
                 <SettingsForm settingKey="examination" initial={st.examination} fields={F([
                   { key: "defaultDurationMinutes", label: "Default duration (minutes)", type: "number", min: 1, max: 600 },
                   { key: "defaultQuestionCount", label: "Default number of questions", type: "number", min: 1, max: 500 },
+                  { key: "jambQuestions", label: "Standard JAMB questions per subject", type: "number", min: 1, max: 500, hint: "Each subject's JAMB test draws this many questions at random, with 48 seconds a question. A subject with fewer approved questions still runs, using all it has. Saving updates every JAMB test except ones whose count you changed by hand." },
+                  { key: "beceQuestions", label: "Standard BECE questions per subject", type: "number", min: 1, max: 500, hint: "Each JSS subject's standard BECE paper, drawn at random from JSS1–JSS3 questions (72 seconds a question)." },
+                  { key: "fodanLowerPrimary", label: "Precious PS Examination questions: Basic 1–3", type: "number", min: 1, max: 500, hint: "Termly revision paper across every subject of the class (medium questions, 90 seconds each)." },
+                  { key: "fodanUpperPrimary", label: "Precious PS Examination questions: Basic 4–6", type: "number", min: 1, max: 500, hint: "72 seconds a question." },
+                  { key: "fodanJunior", label: "Precious PS Examination questions: JSS 1–3", type: "number", min: 1, max: 500, hint: "One minute a question." },
+                  { key: "fodanSenior", label: "Precious PS Examination questions: SS 1–3", type: "number", min: 1, max: 500, hint: "One minute a question." },
+                  { key: "commonEntranceQuestions", label: "Standard Common Entrance questions per subject", type: "number", min: 1, max: 500, hint: "Each upper-primary subject's standard Common Entrance paper, drawn at random from Basic 4–6 questions (one minute a question)." },
                   { key: "autosaveSeconds", label: "Autosave interval (seconds)", type: "number", min: 3, max: 120 },
                   { key: "suspiciousThreshold", label: "Flag attempt after N anomalies", type: "number", min: 1, max: 100 },
                   { key: "fullscreenGuidance", label: "Show full-screen guidance before exams", type: "bool" },

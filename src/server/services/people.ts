@@ -4,6 +4,7 @@ import { ALL_PERMISSIONS, sanitisePermissionList, SYSTEM_ROLES } from "@/core/pe
 import { checkPassword } from "@/core/password-policy";
 import { getDb } from "../db";
 import {
+  guardianLinks,
 
   assignmentAttempts,
   auditLogs,
@@ -22,7 +23,7 @@ import {
 } from "../db/schema";
 import { audit, securityEvent, type Actor, type ReqCtx } from "../audit";
 import { AppError } from "../errors";
-import { generateTemporaryPassword, hashPassword } from "../auth/password";
+import { generateTemporaryPassword, hashPassword, verifyPassword } from "../auth/password";
 import { revokeAllSessions } from "../auth/session";
 import { getSetting } from "../settings";
 import { getAccessHistory, getAccessState } from "./access";
@@ -434,16 +435,45 @@ export async function adminActivity(actor: Actor, userId: string) {
 }
 
 export async function softDeleteStudent(actor: Actor, userId: string, reason: string, ctx: ReqCtx) {
-  if (actor.userType !== "SUPER_ADMIN") throw new AppError("FORBIDDEN", "Only the Super Admin can remove accounts.");
+  return deleteAccount(actor, userId, reason, ctx, ["STUDENT"]);
+}
+
+/**
+ * Deletes an account (Super Admin only): the person can no longer sign in, disappears from lists, and
+ * their e-mail address and phone number are released so they can register again later. Results, payments
+ * and the audit trail are kept for the school's records. Super Admin accounts cannot be deleted here.
+ */
+export async function deleteAccount(actor: Actor, userId: string, reason: string, ctx: ReqCtx, types: ("STUDENT" | "PARENT" | "ADMIN" | "TEACHER")[] = ["STUDENT", "PARENT", "ADMIN", "TEACHER"]) {
+  if (actor.userType !== "SUPER_ADMIN") throw new AppError("FORBIDDEN", "Only the Super Admin can delete accounts.");
   if (reason.trim().length < 5) throw new AppError("VALIDATION", "Record a reason.");
+  if (userId === actor.id) throw new AppError("VALIDATION", "You cannot delete your own Super Admin account.");
+  const removed = await eraseAccount(actor.schoolId, userId, types);
+  if (!removed) throw new AppError("NOT_FOUND", "Account not found, or it cannot be deleted.");
+  await audit({ actor, action: "admin.account_deleted", entityType: "user", entityId: userId, summary: `${removed.userType}: ${removed.name}. ${reason}` }, ctx);
+}
+
+/** A parent or student deletes their own account after confirming their password. */
+export async function deleteOwnAccount(actor: Actor, password: string, ctx: ReqCtx) {
+  if (actor.userType !== "PARENT" && actor.userType !== "STUDENT") throw new AppError("FORBIDDEN", "Staff accounts are deleted by the Super Admin.");
+  const [u] = await getDb().select({ passwordHash: users.passwordHash }).from(users).where(eq(users.id, actor.id));
+  if (!u || !(await verifyPassword(u.passwordHash, password))) throw new AppError("VALIDATION", "Your password is incorrect.", { password: ["Your password is incorrect."] });
+  const removed = await eraseAccount(actor.schoolId, actor.id, [actor.userType]);
+  if (!removed) throw new AppError("NOT_FOUND", "Account not found.");
+  await audit({ actor, action: "account.self_deleted", entityType: "user", entityId: actor.id, summary: removed.name }, ctx);
+}
+
+async function eraseAccount(schoolId: string, userId: string, types: string[]) {
   const db = getDb();
-  const res = await db
+  const tag = userId.slice(0, 8);
+  const [row] = await db
     .update(users)
-    .set({ deletedAt: new Date(), status: "SUSPENDED" })
-    .where(and(eq(users.id, userId), eq(users.schoolId, actor.schoolId), eq(users.userType, "STUDENT"), isNull(users.deletedAt)))
-    .returning({ id: users.id });
-  if (!res.length) throw new AppError("NOT_FOUND", "Student not found.");
+    .set({ deletedAt: new Date(), status: "SUSPENDED", email: sql`'deleted-' || ${tag} || '-' || extract(epoch from now())::bigint || '@deleted.invalid'`, phone: null, totpEnabled: false, totpSecretEnc: null, updatedAt: new Date() })
+    .where(and(eq(users.id, userId), eq(users.schoolId, schoolId), inArray(users.userType, types as ("STUDENT" | "PARENT" | "ADMIN" | "TEACHER")[]), isNull(users.deletedAt)))
+    .returning({ id: users.id, userType: users.userType, firstName: users.firstName, lastName: users.lastName });
+  if (!row) return null;
+  // A deleted parent is no longer linked to any child; a deleted student is unlinked from parents.
+  await db.delete(guardianLinks).where(or(eq(guardianLinks.parentUserId, userId), eq(guardianLinks.studentUserId, userId)));
   await revokeAllSessions(userId, "ACCOUNT_REMOVED");
-  await audit({ actor, action: "admin.student_removed", entityType: "user", entityId: userId, summary: reason }, ctx);
+  return { userType: row.userType, name: `${row.firstName} ${row.lastName}` };
 }
 

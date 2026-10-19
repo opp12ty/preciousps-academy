@@ -1,19 +1,24 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Users } from "lucide-react";
+import { ArrowRight, Brain, Users } from "lucide-react";
+import { dailyBites, lagosDay } from "@/server/services/daily";
+import { holidayCalendar } from "@/server/services/holiday";
+import { DailyBites, HolidayBanner } from "@/components/daily-bites";
 import { requireParentPage } from "@/server/http";
 import { getSetting } from "@/server/settings";
 import { fmtLagos } from "@/server/services/access";
 import { listChildren, listParentRequests } from "@/server/services/guardians";
 import { AddChildForm } from "@/components/parent/add-child";
-import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui/primitives";
+import { PromoCarousel } from "@/components/parent/promo-carousel";
+import { getContent } from "@/server/services/content";
+import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState} from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "My Children" };
 
 export default async function ParentHome({ searchParams }: PageProps<"/parent">) {
   const s = await requireParentPage();
   const sp = await searchParams;
-  const [children, cfg, requests] = await Promise.all([listChildren(s.user.id), getSetting(s.user.schoolId, "parents"), listParentRequests(s.user.id)]);
+  const [children, cfg, requests, promo, bites, holiday] = await Promise.all([listChildren(s.user.id), getSetting(s.user.schoolId, "parents"), listParentRequests(s.user.id), getContent(s.user.schoolId, "parent-promo"), dailyBites(s.user.schoolId, lagosDay()).catch(() => []), holidayCalendar(s.user.schoolId).catch(() => null)]);
   const STATUS: Record<string, { label: string; tone: "amber" | "red" | "neutral"; text: string }> = {
     PENDING: { label: "Pending", tone: "amber", text: "Your request has been sent. It must be confirmed before academic information becomes available." },
     REJECTED: { label: "Request rejected", tone: "red", text: "The student did not accept this parent connection request." },
@@ -22,7 +27,31 @@ export default async function ParentHome({ searchParams }: PageProps<"/parent">)
   };
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Parent / guardian" title={`Welcome, ${s.user.firstName}`} description={cfg.welcome} />
+      {promo.enabled && <PromoCarousel slides={promo.slides.map((x) => ({ ...x }))} seconds={Number(promo.seconds) || 6} />}
+      <section className="flex items-center gap-4 rounded-2xl border border-line bg-white p-4 shadow-card sm:gap-6 sm:p-5">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/logo-mark-128.png" alt="School crest" width={128} height={128} loading="lazy" decoding="async" className="h-28 w-20 shrink-0 rounded-2xl object-cover object-top ring-2 ring-gold-400 sm:h-36 sm:w-24" />
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-gold-600">Parent / guardian</p>
+          <h1 className="text-2xl font-extrabold tracking-tight text-navy-800 sm:text-3xl">Welcome, {s.user.firstName}</h1>
+          <p className="mt-1 text-sm leading-relaxed text-muted">{cfg.welcome}</p>
+          <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold">
+            <Link href="/parent/learning" className="text-royal-600 hover:underline">Learning Hub</Link>
+            <Link href="/parent/activities" className="text-royal-600 hover:underline">Family Activities</Link>
+            <Link href="/parent/experts" className="text-royal-600 hover:underline">Meet an Expert</Link>
+          </p>
+        </div>
+      </section>
+      {holiday && <HolidayBanner label={holiday.label} active={holiday.active} daysToGo={holiday.daysToGo} daysLeft={holiday.daysLeft} href="/parent/holiday" />}
+      <Link prefetch={false} href="/parent/games" className="pop flex items-center gap-4 rounded-2xl bg-gradient-to-r from-navy-800 via-royal-700 to-royal-600 p-4 text-white shadow-card transition hover:shadow-lift">
+        <Brain className="float size-10 shrink-0 text-gold-400" aria-hidden />
+        <span className="min-w-0">
+          <span className="block text-xs font-bold uppercase tracking-[0.16em] text-gold-400">New for parents</span>
+          <span className="block text-lg font-extrabold">General Knowledge Exam: 50 fresh questions every time →</span>
+          <span className="block text-sm text-white/80">Nigeria, Africa, the world, health, money, history and more. Free, with explanations.</span>
+        </span>
+      </Link>
+      <DailyBites bites={bites} />
       {sp.welcome && <Alert tone="success">Your account is ready.{" "}If you entered a Student ID, a link request has been sent for your child to accept.</Alert>}
       {children.length ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

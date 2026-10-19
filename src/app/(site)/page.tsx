@@ -1,32 +1,39 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, GraduationCap, LineChart, MonitorCheck, Plus, Quote, School, ShieldCheck, Target, UserPlus, Wifi } from "lucide-react";
+import { ArrowRight, BookOpen, CheckCircle2, ClipboardCheck, KeyRound, LineChart, MonitorCheck, Quote, ShieldCheck, Target, UserPlus, Wifi } from "lucide-react";
 import { getBrand } from "@/server/brand";
 import { getContent } from "@/server/services/content";
+import { Logo } from "@/components/brand";
 import { HomeCarousel } from "@/components/site/home-carousel";
 import { AnnouncementCarousel } from "@/components/site/announcement-carousel";
 import { buttonClass, cx } from "@/components/ui/primitives";
 
+const ICONS = { BookOpen, MonitorCheck, Target, ClipboardCheck, LineChart, ShieldCheck } as const;
+
+/** Founder portrait shown until a replacement is uploaded in Homepage & Content → Homepage → Founder. */
+import { HomeExtras } from "@/components/site/home-extras";
+import { AfricanCulture, EducationSystem, KenteBand } from "@/components/site/home-africa";
+import { LiveClock } from "@/components/site/live-clock";
+
+
 /** Only site paths and web addresses become links; anything else is ignored. */
 const safeLink = (v: string) => (/^(\/(?!\/)|https?:\/\/)/.test(v.trim()) ? v.trim() : "");
 
-const FEATURE_ICONS = { BookOpen, MonitorCheck, Target, ClipboardCheck, LineChart, ShieldCheck } as const;
-const TILE = ["bg-royal-600 text-white", "bg-gold-500 text-navy-900", "bg-navy-800 text-white", "bg-card text-navy-800 ring-1 ring-line"];
-
 export default async function HomePage() {
   const brand = await getBrand();
-  const [home, faq] = await Promise.all([getContent(brand.schoolId, "home"), getContent(brand.schoolId, "faq")]);
-  const slides = home.carousel.slides.filter((x) => x.title.trim()).map((x) => ({ ...x, link: safeLink(x.link) }));
+  const home = await getContent(brand.schoolId, "home");
+  const faq = await getContent(brand.schoolId, "faq");
+  const slides = home.carousel.slides.filter((s) => s.title.trim()).map((s) => ({ ...s, link: safeLink(s.link) }));
+  const dark = home.appearance.darkGlowStyle;
   const announcements = home.announcements.items.filter((a) => a.text.trim()).map((a) => ({ ...a, link: safeLink(a.link) }));
   const founder = home.founder;
-  const founderPhoto = /^[0-9a-f-]{36}$/i.test(founder.photoAssetId) ? `/api/v1/assets/${founder.photoAssetId}` : null;
+  const founderPhoto = /^[0-9a-f-]{36}$/i.test(founder.photoAssetId) ? `/api/v1/assets/${founder.photoAssetId}` : brand.heroUrl;
   const founderLink = safeLink(founder.ctaLink);
-  const marquee = [...home.prepCards.map((c) => c.title), ...home.trust, ...home.stats.map((s) => s.label)];
   return (
-    <>
+    <div className={cx(home.appearance.animations && "fx")}>
       {home.announcements.enabled && announcements.length > 0 && <AnnouncementCarousel items={announcements} seconds={home.announcements.secondsPerItem} />}
       {home.announcement.enabled && home.announcement.text && (
-        <div className="mx-3 mt-3 rounded-xl bg-gold-500 px-4 py-2 text-center text-sm font-bold text-navy-900 sm:mx-5">
+        <div className="bg-gold-500 px-4 py-2 text-center text-sm font-semibold text-navy-900">
           {home.announcement.link ? (
             <Link href={home.announcement.link} className="underline-offset-2 hover:underline">
               {home.announcement.text}
@@ -37,20 +44,23 @@ export default async function HomePage() {
         </div>
       )}
 
-      {/* HERO — full-bleed school photograph */}
-      <section className="relative -mt-[4.5rem] isolate overflow-hidden bg-navy-900 text-white">
-        <img src={brand.heroUrl} alt={`${brand.schoolName} school building`} fetchPriority="high" decoding="async" className="absolute inset-0 -z-20 size-full object-cover object-[60%_40%]" />
-        <div className="absolute inset-0 -z-10 bg-[linear-gradient(95deg,rgb(6_12_36/0.96)_8%,rgb(10_20_50/0.82)_42%,rgb(10_20_50/0.25)_100%)]" aria-hidden />
-        <div className="bg-dots absolute inset-0 -z-10 opacity-40" aria-hidden />
-        <div className="mx-auto grid max-w-6xl items-end gap-10 px-4 pb-20 pt-36 sm:px-6 sm:pt-44 lg:grid-cols-[1.35fr_1fr] lg:pb-28">
-          <div className="animate-rise">
-            <p className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-[0.7rem] font-bold uppercase tracking-[0.18em] text-gold-400 backdrop-blur">
-              <span className="size-1.5 rounded-full bg-gold-400" aria-hidden />
-              {home.heroEyebrow}
-            </p>
-            <h1 className="mt-5 text-[2.7rem] font-extrabold leading-[1.02] tracking-tight sm:text-6xl lg:text-[4.4rem]">{home.heroHeading}</h1>
-            <p className="mt-4 text-xl font-semibold text-gold-400 sm:text-2xl">{home.tagline}</p>
-            <p className="mt-5 max-w-xl text-base leading-relaxed text-white/80 sm:text-lg">{home.heroDescription}</p>
+      {/* HERO */}
+      <section className={cx("relative overflow-hidden text-white", dark ? "bg-gradient-to-b from-navy-950 via-navy-900 to-navy-900" : "bg-navy-800")}>
+        <div className="mudcloth absolute inset-0 opacity-[0.12]" aria-hidden />
+        <div className="glow-orb -right-40 -top-40 size-[34rem] bg-royal-600/30" aria-hidden />
+        {dark && <div className="glow-orb -left-32 bottom-0 size-[26rem] bg-gold-500/15" aria-hidden />}
+        <div className="relative mx-auto grid max-w-7xl items-center gap-10 px-4 pb-16 pt-12 sm:px-6 lg:grid-cols-[1.08fr_1fr] lg:pb-24 lg:pt-20">
+          <div className="rise">
+            <div className="mb-6 inline-flex items-center gap-3 rounded-2xl bg-white/[0.06] py-2 pl-2 pr-4 ring-1 ring-white/15">
+              <span className="grid size-12 place-items-center rounded-xl bg-white p-1">
+                <Logo src={brand.markUrl} alt="Precious PS Academy crest" className="size-full" priority />
+              </span>
+              <span className="text-[0.7rem] font-bold tracking-[0.2em] text-gold-400">{home.heroEyebrow}</span>
+            </div>
+            <h1 className={cx("font-display text-[2.6rem] font-extrabold leading-[1.05] tracking-tight sm:text-6xl lg:text-[4.1rem]", dark && "text-gold-gradient")}>{home.heroHeading}</h1>
+            <p className={cx("mt-4 text-xl font-semibold sm:text-2xl", dark ? "text-white" : "text-gold-400")}>{home.tagline}</p>
+            <p className="mt-2 text-sm font-semibold uppercase tracking-[0.16em] text-white/60">{home.positioning}</p>
+            <p className="mt-6 max-w-xl text-base leading-relaxed text-white/80 sm:text-lg">{home.heroDescription}</p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <Link href="/register" className={buttonClass("gold", "lg")}>
                 <UserPlus className="size-5" aria-hidden />
@@ -73,149 +83,152 @@ export default async function HomePage() {
                 {home.ctaParentLogin}
               </Link>
             </p>
-          </div>
-          <aside className="animate-rise rounded-2xl border border-white/15 bg-white/10 p-5 backdrop-blur-md [animation-delay:150ms]" aria-label="Quick start">
-            <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-gold-400">{home.journeyHeading}</p>
-            <ol className="mt-4 space-y-3.5">
-              {home.journey.map((j, i) => (
-                <li key={j.title} className="flex gap-3">
-                  <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-gold-500 font-display text-xs font-bold text-navy-900">{i + 1}</span>
-                  <span>
-                    <span className="block text-sm font-bold">{j.title}</span>
-                    <span className="block text-xs leading-snug text-white/70">{j.body}</span>
-                  </span>
-                </li>
-              ))}
-            </ol>
-            <ul className="mt-5 grid gap-1.5 border-t border-white/15 pt-4 text-xs text-white/80">
+            <ul className="mt-8 grid gap-2 text-sm text-white/75 sm:grid-cols-3">
               {home.trust.map((t) => (
                 <li key={t} className="flex items-center gap-2">
-                  <CheckCircle2 className="size-3.5 shrink-0 text-gold-400" aria-hidden />
+                  <CheckCircle2 className="size-4 shrink-0 text-gold-400" aria-hidden />
                   {t}
                 </li>
               ))}
             </ul>
-          </aside>
+          </div>
+          <div className="rise relative mx-auto w-full max-w-lg">
+            <img
+              src={brand.heroUrl}
+              alt={`${brand.schoolName} students in school uniform on campus`}
+              width={1024}
+              height={1024}
+              fetchPriority="high"
+              decoding="async"
+              className={cx("aspect-square w-full rounded-[2rem] bg-navy-700 object-cover", dark ? "gold-frame" : "shadow-lift ring-4 ring-white/10")}
+            />
+            {/* live Lagos time and date, top right, clear of the school name */}
+            <LiveClock className="absolute -right-2 -top-4 rounded-2xl bg-white px-3.5 py-2.5 text-right shadow-lift ring-2 ring-gold-400 sm:-right-4" />
+            <div className="absolute -right-1 bottom-10 hidden rounded-2xl bg-white p-3.5 shadow-lift sm:block">
+              <p className="text-[0.65rem] font-bold uppercase tracking-wider text-muted">Mathematics Mock</p>
+              <div className="mt-1 flex items-end gap-2">
+                <p className="text-3xl font-extrabold text-navy-800">82%</p>
+                <span className="mb-1 rounded-full bg-success-50 px-2 py-0.5 text-xs font-bold text-success-600">Grade A</span>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      {home.carousel.enabled && slides.length > 0 && <HomeCarousel slides={slides} seconds={home.carousel.secondsPerSlide} dark />}
+      <KenteBand />
 
-      {/* TICKER */}
-      <div className="overflow-hidden border-y border-line bg-card py-3" aria-hidden>
-        <div className="animate-ticker flex w-max gap-10 whitespace-nowrap">
-          {[...marquee, ...marquee].map((m, i) => (
-            <span key={i} className="flex items-center gap-10 font-display text-sm font-semibold text-navy-800/70">
-              {m}
-              <span className="size-1.5 rotate-45 bg-gold-500" />
-            </span>
-          ))}
-        </div>
-      </div>
+      {home.carousel.enabled && slides.length > 0 && <HomeCarousel slides={slides} seconds={home.carousel.secondsPerSlide} dark={dark} />}
 
       {/* STATS */}
-      <section className="mx-auto max-w-6xl px-4 pt-14 sm:px-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {home.stats.map((s, i) => (
-            <div key={s.label} className={cx("rounded-2xl p-6", i === 0 ? "bg-navy-800 text-white" : "border border-line bg-card")}>
-              <p className={cx("font-display text-4xl font-extrabold", i === 0 ? "text-gold-400" : "text-royal-600")}>{s.value}</p>
-              <p className={cx("mt-2 text-sm", i === 0 ? "text-white/75" : "text-muted")}>{s.label}</p>
+      <section className={dark ? "bg-navy-900" : "border-b border-line bg-white"}>
+        <div className={cx("mx-auto grid max-w-7xl grid-cols-2 gap-px px-0 sm:px-6 lg:grid-cols-4", dark ? "bg-white/10" : "bg-line")}>
+          {home.stats.map((s) => (
+            <div key={s.label} className={cx("px-4 py-7 text-center", dark ? "bg-navy-900" : "bg-white")}>
+              <p className={cx("text-3xl font-extrabold", dark ? "text-gold-gradient" : "text-navy-800")}>{s.value}</p>
+              <p className={cx("mt-1 text-xs font-medium sm:text-sm", dark ? "text-white/65" : "text-muted")}>{s.label}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* FEATURES — bento */}
-      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-24">
-        <div className="max-w-2xl">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-gold-600">{home.whyEyebrow}</p>
-          <h2 className="mt-2 text-3xl font-bold tracking-tight text-navy-800 sm:text-4xl">{home.featuresHeading}</h2>
-          <p className="mt-3 text-muted">{home.featuresIntro}</p>
-        </div>
-        <div className="mt-10 grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {home.features.map((f, i) => {
-            const Icon = FEATURE_ICONS[f.icon as keyof typeof FEATURE_ICONS] ?? BookOpen;
-            const big = i === 0 || i === 3;
-            return (
-              <div key={f.title} className={cx("group relative overflow-hidden rounded-2xl p-6 transition hover:-translate-y-0.5", TILE[i % 4], big && "lg:col-span-2")}>
-                <span className={cx("grid size-11 place-items-center rounded-xl", i % 4 === 3 ? "bg-navy-800 text-gold-400" : "bg-white/15")}>
-                  <Icon className="size-5" aria-hidden />
-                </span>
-                <h3 className="mt-5 text-lg font-bold">{f.title}</h3>
-                <p className={cx("mt-2 text-sm leading-relaxed", i % 4 === 3 ? "text-muted" : "opacity-80")}>{f.body}</p>
-                <Icon className="absolute -bottom-6 -right-4 size-28 opacity-[0.07]" aria-hidden />
-              </div>
-            );
-          })}
-        </div>
-      </section>
+      <EducationSystem />
+      <KenteBand />
 
-      {/* LEVELS */}
-      <section className="bg-navy-900 text-white">
-        <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-20">
-          <div className="max-w-2xl">
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">{home.levelsHeading}</h2>
-            <p className="mt-3 text-white/70">{home.levelsIntro}</p>
+      {/* FEATURES */}
+      <section className={cx("relative overflow-hidden", dark && "bg-gradient-to-b from-navy-900 to-navy-950")}>
+        {dark && <div className="glow-orb left-1/2 top-24 size-[30rem] -translate-x-1/2 bg-royal-600/20" aria-hidden />}
+        <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:py-24">
+          <div className="reveal mx-auto max-w-2xl text-center">
+            <p className={cx("text-xs font-bold uppercase tracking-[0.2em]", dark ? "text-gold-400" : "text-gold-600")}>Why Precious PS</p>
+            <h2 className={cx("mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl", dark ? "text-white" : "text-navy-800")}>{home.featuresHeading}</h2>
+            <p className={cx("mt-3", dark ? "text-white/70" : "text-muted")}>{home.featuresIntro}</p>
           </div>
-          <div className="mt-10 grid gap-4 md:grid-cols-2">
-            {[...(brand.flags.primarySchool ? [{ title: "Primary School", range: "Basic 1 – Basic 6", body: "Lessons with pictures, short notes, Quantitative and Verbal Reasoning, Common Entrance practice and a safe, simple learning space for young pupils.", href: "/primary-school" }] : []), ...home.levels].map((l, i) => (
-              <Link key={l.title} href={l.href} className="group relative overflow-hidden rounded-2xl border border-white/15 bg-white/[0.06] p-7 transition hover:bg-white/10">
-                <div className="flex items-start justify-between gap-4">
-                  <span className="grid size-12 place-items-center rounded-xl bg-gold-500 text-navy-900">{i === 0 ? <School className="size-6" aria-hidden /> : <GraduationCap className="size-6" aria-hidden />}</span>
-                  <ArrowUpRight className="size-5 text-white/50 transition group-hover:text-gold-400" aria-hidden />
+          <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {home.features.map((f) => {
+              const Icon = ICONS[f.icon as keyof typeof ICONS] ?? BookOpen;
+              return (
+                <div key={f.title} className={cx("reveal glow-card rounded-2xl p-6", dark ? "glass" : "border border-line bg-white shadow-card")}>
+                  <span className={cx("grid size-12 place-items-center rounded-xl", dark ? "bg-gradient-to-br from-gold-400 to-gold-600 text-navy-950" : "bg-navy-800 text-gold-400")}>
+                    <Icon className="size-6" aria-hidden />
+                  </span>
+                  <h3 className={cx("mt-4 text-lg font-bold", dark ? "text-white" : "text-navy-800")}>{f.title}</h3>
+                  <p className={cx("mt-2 text-sm leading-relaxed", dark ? "text-white/70" : "text-muted")}>{f.body}</p>
                 </div>
-                <p className="mt-6 text-xs font-bold uppercase tracking-[0.18em] text-gold-400">{l.range}</p>
-                <h3 className="mt-1 text-2xl font-bold">{l.title}</h3>
-                <p className="mt-3 text-sm leading-relaxed text-white/70">{l.body}</p>
-              </Link>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* PRINCIPAL */}
-      {home.principal.enabled && home.principal.message && (
-        <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-24">
-          <figure className="grid gap-8 rounded-3xl border border-line bg-card p-8 sm:p-12 lg:grid-cols-[auto_1fr]">
-            <Quote className="size-16 rounded-2xl bg-gold-500 p-4 text-navy-900" aria-hidden />
-            <div>
-              <figcaption className="text-xs font-bold uppercase tracking-[0.18em] text-gold-600">{home.principal.heading}</figcaption>
-              <blockquote className="mt-3 font-display text-xl font-semibold leading-snug text-navy-800 sm:text-2xl">{home.principal.message}</blockquote>
-              <p className="mt-6 font-bold text-navy-800">{home.principal.name}</p>
-              <p className="text-sm text-muted">{home.principal.title}</p>
-            </div>
-          </figure>
-        </section>
-      )}
-
-      {founder.enabled && (
-        <section className="mx-auto max-w-6xl px-4 pb-4 sm:px-6">
-          <div className={cx("grid items-center gap-8 rounded-3xl border border-line bg-card p-8 sm:p-12", founderPhoto && "lg:grid-cols-[0.7fr_1.3fr]")}>
-            {founderPhoto && <img src={founderPhoto} alt={founder.name ? `${founder.name}, ${founder.role}` : founder.role} loading="lazy" decoding="async" className="mx-auto aspect-[4/5] w-full max-w-xs rounded-2xl object-cover object-top" />}
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-gold-600">{founder.eyebrow}</p>
-              <h2 className="mt-2 text-3xl font-bold tracking-tight text-navy-800">{founder.heading}</h2>
-              <div className="mt-4 space-y-3 leading-relaxed text-muted">
-                {founder.message.split(/\n\s*\n/).filter((x) => x.trim()).map((x, i) => (
-                  <p key={i}>{x.trim()}</p>
-                ))}
+      {/* EXAM PREP */}
+      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:py-20">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { href: "/bece-preparation", t: "BECE (JSS3)", d: "Basic Education Certificate Examination practice and mock papers for JSS3." },
+            { href: "/jamb-preparation", t: "JAMB (UTME)", d: "CBT-first practice for the Unified Tertiary Matriculation Examination." },
+            { href: "/waec-preparation", t: "WAEC (WASSCE)", d: "Topic mastery and objective-paper practice for the WASSCE." },
+            { href: "/neco-preparation", t: "NECO (SSCE)", d: "Guided revision and full mock papers for the NECO SSCE." },
+          ].map((c) => (
+            <Link key={c.href} href={c.href} className={cx("reveal glow-card group flex flex-col justify-between rounded-2xl p-6 text-white shadow-card", dark ? "bg-gradient-to-br from-navy-800 to-navy-950" : "bg-navy-800 hover:bg-navy-700")}>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-gold-400">Preparation</p>
+                <h3 className="mt-2 text-2xl font-extrabold">{c.t}</h3>
+                <p className="mt-2 text-sm text-white/75">{c.d}</p>
               </div>
-              <div className="mt-5 border-l-4 border-gold-500 pl-4">
-                {founder.name && <p className="text-lg font-bold text-navy-800">{founder.name}</p>}
-                <p className="text-sm font-semibold text-royal-600">{founder.role}</p>
+              <span className="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-gold-400">
+                Learn more <ArrowRight className="size-4 transition group-hover:translate-x-0.5" aria-hidden />
+              </span>
+            </Link>
+          ))}
+        </div>
+        <div className="mt-8 flex items-center gap-3 rounded-2xl border border-line bg-surface px-5 py-4 text-sm text-muted">
+          <Wifi className="size-5 shrink-0 text-royal-600" aria-hidden />
+          Built for Nigerian networks: small downloads, continuous autosave and safe recovery if your connection drops mid-exam.
+        </div>
+      </section>
+
+      <KenteBand />
+      <AfricanCulture dark={dark} />
+      <KenteBand />
+
+      <HomeExtras dark={dark} />
+
+      {/* FOUNDER */}
+      {founder.enabled && (
+        <section className={cx("relative overflow-hidden", dark ? "bg-navy-950 text-white" : "bg-surface")}>
+          {dark && <div className="glow-orb -right-24 top-10 size-[28rem] bg-gold-500/15" aria-hidden />}
+          <div className="relative mx-auto grid max-w-6xl items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:gap-14 lg:py-24">
+            <div className="reveal mx-auto w-full max-w-sm">
+              <img src={founderPhoto} alt={founder.name ? `${founder.name}, ${founder.role}` : founder.role} width={1024} height={1536} loading="lazy" decoding="async" className={cx("aspect-[4/5] w-full rounded-[2rem] object-cover object-top", dark ? "gold-frame" : "shadow-lift ring-1 ring-line")} />
+            </div>
+            <div className="reveal">
+              <p className={cx("text-xs font-bold uppercase tracking-[0.2em]", dark ? "text-gold-400" : "text-gold-600")}>{founder.eyebrow}</p>
+              <h2 className={cx("mt-2 font-display text-3xl font-extrabold tracking-tight sm:text-4xl", dark ? "text-white" : "text-navy-800")}>{founder.heading}</h2>
+              <Quote className={cx("mt-6 size-8", dark ? "text-gold-400/70" : "text-royal-600/50")} aria-hidden />
+              <div className={cx("mt-3 space-y-4 text-base leading-relaxed", dark ? "text-white/80" : "text-muted")}>
+                {founder.message
+                  .split(/\n\s*\n/)
+                  .filter((p) => p.trim())
+                  .map((p, i) => (
+                    <p key={i}>{p.trim()}</p>
+                  ))}
+              </div>
+              <div className={cx("mt-6 border-l-4 pl-4", dark ? "border-gold-400" : "border-royal-600")}>
+                {founder.name && <p className={cx("text-lg font-extrabold", dark ? "text-white" : "text-navy-800")}>{founder.name}</p>}
+                <p className={cx("text-sm font-semibold", dark ? "text-gold-400" : "text-royal-600")}>{founder.role}</p>
               </div>
               {founder.highlights.length > 0 && (
-                <ul className="mt-5 grid gap-2 text-sm text-muted">
+                <ul className={cx("mt-6 grid gap-2 text-sm", dark ? "text-white/75" : "text-muted")}>
                   {founder.highlights.map((h) => (
                     <li key={h} className="flex items-start gap-2">
-                      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-royal-600" aria-hidden />
+                      <CheckCircle2 className={cx("mt-0.5 size-4 shrink-0", dark ? "text-gold-400" : "text-royal-600")} aria-hidden />
                       {h}
                     </li>
                   ))}
                 </ul>
               )}
               {founderLink && founder.ctaLabel && (
-                <Link href={founderLink} className={buttonClass("primary", "md", "mt-6")}>
+                <Link href={founderLink} className={buttonClass(dark ? "gold" : "primary", "md", "mt-7")}>
                   {founder.ctaLabel} <ArrowRight className="size-4" aria-hidden />
                 </Link>
               )}
@@ -224,66 +237,46 @@ export default async function HomePage() {
         </section>
       )}
 
-      {/* EXAM PREP */}
-      <section className="mx-auto max-w-6xl px-4 pb-6 sm:px-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {home.prepCards.map((c, i) => (
-            <Link key={c.href} href={c.href} className={cx("group flex min-h-[15rem] flex-col justify-between rounded-2xl p-6 transition hover:-translate-y-1", TILE[(i + 2) % 4])}>
-              <div>
-                <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] opacity-70">{home.prepLabel}</p>
-                <h3 className="mt-2 text-2xl font-bold">{c.title}</h3>
-                <p className="mt-2 text-sm opacity-80">{c.body}</p>
-              </div>
-              <span className="mt-6 inline-flex items-center gap-1.5 text-sm font-bold">
-                Learn more <ArrowRight className="size-4 transition group-hover:translate-x-1" aria-hidden />
-              </span>
-            </Link>
-          ))}
-        </div>
-        <p className="mt-6 flex items-center gap-3 rounded-xl border border-line bg-card px-5 py-4 text-sm text-muted">
-          <Wifi className="size-5 shrink-0 text-royal-600" aria-hidden />
-          {home.networkNote}
-        </p>
-      </section>
-
-      {/* NEWS */}
-      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight text-navy-800">{home.newsHeading}</h2>
-            <p className="mt-2 text-muted">{home.newsIntro}</p>
-          </div>
-        </div>
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
-          {home.news.map((n) => (
-            <article key={n.title} className="rounded-2xl border border-line bg-card p-6">
-              <p className="inline-flex items-center gap-1.5 rounded-md bg-gold-100 px-2 py-0.5 text-[0.7rem] font-bold uppercase tracking-wide text-gold-600">
-                <CalendarDays className="size-3.5" aria-hidden />
-                {n.date}
-              </p>
-              <h3 className="mt-3 text-lg font-bold text-navy-800">{n.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted">{n.body}</p>
-            </article>
-          ))}
+      {/* JOURNEY */}
+      <section className="bg-surface">
+        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:py-20">
+          <h2 className="reveal text-center text-3xl font-extrabold tracking-tight text-navy-800">{home.journeyHeading}</h2>
+          <ol className="mt-10 grid gap-4 md:grid-cols-4">
+            {[
+              { icon: UserPlus, title: "Register", body: "Create your student account in minutes." },
+              { icon: KeyRound, title: "Activate your code", body: `Access starts when you activate. Codes: Super Admin (${brand.accessCodeContact}).` },
+              { icon: BookOpen, title: "Study & practise", body: "Lessons, classwork and assignments at your pace." },
+              { icon: MonitorCheck, title: "Sit CBT & improve", body: "Mock exams, instant results and analytics." },
+            ].map((s, i) => (
+              <li key={s.title} className="reveal relative rounded-2xl bg-white p-6 shadow-card transition hover:-translate-y-1 hover:shadow-lift">
+                <span className="absolute right-5 top-5 font-display text-4xl font-extrabold text-royal-100">{i + 1}</span>
+                <s.icon className="size-7 text-royal-600" aria-hidden />
+                <h3 className="mt-4 font-bold text-navy-800">{s.title}</h3>
+                <p className="mt-1.5 text-sm text-muted">{s.body}</p>
+              </li>
+            ))}
+          </ol>
         </div>
       </section>
 
-      {/* FAQ */}
-      <section className="border-t border-line bg-card">
-        <div className="mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_1.5fr] lg:py-20">
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight text-navy-800">{home.faqHeading}</h2>
-            <p className="mt-3 text-muted">{home.faqIntro}</p>
+      {/* FAQ PREVIEW */}
+      <section className="bg-surface">
+        <div className="mx-auto grid max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_1.4fr] lg:py-20">
+          <div className="reveal">
+            <h2 className="text-3xl font-extrabold tracking-tight text-navy-800">Questions, answered</h2>
+            <p className="mt-3 text-muted">Everything students and parents ask most often.</p>
             <Link href="/faq" className={buttonClass("secondary", "md", "mt-6")}>
               View all FAQs
             </Link>
           </div>
-          <div className="divide-y divide-line rounded-2xl border border-line bg-surface">
-            {faq.items.slice(0, 5).map((f) => (
+          <div className="reveal divide-y divide-line rounded-2xl border border-line bg-white">
+            {faq.items.slice(0, 4).map((f) => (
               <details key={f.q} className="group px-5 py-4 [&_summary::-webkit-details-marker]:hidden">
                 <summary className="flex cursor-pointer items-center justify-between gap-4 font-semibold text-navy-800">
                   {f.q}
-                  <Plus className="size-5 shrink-0 text-royal-600 transition group-open:rotate-45" aria-hidden />
+                  <span className="text-xl text-royal-600 transition group-open:rotate-45" aria-hidden>
+                    +
+                  </span>
                 </summary>
                 <p className="mt-2 text-sm leading-relaxed text-muted">{f.a}</p>
               </details>
@@ -292,15 +285,15 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* CLOSING */}
-      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-        <div className="relative overflow-hidden rounded-3xl bg-royal-600 px-6 py-14 text-center text-white sm:px-12">
-          <img src={brand.markUrl} alt="" className="absolute -right-16 -top-16 size-72 rounded-full object-cover opacity-10" aria-hidden />
-          <div className="bg-dots absolute inset-0 opacity-30" aria-hidden />
+      {/* CLOSING CTA */}
+      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
+        <div className={cx("reveal relative overflow-hidden rounded-[2rem] px-6 py-12 text-center text-white sm:px-12", dark ? "bg-gradient-to-br from-navy-950 via-navy-800 to-royal-700" : "bg-royal-600")}>
+          <div className="bg-grid absolute inset-0 opacity-40" aria-hidden />
+          {dark && <div className="glow-orb -bottom-24 left-1/2 size-80 -translate-x-1/2 bg-gold-500/25" aria-hidden />}
           <div className="relative">
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">{home.closingHeading}</h2>
+            <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">{home.closingHeading}</h2>
             <p className="mx-auto mt-3 max-w-xl text-white/85">{home.closingBody}</p>
-            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+            <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
               <Link href="/register" className={buttonClass("gold", "lg")}>
                 {home.ctaRegister}
               </Link>
@@ -311,6 +304,6 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
-    </>
+    </div>
   );
 }

@@ -47,9 +47,13 @@ const QUESTION_START = /^\s*(?:Q(?:uestion)?\s*)?(\d{1,4})\s*[.):\-]\s*(.*)$/i;
 const OPTION_LINE = new RegExp(`^\\s*([${STAR_CHARS}]\\s*)?\\(?([A-Ha-h])\\s*[.)\\]:]\\s*(.*)$`);
 const META_LINE = /^\s*(explanation|answer explanation|solution|topic|difficulty|marks?|year)\s*[:\-]\s*(.*)$/i;
 
+/** A plain asterisk typed in front of an option letter ("*B. Abuja") counts as the star. */
+const ASTERISK_BEFORE_OPTION = /^([ \t]*)\*[ \t]*(?=\(?[A-Ha-h][ \t]*[.)\]:])/gm;
+
 export function parseStarQuestions(text: string): ParsedQuestion[] {
   const lines = text
     .replace(/\r\n?/g, "\n")
+    .replace(ASTERISK_BEFORE_OPTION, `$1${CORRECT_MARK} `)
     .split(NBSP)
     .join(" ")
     .replace(/ /g, " ")
@@ -209,7 +213,7 @@ export const EXCEL_TEMPLATE_COLUMNS = [
   "Copyright Status",
 ] as const;
 
-export const EXAM_TYPES = ["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "CONTINUOUS_ASSESSMENT", "JAMB", "WAEC", "NECO", "BECE", "CUSTOM", "IELTS", "TOEFL", "SAT", "CHECKPOINT"] as const;
+export const EXAM_TYPES = ["PRACTICE", "MOCK", "SCHOOL_EXAM", "CLASS_TEST", "CONTINUOUS_ASSESSMENT", "JAMB", "WAEC", "NECO", "BECE", "CUSTOM", "IELTS", "TOEFL", "SAT", "CHECKPOINT", "COMMON_ENTRANCE", "JUPEB", "IJMB", "PreciousPS_EXAM"] as const;
 export const COPYRIGHT_STATUSES = ["ORIGINAL", "TEACHER_AUTHORED", "LICENSED", "AUTHORIZED", "AI_GENERATED", "UNKNOWN"] as const;
 
 export interface ExcelRowResult {

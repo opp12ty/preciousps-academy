@@ -24,6 +24,15 @@ import { notifyUser } from "./notifications";
 
 const codeHash = (normalised: string) => hmac(`code:${normalised}`);
 
+const accountKindOf = async (userId: string) => (await getDb().select({ k: students.accountKind }).from(students).where(eq(students.userId, userId)))[0]?.k ?? "STUDENT";
+
+/** Said when a code of one kind is entered on an account of another kind. It never says which kind the code is. */
+const WRONG_KIND = {
+  STUDENT: "This access code is not for a student account. Student, parent and school codes are different; ask for a student access code.",
+  PARENT: "This access code is not for a parent account. Student, parent and school codes are different; ask for a parent access code.",
+  SCHOOL: "This access code is not for a school account. Student, parent and school codes are different; ask for a school access code.",
+} as const;
+
 /* ------------------------------------------------------------ generation */
 
 export async function generateCodes(
@@ -38,7 +47,7 @@ export async function generateCodes(
       durationDays: z.number().int().min(1).max(3650).optional(),
       note: z.string().trim().max(200).optional(),
       tier: z.enum(["STANDARD", "PREMIUM"]).default("STANDARD"),
-      audience: z.enum(["STUDENT", "PARENT"]).default("STUDENT"),
+      audience: z.enum(["STUDENT", "PARENT", "SCHOOL"]).default("STUDENT"),
       hubSessionMinutes: z.number().int().min(5).max(600).nullish(),
       hubCooldownMinutes: z.number().int().min(0).max(1440).nullish(),
       hubUnlimited: z.boolean().default(false),
@@ -82,7 +91,7 @@ export async function generateCodes(
   await db.transaction(async (tx) => {
     for (let i = 0; i < rows.length; i += 500) await tx.insert(activationCodes).values(rows.slice(i, i + 500));
     await audit(
-      { actor, action: "codes.generated", entityType: "code_batch", entityId: batchId, summary: `${input.count} ${forParent ? "parent " : input.tier === "PREMIUM" ? "Premium " : ""}code(s), ${durationDays} days`, metadata: { count: input.count, durationDays, note: input.note, tier: input.tier, audience: input.audience } },
+      { actor, action: "codes.generated", entityType: "code_batch", entityId: batchId, summary: `${input.count} ${forParent ? "parent " : input.audience === "SCHOOL" ? "school " : input.tier === "PREMIUM" ? "Premium " : ""}code(s), ${durationDays} days`, metadata: { count: input.count, durationDays, note: input.note, tier: input.tier, audience: input.audience } },
       ctx,
       tx,
     );
@@ -98,7 +107,8 @@ export async function generateCodes(
  */
 export async function activateCode(actor: Actor, rawCode: string, ctx: ReqCtx, opts: { byStaff?: boolean } = {}) {
   if (actor.userType !== "STUDENT" && actor.userType !== "PARENT") throw new AppError("FORBIDDEN", "Only student and parent accounts can activate access codes.");
-  const audience = actor.userType === "PARENT" ? "PARENT" : "STUDENT";
+  // Three kinds of code, each for its own kind of account: student, parent and school.
+  const audience = actor.userType === "PARENT" ? "PARENT" : (await accountKindOf(actor.id)) === "SCHOOL" ? "SCHOOL" : "STUDENT";
   if (!opts.byStaff) {
     await rateLimit("codeActivation", `${actor.id}`, ctx);
     await rateLimit("codeActivation", `ip:${ctx.ip ?? "unknown"}`, ctx);
@@ -179,7 +189,7 @@ export async function activateCode(actor: Actor, rawCode: string, ctx: ReqCtx, o
         await securityEvent({ type: "INVALID_ACCESS_CODE", userId: actor.id, schoolId: actor.schoolId, detail: { reason: "not_found" } }, ctx);
         throw new AppError("INVALID_CODE", "That access code is not valid. Check it and try again.");
       case "WRONG_AUDIENCE":
-        throw new AppError("INVALID_CODE", audience === "PARENT" ? "This is a student access code. It must be activated on the student's own account. Ask the school for a parent access code." : "This is a parent access code. It only works on a parent or guardian account.");
+        throw new AppError("INVALID_CODE", WRONG_KIND[audience]);
       case "USED_BY_OTHER":
         await securityEvent({ type: "CODE_REUSE_ATTEMPT", severity: "HIGH", userId: actor.id, schoolId: actor.schoolId, detail: { codeId: result.codeId } }, ctx);
         throw new AppError("INVALID_CODE", "This access code has already been used by another account. Each code belongs to one account.");
@@ -531,7 +541,7 @@ export async function assignAccessToStudent(actor: Actor, studentUserId: string,
     .from(users)
     .where(and(eq(users.id, studentUserId), eq(users.schoolId, actor.schoolId)));
   if (!u || u.userType !== "STUDENT") throw new AppError("NOT_FOUND", "Student not found.");
-  const { codes } = await generateCodes(actor, { count: 1, durationDays: days, note: `Assigned directly: ${reason}`.slice(0, 200) }, ctx);
+  const { codes } = await generateCodes(actor, { count: 1, durationDays: days, audience: (await accountKindOf(u.id)) === "SCHOOL" ? "SCHOOL" : "STUDENT", note: `Assigned directly: ${reason}`.slice(0, 200) }, ctx);
   const studentActor: Actor = { id: u.id, schoolId: u.schoolId, userType: "STUDENT", permissions: new Set(), name: `${u.firstName} ${u.lastName}`, email: u.email };
   return activateCode(studentActor, codes[0], ctx, { byStaff: true });
 }
@@ -600,7 +610,7 @@ export async function listCodes(
   const conds: SQL[] = [eq(activationCodes.schoolId, actor.schoolId)];
   if (q.status && ["UNUSED", "ACTIVE", "EXPIRED", "REVOKED", "SUSPENDED"].includes(q.status)) conds.push(eq(activationCodes.status, q.status as "UNUSED"));
   if (q.batchId) conds.push(eq(activationCodes.batchId, q.batchId));
-  if (q.audience === "STUDENT" || q.audience === "PARENT") conds.push(eq(activationCodes.audience, q.audience));
+  if (q.audience === "STUDENT" || q.audience === "PARENT" || q.audience === "SCHOOL") conds.push(eq(activationCodes.audience, q.audience));
   if (q.search?.trim()) {
     const s = q.search.trim();
     const norm = normaliseCode(s);
@@ -674,6 +684,7 @@ export async function transferAccess(actor: Actor, periodId: string, toIdentifie
     .innerJoin(students, eq(students.userId, users.id))
     .where(and(eq(users.schoolId, actor.schoolId), eq(users.userType, "STUDENT"), sql`${users.deletedAt} IS NULL`, sql`(lower(${students.studentNumber}) = ${idKey} OR lower(${students.username}) = ${idKey} OR lower(${users.email}) = ${idKey})`));
   if (!target) throw new AppError("NOT_FOUND", "No student matches that Student ID, username or e-mail.");
+  const targetKind = await accountKindOf(target.id); // read before the transaction opens
   const now = new Date();
   const moved = await db.transaction(async (tx) => {
     const [p] = await tx.select().from(studentAccessPeriods).where(and(eq(studentAccessPeriods.id, periodId), eq(studentAccessPeriods.schoolId, actor.schoolId))).for("update").limit(1);
@@ -681,7 +692,7 @@ export async function transferAccess(actor: Actor, periodId: string, toIdentifie
     if (p.userId === target.id) throw new AppError("CONFLICT", "That student already holds this access.");
     if (p.status !== "ACTIVE" || p.currentExpiresAt <= now) throw new AppError("CONFLICT", "Only access that is still running can be transferred.");
     const [code] = await tx.select({ audience: activationCodes.audience, suffix: activationCodes.codeSuffix }).from(activationCodes).where(eq(activationCodes.id, p.codeId));
-    if (code?.audience !== "STUDENT") throw new AppError("CONFLICT", "A parent access code cannot be transferred to a student.");
+    if (code?.audience !== "STUDENT" || targetKind !== "STUDENT") throw new AppError("CONFLICT", "Only a student access code can be transferred, and only to a student account.");
     const others = await tx.select({ id: studentAccessPeriods.id }).from(studentAccessPeriods).where(and(eq(studentAccessPeriods.userId, target.id), eq(studentAccessPeriods.status, "ACTIVE"), gt(studentAccessPeriods.currentExpiresAt, now)));
     const cfg = await getSetting(actor.schoolId, "accessCodes", tx);
     if (others.length && !(cfg.allowMultipleActive || target.allow)) throw new AppError("CONFLICT", "The receiving student already has active access.");
@@ -718,6 +729,7 @@ export async function assignAccessToClass(actor: Actor, raw: { classId: string; 
         eq(users.status, "ACTIVE"),
         sql`${users.deletedAt} IS NULL`,
         eq(students.classId, cls.id),
+        eq(students.accountKind, "STUDENT"),
         input.departmentId ? eq(students.departmentId, input.departmentId) : undefined,
         sql`NOT EXISTS (SELECT 1 FROM student_access_periods p WHERE p.user_id = ${users.id} AND p.status IN ('ACTIVE','SUSPENDED') AND p.current_expires_at > now())`,
       ),

@@ -1,4 +1,4 @@
-import { Bell, BookOpen, KeyRound, LayoutDashboard, MessagesSquare, ShieldCheck, Trophy, UserPlus } from "lucide-react";
+import { Bell, BookOpen, Cog, KeyRound, LayoutDashboard, MessagesSquare, ShieldCheck, Sun, Trophy, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { AppShell, type NavGroup } from "@/components/shell/app-shell";
 import { requireParentPage } from "@/server/http";
@@ -40,8 +40,18 @@ export default async function ParentLayout({ children }: { children: React.React
       items: [
         { href: "/parent/learning", label: "Learning Hub", icon: <BookOpen /> },
         { href: "/parent/learning?section=PSYCHOLOGY", label: "Psychology Library", icon: <BookOpen /> },
+        { href: "/parent/learning?section=SCIENCE", label: "Science & Engineering", icon: <Cog /> },
         { href: "/parent/games", label: "Parent Challenges", icon: <Trophy /> },
         { href: "/parent/community", label: "Parent Community", icon: <MessagesSquare /> },
+        { href: "/parent/ideas", label: "Ideas Box", icon: <Sun /> },
+      ],
+    },
+    {
+      title: "Family",
+      items: [
+        { href: "/parent/holiday", label: "Holiday Programme", icon: <Sun /> },
+        { href: "/parent/activities", label: "Family Activities", icon: <Trophy /> },
+        { href: "/parent/experts", label: "Meet an Expert", icon: <UserPlus /> },
       ],
     },
     {
