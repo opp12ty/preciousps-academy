@@ -23,7 +23,7 @@ export default async function StudyCentrePage() {
   const active = access.status === "ACTIVE";
   return (
     <>
-      <PageHeader eyebrow="Precious PS Study Centre" title="Learn at your own pace" description="Follow the guided path: lesson → study material → classwork → assessment → next lesson. Reach the mastery score to move on." />
+      <PageHeader eyebrow="Study Centre" title="Learn at your own pace" description="Follow the guided path: lesson → study material → classwork → assessment → next lesson. Reach the mastery score to move on." />
       <ol aria-label="How the Study Centre works" className="pop mb-6 grid gap-3 rounded-2xl border border-line bg-white p-4 shadow-card sm:grid-cols-5">
         {PATH.map((p, i) => (
           <li key={p.title} className="relative flex items-center gap-3 sm:flex-col sm:text-center">

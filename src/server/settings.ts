@@ -132,6 +132,7 @@ export const SETTING_SCHEMAS = {
     phrasalVerbsEnabled: z.boolean(),
     proverbsEnabled: z.boolean(),
     commonErrorsEnabled: z.boolean(),
+    registersEnabled: z.boolean(),
     gamesEnabled: z.boolean(),
     wordScramble: z.boolean(),
     memoryMatch: z.boolean(),
@@ -197,6 +198,26 @@ export const SETTING_SCHEMAS = {
     weeklyGoalDays: z.number().int().min(1).max(7),
     enforcePrerequisites: z.boolean(),
     allowRetry: z.boolean(),
+    /** The Precious PS learning path: Study Centre, assignments (redo to the pass mark), CA 1, Study Materials, CA 2, then the term exam. */
+    learningPath: z.boolean(),
+    assignmentPassMark: z.number().min(1).max(100),
+    ca1Questions: z.number().int().min(5).max(200),
+    ca2Questions: z.number().int().min(5).max(200),
+    /** Report card weights (they need not add up to 100; each subject is scaled to the parts it has). */
+    weightAssignment: z.number().min(0).max(100),
+    weightCa: z.number().min(0).max(100),
+    weightExam: z.number().min(0).max(100),
+  }),
+  /**
+   * What students and parents may download or print. OPEN: everyone; LOCKED: nobody (they are told to
+   * contact the Admin); CODE: only with an access code that includes Downloads. Reading in the app is never locked.
+   */
+  downloads: z.object({
+    ebooks: z.enum(["OPEN", "LOCKED", "CODE"]),
+    ebookFiles: z.enum(["OPEN", "LOCKED", "CODE"]),
+    resultSlips: z.enum(["OPEN", "LOCKED", "CODE"]),
+    reportCards: z.enum(["OPEN", "LOCKED", "CODE"]),
+    contact: z.string().trim().min(3).max(40),
   }),
   results: z.object({
     defaultVisibility: z.enum(["IMMEDIATE", "AFTER_RELEASE", "HIDDEN"]),
@@ -343,7 +364,7 @@ export const SETTING_DEFAULTS: { [K in SettingKey]: SettingValue<K> } = {
       "Be respectful. Keep to school work: admissions, examinations, subjects and study tips. Never share a phone number, e-mail, home address, location or social-media contact. No adult content, insults, betting or examination malpractice. Staff can read every message.",
   },
   grading: { scale: DEFAULT_GRADING },
-  learningHub: { dictionaryEnabled: true, idiomsEnabled: true, clichesEnabled: true, phrasalVerbsEnabled: true, proverbsEnabled: true, commonErrorsEnabled: true, gamesEnabled: true, wordScramble: true, memoryMatch: true, meaningMatch: true, mathsSprint: true, numberPatterns: true, sudoku: true, slidingPuzzle: true, wordSearch: true, hangman: true, hanoi: true, spotError: true, proverbGame: true, statesQuiz: true, typingTest: true, ticTacToe: true, colourMemory: true, roundQuestions: 10, secondsPerRound: 120 },
+  learningHub: { dictionaryEnabled: true, idiomsEnabled: true, clichesEnabled: true, phrasalVerbsEnabled: true, proverbsEnabled: true, commonErrorsEnabled: true, registersEnabled: true, gamesEnabled: true, wordScramble: true, memoryMatch: true, meaningMatch: true, mathsSprint: true, numberPatterns: true, sudoku: true, slidingPuzzle: true, wordSearch: true, hangman: true, hanoi: true, spotError: true, proverbGame: true, statesQuiz: true, typingTest: true, ticTacToe: true, colourMemory: true, roundQuestions: 10, secondsPerRound: 120 },
   premium: {
     enabled: true,
     title: "International & Advanced",
@@ -355,7 +376,8 @@ export const SETTING_DEFAULTS: { [K in SettingKey]: SettingValue<K> } = {
   // Nigerian school year: third term ends late July, the new session begins in mid-September.
   promotion: { enabled: true, mode: "REQUEST", windowStart: "08-01", windowEnd: "10-31" },
   knowledgeHub: { enabled: true, sessionMinutes: 30, cooldownMinutes: 60, quizQuestions: 20, dailyQuestions: 5, showCorrectAnswer: true, parentExamQuestions: 50 },
-  learning: { masteryThreshold: 70, weeklyGoalDays: 5, enforcePrerequisites: true, allowRetry: true },
+  learning: { masteryThreshold: 70, weeklyGoalDays: 5, enforcePrerequisites: true, allowRetry: true, learningPath: true, assignmentPassMark: 80, ca1Questions: 20, ca2Questions: 30, weightAssignment: 10, weightCa: 30, weightExam: 60 },
+  downloads: { ebooks: "LOCKED", ebookFiles: "LOCKED", resultSlips: "OPEN", reportCards: "OPEN", contact: "08169267383" },
   results: { defaultVisibility: "IMMEDIATE", showHistoricalAfterExpiry: true },
   certificates: { enabled: false, numberPrefix: "PPA", minimumPercentage: 50 },
   notifications: { emailEnabled: false, fromName: "Precious PS Academy", accessExpiryReminderDays: 3 },

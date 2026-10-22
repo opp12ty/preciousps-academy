@@ -415,3 +415,32 @@ main {
     repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.18) 0 2px, transparent 2px 22px),
     repeating-linear-gradient(-45deg, rgba(216, 182, 80, 0.2) 0 2px, transparent 2px 22px);
 }
+
+/* ---------------------------------------------------------- Precious PS Study Centre e-book pages */
+.fsc-body { color: #0b1f4b; line-height: 1.65; font-size: 0.97rem; }
+.fsc-body > * + * { margin-top: 0.8rem; }
+.fsc-body h1, .fsc-body h2 { font-size: 1.25rem; font-weight: 800; color: #10316b; margin-top: 1.4rem; }
+.fsc-body h3, .fsc-body h4 { font-size: 1.05rem; font-weight: 800; color: #a8841e; margin-top: 1.2rem; }
+.fsc-body ul { list-style: disc; padding-left: 1.4rem; }
+.fsc-body ol { list-style: decimal; padding-left: 1.4rem; }
+.fsc-body li + li { margin-top: 0.25rem; }
+.fsc-body img { max-width: 100%; height: auto; border-radius: 0.75rem; margin: 0.5rem auto; display: block; }
+.fsc-body table { width: 100%; border-collapse: collapse; font-size: 0.9rem; display: block; overflow-x: auto; }
+.fsc-body td, .fsc-body th { border: 1px solid #dbe3f1; padding: 0.45rem 0.6rem; vertical-align: top; }
+.fsc-body td p, .fsc-body th p { margin: 0; }
+.fsc-body thead td, .fsc-body thead th, .fsc-body tbody:first-child > tr:first-child td { background: #f3f6fc; font-weight: 700; }
+
+/* ---------------------------------------------------------- polish: scroll bars, touch, speed */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+* { scrollbar-width: thin; scrollbar-color: #9fb0d4 transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: #b9c6e2; border-radius: 9999px; border: 2px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: #10316b; background-clip: padding-box; border: 2px solid transparent; }
+::selection { background: #f3d77a; color: #0b1f4b; }
+img, video, svg { max-width: 100%; }
+main { overflow-wrap: anywhere; }
+/* Sections far down a page are only drawn when scrolled near: quicker first paint on low-end phones. */
+.cv-auto { content-visibility: auto; contain-intrinsic-size: auto 900px; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }

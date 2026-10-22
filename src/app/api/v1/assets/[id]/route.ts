@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { resolveSessionToken } from "@/server/auth/session";
 import { SESSION_COOKIE } from "@/server/http";
 import { readAsset } from "@/server/services/assets";
-import { getAccessState } from "@/server/services/access";
+import { downloadAccess, getAccessState } from "@/server/services/access";
 
 /**
  * Serves stored assets. Public brand/question images are cacheable; private
@@ -26,6 +26,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       if (st && a.kind === "DOCUMENT" && !st.features.includes("LEARNING_RESOURCES") && !st.features.includes("STUDY_CENTRE")) return new Response("Not included in your access plan", { status: 403 });
       // Students read Word, PowerPoint and Excel materials inside the app; the files themselves stay in the backend.
       if (st && a.kind === "DOCUMENT" && a.mimeType !== "application/pdf" && a.mimeType !== "audio/mpeg") return new Response("Open this material from the Study Materials page.", { status: 403 });
+      // Downloading a PDF follows the Admin's Downloads control; the text can still be read in the app.
+      if (st && a.kind === "DOCUMENT" && a.mimeType === "application/pdf") {
+        const dl = await downloadAccess(s.user, "ebookFiles");
+        if (!dl.allowed) return new Response(`To download this file, contact Admin on ${dl.phone}${dl.needsCode ? " to get an access code for it" : ""}. You can still read it in the app.`, { status: 403, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+      }
     }
   }
   const inline = a.mimeType.startsWith("image/") || a.mimeType === "application/pdf";

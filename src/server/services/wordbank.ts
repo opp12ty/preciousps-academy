@@ -6,6 +6,8 @@ import { MORE_WORDS } from "@/content/advanced-prep";
 import { MORE_CLICHES, MORE_DICTIONARY, MORE_IDIOMS, MORE_PHRASAL_VERBS } from "@/content/wordbank-more";
 import { PROVERBS } from "@/content/proverbs";
 import { COMMON_ERRORS } from "@/content/common-errors";
+import { REGISTERS } from "@/content/registers";
+import { ADVANCED_WORDS } from "@/content/dictionary-advanced";
 import { getDb } from "../db";
 import { requireFeature } from "./access";
 import { classes, settings, wordEntries } from "../db/schema";
@@ -21,6 +23,7 @@ export const WORD_KINDS = {
   PHRASAL_VERB: { slug: "phrasal-verbs", label: "Phrasal Verbs", one: "phrasal verb" },
   PROVERB: { slug: "proverbs", label: "Proverbs", one: "proverb" },
   COMMON_ERROR: { slug: "common-errors", label: "Common Errors", one: "common error" },
+  REGISTER: { slug: "registers", label: "Registers (Professions)", one: "register term" },
 } as const;
 export type WordKind = keyof typeof WORD_KINDS;
 export const WORD_KIND_KEYS = Object.keys(WORD_KINDS) as WordKind[];
@@ -28,7 +31,7 @@ export const kindFromSlug = (slug: string) => WORD_KIND_KEYS.find((k) => WORD_KI
 
 const blank = z.literal("").transform(() => null);
 const entrySchema = z.object({
-  kind: z.enum(["WORD", "IDIOM", "CLICHE", "PHRASAL_VERB", "PROVERB", "COMMON_ERROR"]),
+  kind: z.enum(["WORD", "IDIOM", "CLICHE", "PHRASAL_VERB", "PROVERB", "COMMON_ERROR", "REGISTER"]),
   term: z.string().trim().min(1).max(120),
   partOfSpeech: z.string().trim().max(40).nullish(),
   meaning: z.string().trim().min(2).max(600),
@@ -139,7 +142,7 @@ export async function seedMoreWords(schoolId: string) {
  */
 export async function seedWordbankMore(schoolId: string) {
   const db = getDb();
-  const total = PROVERBS.length + COMMON_ERRORS.length + MORE_IDIOMS.length + MORE_CLICHES.length + MORE_PHRASAL_VERBS.length + MORE_DICTIONARY.length;
+  const total = PROVERBS.length + COMMON_ERRORS.length + MORE_IDIOMS.length + MORE_CLICHES.length + MORE_PHRASAL_VERBS.length + MORE_DICTIONARY.length + REGISTERS.length + ADVANCED_WORDS.length;
   const MARK = `seed:wordbank-more-v1:${total}`;
   const [done] = await db.select({ key: settings.key }).from(settings).where(and(eq(settings.schoolId, schoolId), eq(settings.key, MARK)));
   if (done) return 0;
@@ -150,6 +153,8 @@ export async function seedWordbankMore(schoolId: string) {
     ...MORE_CLICHES.map(([term, meaning, example]) => ({ schoolId, kind: "CLICHE", term, meaning, example, picture: "🗣️", createdBy: null })),
     ...MORE_PHRASAL_VERBS.map(([term, meaning, example]) => ({ schoolId, kind: "PHRASAL_VERB", term, partOfSpeech: "phrasal verb", meaning, example, picture: "🔗", createdBy: null })),
     ...MORE_DICTIONARY.map(([picture, term, partOfSpeech, meaning, example]) => ({ schoolId, kind: "WORD", term, partOfSpeech, meaning, example, picture, level: null, createdBy: null })),
+    ...ADVANCED_WORDS.map(([picture, term, partOfSpeech, meaning, example, level]) => ({ schoolId, kind: "WORD", term, partOfSpeech, meaning, example, picture, level, createdBy: null })),
+    ...REGISTERS.map(([profession, term, meaning, example]) => ({ schoolId, kind: "REGISTER", term, partOfSpeech: profession.slice(0, 40), meaning, example, picture: "💼", level: null, createdBy: null })),
   ];
   let added = 0;
   for (let i = 0; i < rows.length; i += 200) added += (await db.insert(wordEntries).values(rows.slice(i, i + 200)).onConflictDoNothing().returning({ id: wordEntries.id })).length;
@@ -193,6 +198,6 @@ export async function gameData(actor: Actor) {
     grade: gradeOf(cls?.code ?? null, scope.level),
     className: cls?.name ?? null,
     words: all.filter((e) => e.kind === "WORD" && /^[a-z]{3,12}$/i.test(e.term)).map((e) => ({ term: e.term.toLowerCase(), meaning: e.meaning, picture: e.picture ?? "" })),
-    phrases: all.filter((e) => e.kind !== "WORD" && e.kind !== "COMMON_ERROR").map((e) => ({ term: e.term, meaning: e.meaning })),
+    phrases: all.filter((e) => e.kind !== "WORD" && e.kind !== "COMMON_ERROR" && e.kind !== "REGISTER").map((e) => ({ term: e.term, meaning: e.meaning })),
   };
 }

@@ -444,7 +444,9 @@ describe("Study Centre, assignments and resources", () => {
     }
     const r = await submitAssignment(studentA, a.id, { answers }, ctx);
     expect(r).toMatchObject({ percentage: 50, passed: true, attemptNumber: 1 });
-    await expectCode(submitAssignment(studentA, a.id, { answers }, ctx), "ATTEMPT_LIMIT");
+    // On the learning path an assignment below the pass mark may be redone; at or above it, the limit holds.
+    if (r.percentage >= 80) await expectCode(submitAssignment(studentA, a.id, { answers }, ctx), "ATTEMPT_LIMIT");
+    else await submitAssignment(studentA, a.id, { answers }, ctx);
   });
 
   it("adds a validated external resource visible in the Resource Centre", async () => {
@@ -1039,7 +1041,7 @@ describe("Central upload workbook", () => {
 
   it("offers a template that lists every Primary subject", async () => {
     const wb = XLSX.read(await centralTemplateWorkbook(superAdmin.schoolId), { type: "buffer" });
-    expect(wb.SheetNames).toEqual(["Read Me", "Subjects", "Classes", "Lists", "Coverage", "Scheme of Work", "Lessons", "Questions", "Exams", "Assignments", "Dictionary", "Idioms", "Cliches", "Phrasal Verbs", "Proverbs", "Common Errors", "Holiday Tasks", "Resources", "Articles", "Quiz Questions"]);
+    expect(wb.SheetNames).toEqual(["Read Me", "Subjects", "Classes", "Lists", "Coverage", "Scheme of Work", "Lessons", "Questions", "Exams", "Assignments", "Dictionary", "Idioms", "Cliches", "Phrasal Verbs", "Proverbs", "Common Errors", "Registers", "Holiday Tasks", "Resources", "Articles", "Quiz Questions"]);
     const scheme = XLSX.utils.sheet_to_json<Record<string, string>>(wb.Sheets["Scheme of Work"], { defval: "" });
     const codes = new Set(scheme.map((r) => r.Subject));
     for (const code of ["MTH", "ENG", "QRE", "VRE", "BST", "SCS", "PHE", "CRS", "IRS", "HIS", "CCA", "BDL", "PVS", "FRE", "ARB", "YOR", "IGB", "HAU"]) expect(codes.has(code), code).toBe(true);
@@ -1047,7 +1049,7 @@ describe("Central upload workbook", () => {
     expect(scheme.filter((r) => r.Subject === "BDL").map((r) => r.Class)).not.toContain("Basic 1"); // starts in Basic 4
     expect(Object.keys(scheme[0])).toEqual(CENTRAL_COLUMNS.scheme);
     const words = XLSX.read(await centralTemplateWorkbook(superAdmin.schoolId, "words"), { type: "buffer" });
-    expect(words.SheetNames).toEqual(["Read Me", "Dictionary", "Idioms", "Cliches", "Phrasal Verbs", "Proverbs", "Common Errors"]);
+    expect(words.SheetNames).toEqual(["Read Me", "Dictionary", "Idioms", "Cliches", "Phrasal Verbs", "Proverbs", "Common Errors", "Registers"]);
   });
 
   it("sends each row of one workbook to the section it belongs to", async () => {
@@ -1794,7 +1796,8 @@ describe("Report cards, awards, loyalty and certificates", () => {
 
   beforeAll(async () => {
     cal = await termWindows(superAdmin.schoolId);
-    const [exam] = await db.select().from(S.examinations).limit(1);
+    // Only term examinations and CA tests count on the report card.
+    const [exam] = await db.select().from(S.examinations).where(eq(S.examinations.examType, "SCHOOL_EXAM")).limit(1);
     examId = exam.id;
     subjectId = exam.subjectId;
     top = await register("recordstop", "JSS1", "JSS", at(1));
@@ -1803,7 +1806,9 @@ describe("Report cards, awards, loyalty and certificates", () => {
 
   it("builds a cumulative report card: each later term carries the earlier ones", async () => {
     expect(cal.terms.map((t) => t.name)).toEqual(["First Term", "Second Term", "Third Term"]);
-    expect(termScore(80, 50)).toBeCloseTo(71);
+    // Assignment 10 + CA 30 + Examination 60, scaled to the parts that exist.
+    expect(termScore(80, 50, 70)).toBeCloseTo(74);
+    expect(termScore(80, 50)).toBeCloseTo((80 * 60 + 50 * 10) / 70);
     expect(termScore(null, 50)).toBe(50);
     const mid = (i: number) => new Date((cal.terms[i].start.getTime() + cal.terms[i].end.getTime()) / 2);
     await result(top, 80, mid(0));
@@ -2182,5 +2187,41 @@ describe("Ideas Box", () => {
     await ideas.answerIdea(superAdmin, idea.id, { status: "PLANNED", reply: "Great idea: it is on our list for next term." }, at(2));
     const [mine] = await ideas.myIdeas(kid);
     expect(mine).toMatchObject({ status: "PLANNED", reply: "Great idea: it is on our list for next term." });
+  });
+});
+
+describe("Learning path", () => {
+  const at = (n: number) => ({ ip: `10.109.0.${n}`, userAgent: "vitest" });
+
+  it("opens CA 1, CA 2 and the term examination only in order, and the e-book records chapters read", async () => {
+    const lp = await import("@/server/services/learning-path");
+    const eb = await import("@/server/services/ebooks");
+    // A class topic with a term and a published lesson from the sample content.
+    const [row] = (await db.execute<{ topic_id: string; subject_id: string; term_id: string; code: string }>(sql`
+      SELECT t.id AS topic_id, t.subject_id, t.term_id, c.code FROM topics t JOIN classes c ON c.id = t.class_id
+      WHERE t.term_id IS NOT NULL AND t.status = 'PUBLISHED' AND EXISTS (SELECT 1 FROM lessons l WHERE l.topic_id = t.id AND l.status = 'PUBLISHED') LIMIT 1`)).rows;
+    expect(row).toBeTruthy();
+    const dept = (await db.select().from(S.departments)).find((d) => d.level === (row.code.startsWith("SS") ? "SENIOR_SECONDARY" : row.code.startsWith("JSS") ? "JUNIOR_SECONDARY" : "PRIMARY"));
+    const kid = await register("pathkid", row.code, dept?.code ?? "JSS", at(1));
+    const [g] = (await lp.learningPath(kid, { subjectId: row.subject_id, termId: row.term_id })).groups;
+    expect(g.next).toBe("study");
+    await expectCode(lp.openCaTest(kid, row.subject_id, row.term_id, 1, at(1)), "FORBIDDEN");
+    await expectCode(lp.openCaTest(kid, row.subject_id, row.term_id, 2, at(1)), "FORBIDDEN");
+    // The term examination waits for CA 2.
+    const topicIds = g.topics.map((t) => t.id);
+    const exam = await createExam(superAdmin, { title: "Path term exam", subjectId: row.subject_id, examType: "SCHOOL_EXAM", questionCount: 5, durationMinutes: 10, maxAttempts: 1, poolFilter: { topicIds } }, at(2));
+    const [full] = await db.select().from(S.examinations).where(eq(S.examinations.id, exam.id));
+    await expectCode(lp.assertPathAllows(kid, { ...full, classId: null }), "FORBIDDEN");
+    // Reading the e-book marks the Study Materials step.
+    const book = await eb.ebookFor(kid, row.subject_id);
+    expect(book.contents.length).toBeGreaterThan(0);
+    expect(book.term?.chapters.length).toBeGreaterThan(0); // one term per page
+    for (const t of topicIds) await lp.markChapterRead(kid, t, true);
+    expect((await lp.learningPath(kid, { subjectId: row.subject_id, termId: row.term_id })).groups[0].done.materials).toBe(true);
+    // The Super Admin can switch the path off.
+    const learning = await getSetting(superAdmin.schoolId, "learning");
+    await putSetting(superAdmin.schoolId, "learning", { ...learning, learningPath: false }, superAdmin.id);
+    await lp.assertPathAllows(kid, { ...full, classId: null });
+    await putSetting(superAdmin.schoolId, "learning", learning, superAdmin.id);
   });
 });

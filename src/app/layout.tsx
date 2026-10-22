@@ -6,6 +6,7 @@ import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
 import { getBrand } from "@/server/brand";
 import { ServiceWorker } from "@/components/service-worker";
+import { InstallPrompt } from "@/components/install-prompt";
 import { SpeakButtons } from "@/components/speak-buttons";
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -62,6 +63,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </a>
         <ToastProvider>{children}</ToastProvider>
         <ServiceWorker />
+        <InstallPrompt />
         <SpeakButtons />
       </body>
     </html>

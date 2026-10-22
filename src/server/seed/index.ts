@@ -29,7 +29,7 @@ import { generateMathBank, toOptions } from "./math-bank";
 import { SUBJECT_BANK } from "./subject-bank";
 import { LESSONS } from "./lessons";
 import { seedStarterEntriesIfEmpty } from "../services/wordbank";
-import { seedHubExtras, seedHubIfEmpty, seedParentGk } from "../services/hub";
+import { seedFaithQuestions, seedHubExtras, seedHubIfEmpty, seedParentGk } from "../services/hub";
 import { ensureParentRooms } from "../services/community";
 import { seedMoreWords, seedWordbankMore } from "../services/wordbank";
 import { setupInternational, setupPrepProgrammes } from "../services/international";
@@ -167,6 +167,8 @@ export async function seedPlatform(opts: { sampleContent?: boolean; primarySchoo
   if (extras) log(`${extras} further hub articles added`);
   const wbMore = await seedWordbankMore(schoolId);
   if (wbMore) log(`${wbMore} proverbs, common errors and further study-material entries added`);
+  const faith = await seedFaithQuestions(schoolId);
+  if (faith) log(`${faith} Islamic and Bible knowledge game questions added`);
   const gk = await seedParentGk(schoolId);
   if (gk) log(`${gk} parent General Knowledge questions added`);
   const holidays = await seedHolidayProgramme(schoolId);

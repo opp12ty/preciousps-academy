@@ -4,6 +4,7 @@ import { Download, Medal, Trophy } from "lucide-react";
 import { can } from "@/core/permissions";
 import { requireStaffPage } from "@/server/http";
 import { fodanRankings, fodanSessions, type Ranked } from "@/server/services/preciousps-exams";
+import { fscRankings, type FscRanked } from "@/server/services/preciousps-study-centre";
 import { FodanSetupButton } from "@/components/admin/preciousps-setup";
 import { buttonClass, Card, cx, EmptyState, PageHeader, Table, Td, Th } from "@/components/ui/primitives";
 
@@ -13,7 +14,7 @@ const TERM = ["", "First Term", "Second Term", "Third Term"];
 const MEDAL = ["", "bg-gradient-to-br from-amber-300 to-amber-500 text-amber-950", "bg-gradient-to-br from-slate-200 to-slate-400 text-slate-900", "bg-gradient-to-br from-orange-300 to-orange-600 text-orange-950"];
 const PLACE = ["", "1st", "2nd", "3rd"];
 
-function Podium({ list, note }: { list: Ranked[]; note?: (r: Ranked) => string }) {
+function Podium({ list, note }: { list: (Ranked | FscRanked)[]; note?: (r: Ranked) => string }) {
   const top = list.filter((r) => r.position <= 3);
   if (!top.length) return <p className="text-sm text-muted">No one has sat this paper yet.</p>;
   return (
@@ -23,7 +24,7 @@ function Podium({ list, note }: { list: Ranked[]; note?: (r: Ranked) => string }
           <span className={cx("grid size-8 shrink-0 place-items-center rounded-full text-xs font-extrabold shadow-sm", MEDAL[r.position])}>{PLACE[r.position]}</span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold text-navy-800">{r.name}</span>
-            <span className="block text-xs text-muted">{r.studentNumber} · {r.percentage}%{note ? ` · ${note(r)}` : ""}</span>
+            <span className="block text-xs text-muted">{r.studentNumber} · {r.percentage}%{note ? ` · ${note(r as Ranked)}` : ""}</span>
           </span>
         </li>
       ))}
@@ -36,8 +37,9 @@ export default async function FodanExamsPage({ searchParams }: PageProps<"/admin
   const sp = await searchParams;
   const sessions = await fodanSessions(s.user.schoolId);
   const session = typeof sp.session === "string" && sessions.includes(sp.session) ? sp.session : sessions[0];
-  const { classes } = await fodanRankings(s.user.schoolId, session);
   const cls = typeof sp.class === "string" ? sp.class : "";
+  const [{ classes }, fsc] = await Promise.all([fodanRankings(s.user.schoolId, session), fscRankings(s.user.schoolId, session)]);
+  const fscShown = cls ? fsc.classes.filter((c) => c.classId === cls) : fsc.classes;
   const shown = cls ? classes.filter((c) => c.classId === cls) : classes;
   return (
     <div className="space-y-6">
@@ -98,6 +100,39 @@ export default async function FodanExamsPage({ searchParams }: PageProps<"/admin
       ) : (
         <Card><EmptyState icon={<Trophy className="size-6" />} title="No Precious PS Examinations yet" description="Press “Set up / refresh” to create a paper for every class and term." /></Card>
       )}
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-xl font-extrabold text-navy-800">Precious PS Study Centre Top 3</h2>
+          <p className="text-sm text-muted">From the Precious PS e-books: each book is scored Classwork 25, Assignments 25 and Term Review 50 (first attempts only); a term score is the average of that class&apos;s books for the term. Not part of any report card.</p>
+        </div>
+        {fscShown.length ? (
+          fscShown.map((c) => (
+            <Card key={c.classId} className="overflow-hidden">
+              <div className="flex items-center gap-3 bg-gradient-to-r from-emerald-800 to-navy-800 px-5 py-3 text-white">
+                <Trophy className="size-5 text-gold-400" aria-hidden />
+                <h3 className="text-lg font-extrabold">{c.className}</h3>
+                <span className="ml-auto text-xs text-white/75">Precious PS Study Centre · {session}</span>
+              </div>
+              <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
+                {c.terms.map((t) => (
+                  <div key={t.termId ?? "any"} className="rounded-xl border border-line p-4">
+                    <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gold-600">{t.term}</p>
+                    <Podium list={t.ranking} />
+                    <p className="mt-2 text-xs text-muted">{t.ranking.length} learner{t.ranking.length === 1 ? "" : "s"} took part.</p>
+                  </div>
+                ))}
+                <div className="rounded-xl border-2 border-gold-400 bg-gold-50/40 p-4">
+                  <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gold-600"><Medal className="size-4" aria-hidden /> Overall</p>
+                  <Podium list={c.overall} />
+                </div>
+              </div>
+            </Card>
+          ))
+        ) : (
+          <Card><EmptyState icon={<Trophy className="size-6" />} title="No Precious PS Study Centre scores yet" description="Publish Precious PS e-books under Precious PS Study Centre → Precious PS E-books; places appear once learners submit work." /></Card>
+        )}
+      </section>
     </div>
   );
 }

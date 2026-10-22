@@ -8,9 +8,12 @@ import { createParentLink, revokeParentLink } from "@/server/services/engagement
 import { markRead, setPreference } from "@/server/services/notifications";
 import { revalidatePath } from "next/cache";
 import { markHolidayTask } from "@/server/services/holiday";
+import { markChapterRead, openCaTest } from "@/server/services/learning-path";
+import { addPlan, deletePlan, togglePlan } from "@/server/services/planner";
 import { reportConnection, respondToLinkRequest, revokeLink } from "@/server/services/guardians";
 import { respondToSchedule } from "@/server/services/schedules";
 import { requestPromotion } from "@/server/services/promotions";
+import * as fsc from "@/server/services/preciousps-study-centre";
 import { submitAppeal } from "@/server/services/appeals";
 import { switchSchoolClass } from "@/server/services/school-accounts";
 
@@ -130,4 +133,51 @@ export async function holidayUndoAction(taskId: string) {
     await markHolidayTask(actor, taskId, false);
     revalidatePath("/student/holiday");
   }, "Task marked as not done.");
+}
+
+export async function openCaAction(subjectId: string, termId: string, stage: 1 | 2) {
+  return action({ role: "student" }, async (actor, ctx) => ({ examId: await openCaTest(actor, subjectId, termId, stage, ctx) }));
+}
+export async function markChapterAction(topicId: string, read: boolean, subjectId: string) {
+  return action({ role: "student" }, async (actor) => {
+    await markChapterRead(actor, topicId, read);
+    revalidatePath(`/student/ebooks/${subjectId}`);
+    revalidatePath("/student/path");
+  }, read ? "Chapter marked as read." : "Chapter marked as not read.");
+}
+
+export async function addPlanAction(_: ActionResult | null, form: FormData) {
+  return action({ role: "student" }, async (actor) => {
+    await addPlan(actor, { day: String(form.get("day") ?? ""), subjectId: String(form.get("subjectId") ?? ""), title: String(form.get("title") ?? ""), minutes: String(form.get("minutes") ?? "30") });
+    revalidatePath("/student/planner");
+    revalidatePath("/student");
+  }, "Added to your plan.");
+}
+export async function quickPlanAction(day: string, title: string, subjectId: string) {
+  return action({ role: "student" }, async (actor) => {
+    await addPlan(actor, { day, title, subjectId, minutes: 30 });
+    revalidatePath("/student/planner");
+  }, "Added to your plan.");
+}
+export async function togglePlanAction(id: string) {
+  return action({ role: "student" }, async (actor) => {
+    await togglePlan(actor, id);
+    revalidatePath("/student/planner");
+    revalidatePath("/student");
+  });
+}
+export async function deletePlanAction(id: string) {
+  return action({ role: "student" }, async (actor) => {
+    await deletePlan(actor, id);
+    revalidatePath("/student/planner");
+  }, "Removed.");
+}
+
+/* ------------------------------------------------- Precious PS Study Centre */
+
+export async function submitFscWorkAction(unitId: string, kind: "CLASSWORK" | "ASSIGNMENT", answers: string[]) {
+  return action({ role: "student" }, (a) => fsc.submitFscWork(a, unitId, kind === "ASSIGNMENT" ? "ASSIGNMENT" : "CLASSWORK", Array.isArray(answers) ? answers.slice(0, 100).map(String) : []));
+}
+export async function submitFscReviewAction(bookId: string, answers: Record<string, string>) {
+  return action({ role: "student" }, (a) => fsc.submitFscReview(a, bookId, answers && typeof answers === "object" ? answers : {}));
 }

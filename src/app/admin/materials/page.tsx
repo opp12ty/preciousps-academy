@@ -19,7 +19,7 @@ export default async function MaterialsAdmin({ searchParams }: PageProps<"/admin
   const sp = spRecord(await searchParams);
   const [cat, rows, uploads] = await Promise.all([
     getCatalog(s.user.schoolId),
-    listResources(s.user.schoolId, { kind: "FILE", search: sp.search, subjectId: sp.subjectId, fileType: sp.fileType, status: sp.status }),
+    listResources(s.user.schoolId, { kind: "FILE", search: sp.search, subjectId: sp.subjectId, classId: sp.classId, fileType: sp.fileType, status: sp.status }),
     getSetting(s.user.schoolId, "uploads"),
   ]);
   const o = <T extends { id: string; name: string }>(x: T[]) => x.map((y) => ({ value: y.id, label: y.name }));
@@ -27,9 +27,9 @@ export default async function MaterialsAdmin({ searchParams }: PageProps<"/admin
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Study Centre"
-        title="Study materials"
-        description={`Upload advanced study materials — PDF, Word (DOCX), PowerPoint (PPTX) and Excel (XLSX). Students with active access find them under Learn → Study Materials. Each file can be up to ${Math.min(uploads.maxFileMb, HOSTING_LIMIT_MB)} MB.`}
+        eyebrow="Academics"
+        title="Study materials & e-book files"
+        description={`Upload e-books and study materials (PDF, Word, PowerPoint, Excel or MP3) for any class from Primary 1 to SS3. Choose the class, the subject and where it goes in the e-book: the whole book, or a chapter of a term. Students see it in that chapter of their e-book and under Learn → Study Materials. Each file can be up to ${Math.min(uploads.maxFileMb, HOSTING_LIMIT_MB)} MB; split a big book into one file per term or chapter.`}
       />
       <Card>
         <CardHeader title="Add a material" />
@@ -42,6 +42,7 @@ export default async function MaterialsAdmin({ searchParams }: PageProps<"/admin
         values={sp}
         filters={[
           { type: "search", name: "search", placeholder: "Title or description" },
+          { type: "select", name: "classId", label: "Class", options: opts.classes },
           { type: "select", name: "subjectId", label: "Subject", options: opts.subjects },
           { type: "select", name: "fileType", label: "File type", options: typeOptions },
           { type: "select", name: "status", label: "Status", options: [{ value: "PUBLISHED", label: "Published" }, { value: "DRAFT", label: "Draft" }, { value: "ARCHIVED", label: "Archived" }] },
@@ -52,14 +53,14 @@ export default async function MaterialsAdmin({ searchParams }: PageProps<"/admin
           <Table>
             <thead><tr><Th>Material</Th><Th>File</Th><Th>Subject</Th><Th>Audience</Th><Th>Status</Th><Th className="text-right">Actions</Th></tr></thead>
             <tbody>
-              {rows.map(({ r, subject, className, department, fileName, fileSize }) => {
+              {rows.map(({ r, subject, topic, className, department, fileName, fileSize }) => {
                 const type = materialType(fileName);
                 return (
                   <tr key={r.id} id={r.id} className="align-top">
                     <Td className="max-w-sm"><p className="font-semibold text-navy-800">{r.title} {r.isRecommended && <Badge tone="gold">Recommended</Badge>}</p><p className="line-clamp-2 text-xs text-muted">{r.description}</p></Td>
                     <Td><Badge tone="blue">{type ? MATERIAL_TYPES[type].label : "File"}</Badge><p className="mt-1 max-w-48 truncate text-xs text-muted">{fileName} · {fileSize ? `${(fileSize / 1_048_576).toFixed(1)} MB` : ""}</p></Td>
                     <Td className="text-sm">{subject ?? "Any"}</Td>
-                    <Td className="text-xs">{className ?? "All classes"} · {department ?? "All departments"}</Td>
+                    <Td className="text-xs">{className ?? "All classes"} · {department ?? "All departments"}<p className="mt-1 text-muted">{topic ? `E-book chapter: ${topic}` : "Whole book"}</p></Td>
                     <Td><StatusBadge status={r.status} /></Td>
                     <Td className="text-right">
                       <div className="flex flex-wrap justify-end gap-1.5">

@@ -92,13 +92,14 @@ export const materialType = (fileName: string | null): MaterialType | null => {
   return (Object.keys(MATERIAL_TYPES) as MaterialType[]).find((k) => (MATERIAL_TYPES[k].ext as readonly string[]).includes(ext)) ?? null;
 };
 
-export async function listResources(schoolId: string, f: { search?: string; subjectId?: string; type?: string; status?: string; forUserId?: string; kind?: "LINK" | "FILE"; fileType?: string }) {
+export async function listResources(schoolId: string, f: { search?: string; subjectId?: string; classId?: string; type?: string; status?: string; forUserId?: string; kind?: "LINK" | "FILE"; fileType?: string }) {
   const db = getDb();
   const scope = f.forUserId ? await studentScope(f.forUserId, db) : undefined;
   const conds = [eq(resourceLinks.schoolId, schoolId)];
   if (f.forUserId) conds.push(eq(resourceLinks.status, "PUBLISHED"));
   else if (f.status) conds.push(eq(resourceLinks.status, f.status as "DRAFT"));
   if (f.subjectId) conds.push(eq(resourceLinks.subjectId, f.subjectId));
+  if (f.classId && /^[0-9a-f-]{36}$/i.test(f.classId)) conds.push(eq(resourceLinks.classId, f.classId));
   if (f.type) conds.push(eq(resourceLinks.resourceType, f.type as "VIDEO"));
   // Uploaded files are "study materials"; everything else is a link in the Resource Centre.
   if (f.kind === "FILE") conds.push(isNotNull(resourceLinks.assetId));

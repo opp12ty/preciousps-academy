@@ -22,6 +22,7 @@ const INTRO = {
   PHRASAL_VERB: "A phrasal verb is a verb joined to a small word such as up, off or after, giving a new meaning.",
   PROVERB: "Proverbs are short wise sayings handed down through generations, from Nigeria, Africa and around the world.",
   COMMON_ERROR: "Mistakes people often make in English, the correct form, and why. Read a few every day and you will stop making them.",
+  REGISTER: "A register is the special vocabulary of a profession. Choose a profession to learn the words doctors, lawyers, bankers, engineers and others use every day.",
 } as const;
 
 export default async function WordsPage({ params, searchParams }: PageProps<"/student/materials/[kind]">) {
@@ -33,11 +34,14 @@ export default async function WordsPage({ params, searchParams }: PageProps<"/st
   const q = typeof sp.q === "string" ? sp.q : "";
   const letter = typeof sp.letter === "string" && /^[A-Z]$/.test(sp.letter) ? sp.letter : "";
   const [access, hub, scope, cat] = await Promise.all([getAccessState(s.user.id), getSetting(s.user.schoolId, "learningHub"), studentScope(s.user.id), getCatalog(s.user.schoolId)]);
-  const on = { WORD: hub.dictionaryEnabled, IDIOM: hub.idiomsEnabled, CLICHE: hub.clichesEnabled, PHRASAL_VERB: hub.phrasalVerbsEnabled, PROVERB: hub.proverbsEnabled !== false, COMMON_ERROR: hub.commonErrorsEnabled !== false }[kind];
+  const on = { WORD: hub.dictionaryEnabled, IDIOM: hub.idiomsEnabled, CLICHE: hub.clichesEnabled, PHRASAL_VERB: hub.phrasalVerbsEnabled, PROVERB: hub.proverbsEnabled !== false, COMMON_ERROR: hub.commonErrorsEnabled !== false, REGISTER: hub.registersEnabled !== false }[kind];
   if (!on) notFound();
   // Open only while a code is running and that code includes Learning Resources.
   const active = access.status === "ACTIVE" && access.features.includes("LEARNING_RESOURCES");
-  const entries = active ? await listEntriesForStudent(s.actor, { kind, search: q, letter }) : [];
+  const all = active ? await listEntriesForStudent(s.actor, { kind, search: q, letter }) : [];
+  const profession = typeof sp.p === "string" ? sp.p : "";
+  const professions = kind === "REGISTER" ? [...new Set(all.map((e) => e.partOfSpeech).filter((x): x is string => Boolean(x)))].sort() : [];
+  const entries = kind === "REGISTER" && profession ? all.filter((e) => e.partOfSpeech === profession) : all;
   const className = cat.classes.find((c) => c.id === scope.classId)?.name;
   const href = (l: string) => `/student/materials/${slug}${l || q ? `?${new URLSearchParams({ ...(l ? { letter: l } : {}), ...(q ? { q } : {}) })}` : ""}`;
   return (
@@ -60,6 +64,11 @@ export default async function WordsPage({ params, searchParams }: PageProps<"/st
           ))}
         </div>
       </div>
+      {professions.length > 0 && (
+        <div className="no-scrollbar -mx-1 mb-4 flex gap-2 overflow-x-auto px-1">
+          {["", ...professions].map((p) => <Link key={p || "all"} href={p ? `/student/materials/registers?p=${encodeURIComponent(p)}` : "/student/materials/registers"} className={cx("whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-semibold", profession === p ? "bg-navy-800 text-white" : "bg-white text-navy-800 ring-1 ring-line hover:bg-royal-50")}>{p || "All professions"}</Link>)}
+        </div>
+      )}
       {entries.length ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {entries.map((e) => (
@@ -78,7 +87,7 @@ export default async function WordsPage({ params, searchParams }: PageProps<"/st
                 ) : (
                   <>
                     <h2 className="text-lg font-extrabold text-navy-800">{e.term}</h2>
-                    {e.partOfSpeech && (kind === "WORD" || kind === "PROVERB") && <p className="text-xs font-semibold italic text-royal-600">{e.partOfSpeech}</p>}
+                    {e.partOfSpeech && (kind === "WORD" || kind === "PROVERB" || kind === "REGISTER") && <p className="text-xs font-semibold italic text-royal-600">{e.partOfSpeech}</p>}
                     <p className="mt-1 text-sm text-navy-800">{e.meaning}</p>
                     {e.example && <p className="mt-1.5 border-l-2 border-gold-400 pl-2 text-sm italic text-muted">{e.example}</p>}
                   </>

@@ -7,9 +7,11 @@ import { TRAVEL_ARTICLES } from "@/content/travel";
 import { PREP_STUDY_ARTICLES } from "@/content/prep-articles";
 import { SCIENCE_ARTICLES } from "@/content/science-hub";
 import { GK_CATEGORIES, PARENT_GK } from "@/content/parent-gk";
+import { BIBLE_QUIZ, ISLAMIC_QUIZ } from "@/content/faith";
 import { EXTRA_ARTICLES } from "@/content/hub-extra";
+import { DISCIPLINE_ARTICLES } from "@/content/african-values";
 
-const MORE_ARTICLES = [...FAMILY_AND_SKILLS, ...PREP_ARTICLES, ...TRAVEL_ARTICLES, ...PREP_STUDY_ARTICLES, ...SCIENCE_ARTICLES, ...EXTRA_ARTICLES];
+const MORE_ARTICLES = [...FAMILY_AND_SKILLS, ...PREP_ARTICLES, ...TRAVEL_ARTICLES, ...PREP_STUDY_ARTICLES, ...SCIENCE_ARTICLES, ...EXTRA_ARTICLES, ...DISCIPLINE_ARTICLES];
 import { SECTIONS } from "@/core/sections";
 import { getDb } from "../db";
 import { departments, hubArticles, hubArticleVersions, hubQuestions, hubSessions, quizAttempts, settings as settingsTable, students } from "../db/schema";
@@ -244,6 +246,10 @@ export const QUIZ_MODES = {
   PARENTING: { audience: "PARENT", feature: null, label: "Parenting Scenario Challenge", categories: ["Parenting", "Child Development", "Temperament"], daily: false },
   PARENT_KNOWLEDGE: { audience: "PARENT", feature: null, label: "Knowledge Challenge", categories: ["Nigeria", "Africa", "World", "Science and Technology"], daily: false },
   PARENT_GK: { audience: "PARENT", feature: null, label: "General Knowledge Exam", categories: GK_CATEGORIES, daily: false },
+  ISLAMIC: { audience: "STUDENT", feature: "QUIZ_ARENA", label: "Islamic Knowledge Game", categories: ["Islamic Knowledge"], daily: false },
+  BIBLE: { audience: "STUDENT", feature: "QUIZ_ARENA", label: "Bible Knowledge Game", categories: ["Bible Knowledge"], daily: false },
+  PARENT_ISLAMIC: { audience: "PARENT", feature: null, label: "Islamic Knowledge Game", categories: ["Islamic Knowledge"], daily: false },
+  PARENT_BIBLE: { audience: "PARENT", feature: null, label: "Bible Knowledge Game", categories: ["Bible Knowledge"], daily: false },
 } as const;
 export type QuizMode = keyof typeof QUIZ_MODES;
 
@@ -358,6 +364,8 @@ export async function startQuiz(actor: Actor, mode: QuizMode, ctx: ReqCtx, day: 
     conds.push(sectionCond(hubQuestions.level, scope.level), stream ? or(isNull(hubQuestions.stream), eq(hubQuestions.stream, stream))! : isNull(hubQuestions.stream));
   }
   if (m.categories) conds.push(inArray(hubQuestions.category, [...m.categories]));
+  // The general quizzes stay general: faith questions appear only in their own games.
+  else conds.push(sql`${hubQuestions.category} NOT IN ('Islamic Knowledge', 'Bible Knowledge')`);
   const pool = await db.select({ id: hubQuestions.id }).from(hubQuestions).where(and(...conds)).orderBy(asc(hubQuestions.id));
   if (pool.length < 3) throw new AppError("VALIDATION", "There are not enough questions for this game yet. Please check back later.");
   const want = m.daily ? cfg.dailyQuestions : mode === "PARENT_GK" ? cfg.parentExamQuestions : cfg.quizQuestions;
@@ -432,6 +440,26 @@ export async function seedParentGk(schoolId: string) {
   let added = 0;
   for (let i = 0; i < rows.length; i += 200) added += (await db.insert(hubQuestions).values(rows.slice(i, i + 200)).onConflictDoNothing().returning({ id: hubQuestions.id })).length;
   await db.insert(settingsTable).values({ schoolId, key, value: { at: new Date().toISOString(), added } }).onConflictDoNothing();
+  return added;
+}
+
+/** Loads the Islamic and Bible knowledge games for students and parents, once per version of the bank. */
+export async function seedFaithQuestions(schoolId: string) {
+  const db = getDb();
+  const key = `faith:seeded:v1:${ISLAMIC_QUIZ.length + BIBLE_QUIZ.length}`;
+  const [mark] = await db.select({ key: settingsTable.key }).from(settingsTable).where(and(eq(settingsTable.schoolId, schoolId), eq(settingsTable.key, key)));
+  if (mark) return 0;
+  const rows = (["STUDENT", "PARENT"] as const).flatMap((audience) =>
+    ([["Islamic Knowledge", ISLAMIC_QUIZ], ["Bible Knowledge", BIBLE_QUIZ]] as const).flatMap(([category, list]) =>
+      list.map(([stem, right, w1, w2, w3, explanation], i) => {
+        const pos = (i * 3) % 4;
+        const wrong = [w1, w2, w3];
+        return { schoolId, audience, category, difficulty: "MEDIUM", stem, options: [...wrong.slice(0, pos), right, ...wrong.slice(pos)], answer: pos, explanation, status: "PUBLISHED" };
+      }),
+    ),
+  );
+  const added = (await db.insert(hubQuestions).values(rows).onConflictDoNothing().returning({ id: hubQuestions.id })).length;
+  await db.insert(settingsTable).values({ schoolId, key, value: { added } }).onConflictDoNothing();
   return added;
 }
 

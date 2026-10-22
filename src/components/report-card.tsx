@@ -2,6 +2,7 @@
 import Link from "next/link";
 import type { ReportCard } from "@/server/services/records";
 import { PrintButton } from "./print-button";
+import { DownloadLocked, PrintLock } from "./download-gate";
 import { Ring } from "./charts";
 import { cx } from "./ui/primitives";
 
@@ -13,7 +14,10 @@ const tone = (v: number | null) => (v === null ? "#94a3b8" : v >= 70 ? "#047857"
  * A term report card. The card of a later term carries the earlier terms beside it, so the third
  * term card is the report for the whole session. Prints on one A4 page.
  */
-export function ReportCardView({ card, brand, base, note }: { card: ReportCard; brand: { logoUrl: string; schoolName: string }; base: string; note?: string }) {
+/** A part score shown in marks: 80% of an assignment worth 10 is 8. */
+const part = (pct: number | null, outOf: number) => (pct === null ? "—" : String(Math.round((pct * outOf) / 10) / 10));
+
+export function ReportCardView({ card, brand, base, note, download = { allowed: true, phone: "", needsCode: false } }: { card: ReportCard; brand: { logoUrl: string; schoolName: string }; base: string; note?: string; download?: { allowed: boolean; phone: string; needsCode: boolean } }) {
   const many = card.terms.length > 1;
   return (
     <div className="mx-auto max-w-4xl space-y-4">
@@ -25,7 +29,7 @@ export function ReportCardView({ card, brand, base, note }: { card: ReportCard; 
             </Link>
           ))}
         </nav>
-        <PrintButton label="Print / save as PDF" />
+        {download.allowed ? <PrintButton label="Print / save as PDF" /> : <><PrintLock phone={download.phone} /><DownloadLocked phone={download.phone} needsCode={download.needsCode} /></>}
       </div>
       {note && <p className="no-print text-sm text-muted">{note}</p>}
       <article className="print-card overflow-hidden rounded-2xl border-2 border-navy-800 bg-white shadow-card">
@@ -58,8 +62,9 @@ export function ReportCardView({ card, brand, base, note }: { card: ReportCard; 
               <tr>
                 <th className="px-4 py-2.5">Subject</th>
                 {many && card.terms.slice(0, -1).map((t) => <th key={t.name} className="px-3 py-2.5 text-right">{t.name.replace(/ term/i, "")}</th>)}
-                <th className="px-3 py-2.5 text-right">Exams</th>
-                <th className="px-3 py-2.5 text-right">Assignments</th>
+                <th className="px-3 py-2.5 text-right">Assignment /{card.weights?.assignment ?? 10}</th>
+                <th className="px-3 py-2.5 text-right">CA /{card.weights?.ca ?? 30}</th>
+                <th className="px-3 py-2.5 text-right">Exam /{card.weights?.exam ?? 60}</th>
                 <th className="px-3 py-2.5 text-right">{many ? "This term" : "Score"}</th>
                 {many && <th className="px-3 py-2.5 text-right">Cumulative</th>}
                 <th className="px-3 py-2.5 text-center">Grade</th>
@@ -71,22 +76,23 @@ export function ReportCardView({ card, brand, base, note }: { card: ReportCard; 
                 <tr key={s.subject}>
                   <td className="px-4 py-2.5 font-semibold text-navy-800">{s.subject}</td>
                   {many && s.byTerm.slice(0, -1).map((v, i) => <td key={i} className="px-3 py-2.5 text-right tabular-nums text-muted">{cell(v)}</td>)}
-                  <td className="px-3 py-2.5 text-right tabular-nums">{cell(s.exams)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{cell(s.assignments)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{part(s.assignments, card.weights?.assignment ?? 10)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{part(s.ca ?? null, card.weights?.ca ?? 30)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{part(s.exams, card.weights?.exam ?? 60)}</td>
                   <td className="px-3 py-2.5 text-right font-bold tabular-nums" style={{ color: tone(s.score) }}>{cell(s.score)}</td>
                   {many && <td className="px-3 py-2.5 text-right font-bold tabular-nums" style={{ color: tone(s.cumulative) }}>{cell(s.cumulative)}</td>}
                   <td className="px-3 py-2.5 text-center font-extrabold text-navy-800">{s.grade}</td>
                   <td className="px-4 py-2.5 text-muted">{s.remark}</td>
                 </tr>
               ))}
-              {!card.subjects.length && <tr><td colSpan={8} className="px-4 py-8 text-center text-muted">No released result or submitted assignment in this period yet.</td></tr>}
+              {!card.subjects.length && <tr><td colSpan={9} className="px-4 py-8 text-center text-muted">No released result or submitted assignment in this period yet.</td></tr>}
             </tbody>
             {card.subjects.length > 0 && (
               <tfoot className="bg-surface font-bold text-navy-800">
                 <tr>
                   <td className="px-4 py-2.5">Average</td>
                   {many && card.termAverages.slice(0, -1).map((v, i) => <td key={i} className="px-3 py-2.5 text-right tabular-nums">{cell(v)}</td>)}
-                  <td /><td />
+                  <td /><td /><td />
                   <td className="px-3 py-2.5 text-right tabular-nums">{cell(card.termAverage)}</td>
                   {many && <td className="px-3 py-2.5 text-right tabular-nums">{cell(card.cumulativeAverage)}</td>}
                   <td className="px-3 py-2.5 text-center">{card.grade}</td>

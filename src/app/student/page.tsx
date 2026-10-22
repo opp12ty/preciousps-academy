@@ -23,9 +23,13 @@ import { studentScope } from "@/server/services/scope";
 import { getCatalog } from "@/server/services/curriculum";
 import { SchoolPanel } from "@/components/student/school-panel";
 import { dailyBites, lagosDay } from "@/server/services/daily";
+import { valueOfDay } from "@/content/african-values";
+import { getContent } from "@/server/services/content";
 import { holidayCalendar } from "@/server/services/holiday";
 import { classChampions } from "@/server/services/preciousps-exams";
 import { ClassChampions, DailyBites, HolidayBanner } from "@/components/daily-bites";
+import { todayPlan } from "@/server/services/planner";
+import { learningPath } from "@/server/services/learning-path";
 
 export default async function StudentDashboard({ searchParams }: PageProps<"/student">) {
   const s = await requireStudentPage();
@@ -48,6 +52,8 @@ export default async function StudentDashboard({ searchParams }: PageProps<"/stu
     holidayCalendar(s.user.schoolId).catch(() => null),
     classChampions(s.user.schoolId, scope.classId, s.user.id).catch(() => null),
   ]);
+  const [plan, path] = await Promise.all([todayPlan(s.actor).catch(() => null), learningPath(s.actor).catch(() => null)]);
+  const nextStep = path?.groups.find((g) => g.next && g.next !== "exam");
   // A code set up without Results shows no scores anywhere on the dashboard.
   const scoresHidden = access.status === "ACTIVE" && !access.features.includes("RESULTS");
   const school = await schoolProfileOf(s.user.id);
@@ -92,8 +98,24 @@ export default async function StudentDashboard({ searchParams }: PageProps<"/stu
       </section>
 
       {holiday && <HolidayBanner label={holiday.label} active={holiday.active} daysToGo={holiday.daysToGo} daysLeft={holiday.daysLeft} href="/student/holiday" />}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Link prefetch={false} href="/student/planner" className="pop flex items-center gap-4 rounded-2xl bg-white p-4 shadow-card ring-1 ring-line transition hover:shadow-lift">
+          <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-orange-400 to-rose-500 text-2xl" aria-hidden>🔥</span>
+          <span className="min-w-0">
+            <span className="block text-xs font-bold uppercase tracking-wide text-gold-600">Today&rsquo;s plan · {plan?.streak ?? 0}-day streak</span>
+            <span className="block truncate text-base font-extrabold text-navy-800">{plan?.items.length ? `${plan.items.filter((i) => i.doneAt).length} of ${plan.items.length} done: ${plan.items.find((i) => !i.doneAt)?.title ?? "all finished, well done!"}` : "Plan today’s study →"}</span>
+          </span>
+        </Link>
+        <Link prefetch={false} href="/student/path" className="pop flex items-center gap-4 rounded-2xl bg-white p-4 shadow-card ring-1 ring-line transition hover:shadow-lift">
+          <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-emerald-500 to-royal-600 text-2xl" aria-hidden>🧭</span>
+          <span className="min-w-0">
+            <span className="block text-xs font-bold uppercase tracking-wide text-gold-600">Next on your learning path</span>
+            <span className="block truncate text-base font-extrabold text-navy-800">{nextStep ? `${nextStep.subject}: ${({ study: "Study Centre", assignments: "Assignments", ca1: "CBT Exam Prep (CA 1)", materials: "E-book chapters", ca2: "Revision CBT (CA 2)", exam: "Examination" } as const)[nextStep.next!]}` : "Open My Learning Path →"}</span>
+          </span>
+        </Link>
+      </div>
       {champs && <ClassChampions className={champs.className} title={champs.title} top={champs.top} />}
-      <DailyBites bites={bites} linkBase="/student/materials" />
+      <DailyBites bites={bites} linkBase="/student/materials" value={valueOfDay(lagosDay(), (await getContent(s.user.schoolId, "african-values")).values)} />
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
         <AccessCard initial={access} contact={brand.accessCodeContact} />

@@ -4,6 +4,7 @@ import { BookOpenCheck, CalendarDays, Rocket, Sun, Users } from "lucide-react";
 import { requireStudentPage } from "@/server/http";
 import { studentHoliday } from "@/server/services/holiday";
 import { TASK_KINDS } from "@/content/holiday";
+import { getContent } from "@/server/services/content";
 import { HolidayTick } from "@/components/holiday";
 import { Badge, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui/primitives";
 
@@ -66,6 +67,7 @@ function TopicGroups({ groups }: { groups: Groups }) {
 export default async function HolidayPage() {
   const s = await requireStudentPage();
   const p = await studentHoliday(s.actor);
+  const special = await getContent(s.user.schoolId, "special-days");
   const h = p.holiday;
   const all = [...p.parents, ...p.school];
   const finished = all.filter((t) => t.done).length;
@@ -112,6 +114,19 @@ export default async function HolidayPage() {
       <Card>
         <CardHeader title={<span className="flex items-center gap-2"><Sun className="size-5 text-gold-600" aria-hidden /> Holiday activities</span>} description="Set by your school. Tick each one when you have done it." />
         {p.school.length ? <ul className="grid gap-3 p-5 pt-0 lg:grid-cols-2">{p.school.map((t) => <TaskCard key={t.id} t={t} />)}</ul> : <div className="p-5 pt-0"><EmptyState icon={<Sun className="size-6" />} title="No activities yet" description="Your school has not added holiday activities for this break." /></div>}
+      </Card>
+      <Card>
+        <CardHeader title="Special days and festivals" description={special.intro} />
+        <ul className="grid gap-3 p-5 pt-0 md:grid-cols-2">
+          {special.days.filter((d) => d.name.trim()).map((d) => (
+            <li key={d.name} className="rounded-xl border border-line p-4">
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: d.faith === "Islamic" ? "#047857" : d.faith === "Christian" ? "#1d4ed8" : "#a8841e" }}>{d.faith} · {d.when}</p>
+              <p className="mt-0.5 font-extrabold text-navy-800">{d.name}</p>
+              <p className="mt-1 text-sm text-muted">{d.about}</p>
+              <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm text-navy-800">{d.activities.filter((a) => a.trim()).map((a) => <li key={a}>{a}</li>)}</ul>
+            </li>
+          ))}
+        </ul>
       </Card>
     </div>
   );

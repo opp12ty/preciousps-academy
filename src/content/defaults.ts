@@ -1,3 +1,6 @@
+import { AFRICAN_VALUES } from "./african-values";
+import { SPECIAL_DAYS } from "./faith";
+import { DEFAULT_CULTURE, DEFAULT_STAGES } from "./home-africa-content";
 /**
  * Default public-site content. Every block here is editable by the Super Admin
  * (Admin → Homepage / Content) and versioned; these values are only the
@@ -369,6 +372,36 @@ We may update these terms. Continued use means you accept the updated terms.`,
       { eyebrow: "Precious PS SOFTNET", title: "Printers for homework and projects", body: "Print notes, past questions and projects at home. Printers, ink and paper are available.", cta: "Call 08169267383", link: "tel:08169267383", icon: "printer" },
       { eyebrow: "Precious PS SOFTNET", title: "Power banks, earbuds and accessories", body: "Keep lessons going through power cuts and let your child listen without disturbing the house: power banks, earbuds, chargers and more.", cta: "Call 08169267383", link: "tel:08169267383", icon: "battery" },
     ],
+  },
+  "african-values": {
+    /** The value of the day on every dashboard rotates through this list. */
+    values: AFRICAN_VALUES.map(([title, word, meaning, practice]) => ({ title, word, meaning, practice })),
+  },
+  "special-days": {
+    intro: "For families who observe them. Precious PS respects every faith; these activities are optional ways to learn and do good on each day.",
+    days: SPECIAL_DAYS.map((d) => ({ name: d.name, faith: d.faith, when: d.when, about: d.about, activities: [...d.activities] })),
+  },
+  "home-africa": {
+    educationEyebrow: "Our educational system",
+    educationHeading: "The Nigerian 6-3-3-4 journey, fully covered",
+    educationIntro: "Six years of primary, three of junior secondary, three of senior secondary and four of tertiary education. Precious PS follows the NERDC curriculum at every step.",
+    stages: DEFAULT_STAGES.map((x) => ({ ...x })),
+    cultureEyebrow: "Proudly African",
+    cultureHeading: "Learning rooted in our culture",
+    cultureIntro: "Every learner should know where they come from. Precious PS celebrates the history, languages, art and wisdom of Nigeria and Africa.",
+    cultureCards: DEFAULT_CULTURE.map((x) => ({ ...x })),
+    valuesEyebrow: "African discipline",
+    valuesHeading: "Good home training, taught every day",
+    valuesIntro: "Like the family that rises at dawn and walks together to the farm, we teach respect, hard work, honesty and togetherness. Every dashboard on Precious PS shows a value of the day, and the Knowledge Hub teaches them in depth.",
+    /** Replaces the drawn farm family scene. A wide, light picture works best (photos are shrunk on upload). */
+    farmPictureAssetId: "",
+    farmCaption: "An African family walking to the farm at sunrise",
+    /** Optional banner above "Our educational system". */
+    educationPictureAssetId: "",
+    educationCaption: "Nigerian pupils in class",
+    /** Optional banner above "Proudly African". */
+    culturePictureAssetId: "",
+    cultureCaption: "African culture and heritage",
   },
   "auth-pictures": {
     yorubaAssetId: "",

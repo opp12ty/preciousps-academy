@@ -43,13 +43,24 @@ export async function termWindows(schoolId: string): Promise<{ session: string; 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 
-/** Per-subject averages of one student between two moments: released examinations and submitted assignments. */
+/**
+ * Per-subject averages of one student between two moments: term examinations, CA tests (CBT Exam
+ * Prep, Revision CBT and class tests) and assignments. Practice, mock, Precious PS and external-style papers
+ * are for learning and rewards only and never enter the report card.
+ */
 async function subjectScores(userId: string, start: Date, end: Date) {
-  const [exams, work] = await Promise.all([
+  const [exams, cas, work] = await Promise.all([
     rows<{ subject_id: string; subject: string; papers: number; avg: number; best: number }>(sql`
       SELECT s.id AS subject_id, s.name AS subject, count(*)::int AS papers, avg(r.percentage)::float AS avg, max(r.percentage)::float AS best
       FROM results r JOIN examinations e ON e.id = r.examination_id JOIN subjects s ON s.id = e.subject_id
       WHERE r.user_id = ${userId} AND NOT r.is_voided AND r.released_at IS NOT NULL AND r.created_at >= ${start} AND r.created_at <= ${end}
+        AND e.exam_type = 'SCHOOL_EXAM'
+      GROUP BY s.id, s.name`),
+    rows<{ subject_id: string; subject: string; avg: number }>(sql`
+      SELECT s.id AS subject_id, s.name AS subject, avg(r.percentage)::float AS avg
+      FROM results r JOIN examinations e ON e.id = r.examination_id JOIN subjects s ON s.id = e.subject_id
+      WHERE r.user_id = ${userId} AND NOT r.is_voided AND r.released_at IS NOT NULL AND r.created_at >= ${start} AND r.created_at <= ${end}
+        AND e.exam_type IN ('CONTINUOUS_ASSESSMENT', 'CLASS_TEST')
       GROUP BY s.id, s.name`),
     rows<{ subject_id: string; subject: string; n: number; avg: number }>(sql`
       SELECT s.id AS subject_id, s.name AS subject, count(*)::int AS n, avg(t.best)::float AS avg FROM (
@@ -57,19 +68,27 @@ async function subjectScores(userId: string, start: Date, end: Date) {
         WHERE at.user_id = ${userId} AND at.created_at >= ${start} AND at.created_at <= ${end} GROUP BY at.assignment_id
       ) t JOIN assignments a ON a.id = t.assignment_id JOIN subjects s ON s.id = a.subject_id GROUP BY s.id, s.name`),
   ]);
-  const map = new Map<string, { subjectId: string; subject: string; papers: number; exams: number | null; best: number | null; assignments: number | null; work: number }>();
-  for (const e of exams) map.set(e.subject_id, { subjectId: e.subject_id, subject: e.subject, papers: e.papers, exams: e.avg, best: e.best, assignments: null, work: 0 });
-  for (const w of work) {
-    const cur = map.get(w.subject_id) ?? { subjectId: w.subject_id, subject: w.subject, papers: 0, exams: null, best: null, assignments: null, work: 0 };
-    map.set(w.subject_id, { ...cur, assignments: w.avg, work: w.n });
-  }
+  type S = { subjectId: string; subject: string; papers: number; exams: number | null; best: number | null; ca: number | null; assignments: number | null; work: number };
+  const map = new Map<string, S>();
+  const blank = (id: string, name: string): S => ({ subjectId: id, subject: name, papers: 0, exams: null, best: null, ca: null, assignments: null, work: 0 });
+  for (const e of exams) map.set(e.subject_id, { ...blank(e.subject_id, e.subject), papers: e.papers, exams: e.avg, best: e.best });
+  for (const c of cas) map.set(c.subject_id, { ...(map.get(c.subject_id) ?? blank(c.subject_id, c.subject)), ca: c.avg });
+  for (const w of work) map.set(w.subject_id, { ...(map.get(w.subject_id) ?? blank(w.subject_id, w.subject)), assignments: w.avg, work: w.n });
   return map;
 }
 
-/** Term score of a subject: examinations carry 70% and assignments 30% when both exist; otherwise whichever exists. */
-export function termScore(exams: number | null, assignments: number | null) {
-  if (exams !== null && assignments !== null) return exams * 0.7 + assignments * 0.3;
-  return exams ?? assignments;
+export interface Weights { assignment: number; ca: number; exam: number }
+export const DEFAULT_WEIGHTS: Weights = { assignment: 10, ca: 30, exam: 60 };
+
+/**
+ * Term score of a subject out of 100: Assignment 10 + CA 30 + Examination 60 by default. When a part
+ * is missing (e.g. the examination has not been written yet) the score is scaled to the parts present.
+ */
+export function termScore(exams: number | null, assignments: number | null, ca: number | null = null, w: Weights = DEFAULT_WEIGHTS) {
+  const parts: [number | null, number][] = [[assignments, w.assignment], [ca, w.ca], [exams, w.exam]];
+  const have = parts.filter(([v, wt]) => v !== null && wt > 0) as [number, number][];
+  const total = have.reduce((a, [, wt]) => a + wt, 0);
+  return total ? have.reduce((a, [v, wt]) => a + v * wt, 0) / total : null;
 }
 
 export interface ReportCard {
@@ -78,7 +97,8 @@ export interface ReportCard {
   term: TermWindow;
   /** Every term up to and including this one, in order. */
   terms: TermWindow[];
-  subjects: { subject: string; byTerm: (number | null)[]; exams: number | null; assignments: number | null; papers: number; score: number | null; cumulative: number | null; grade: string; remark: string }[];
+  weights: Weights;
+  subjects: { subject: string; byTerm: (number | null)[]; exams: number | null; assignments: number | null; ca: number | null; papers: number; score: number | null; cumulative: number | null; grade: string; remark: string }[];
   termAverage: number | null;
   cumulativeAverage: number | null;
   termAverages: (number | null)[];
@@ -111,19 +131,21 @@ export async function reportCard(schoolId: string, userId: string, termIndex?: n
   const upTo = cal.terms.slice(0, idx + 1);
   const perTerm = await Promise.all(upTo.map((t) => subjectScores(userId, t.start, t.end)));
   const { scale } = await getSetting(schoolId, "grading");
+  const lc = await getSetting(schoolId, "learning");
+  const weights: Weights = { assignment: lc.weightAssignment, ca: lc.weightCa, exam: lc.weightExam };
   const ids = [...new Set(perTerm.flatMap((m) => [...m.keys()]))];
   const subjectsOut = ids
     .map((sid) => {
       const byTerm = perTerm.map((m) => {
         const x = m.get(sid);
-        return x ? termScore(x.exams, x.assignments) : null;
+        return x ? termScore(x.exams, x.assignments, x.ca, weights) : null;
       });
       const now = perTerm[idx].get(sid);
       const score = byTerm[idx];
       const done = byTerm.filter((v): v is number => v !== null);
       const cumulative = mean(done);
       const basis = cumulative ?? score;
-      return { subject: (now ?? perTerm.find((m) => m.get(sid))!.get(sid)!).subject, byTerm: byTerm.map((v) => (v === null ? null : round1(v))), exams: now?.exams == null ? null : round1(now.exams), assignments: now?.assignments == null ? null : round1(now.assignments), papers: now?.papers ?? 0, score: score === null ? null : round1(score), cumulative: cumulative === null ? null : round1(cumulative), grade: basis === null ? "—" : gradeFor(basis, scale).grade, remark: remarkFor(basis) };
+      return { subject: (now ?? perTerm.find((m) => m.get(sid))!.get(sid)!).subject, byTerm: byTerm.map((v) => (v === null ? null : round1(v))), exams: now?.exams == null ? null : round1(now.exams), assignments: now?.assignments == null ? null : round1(now.assignments), ca: now?.ca == null ? null : round1(now.ca), papers: now?.papers ?? 0, score: score === null ? null : round1(score), cumulative: cumulative === null ? null : round1(cumulative), grade: basis === null ? "—" : gradeFor(basis, scale).grade, remark: remarkFor(basis) };
     })
     .sort((a, b) => a.subject.localeCompare(b.subject));
   const termAverages = upTo.map((_, i) => {
@@ -141,7 +163,7 @@ export async function reportCard(schoolId: string, userId: string, termIndex?: n
     const at = ranks.findIndex((r) => r.userId === userId);
     if (at >= 0) position = { place: ranks.filter((r) => r.average > ranks[at].average).length + 1, outOf: ranks.length };
   }
-  return { student: { id: st.id, name: `${st.firstName} ${st.lastName}`.trim(), studentNumber: st.studentNumber, className: st.className, department: st.department, classId: st.classId }, session: cal.session, term: upTo[idx], terms: upTo, subjects: subjectsOut, termAverage, cumulativeAverage, termAverages, position, grade: overall === null ? "—" : gradeFor(overall, scale).grade, remark: remarkFor(overall), generatedAt: new Date().toISOString() };
+  return { student: { id: st.id, name: `${st.firstName} ${st.lastName}`.trim(), studentNumber: st.studentNumber, className: st.className, department: st.department, classId: st.classId }, session: cal.session, term: upTo[idx], terms: upTo, weights, subjects: subjectsOut, termAverage, cumulativeAverage, termAverages, position, grade: overall === null ? "—" : gradeFor(overall, scale).grade, remark: remarkFor(overall), generatedAt: new Date().toISOString() };
 }
 
 /** Classmates ranked by the mean of their subject averages in released examinations. School accounts are left out. */
@@ -260,6 +282,9 @@ export const LOYALTY_RULES = [
   { points: 10, what: "Extra, when you score 70% or more" },
   { points: 5, what: "Every lesson you complete in the Study Centre" },
   { points: 5, what: "Every assignment or classwork you submit" },
+  { points: 3, what: "Every e-book chapter you finish reading" },
+  { points: 5, what: "Precious PS Study Centre: every unit's Classwork and every Assignment you submit" },
+  { points: 10, what: "Precious PS Study Centre: every Term Review CBT you finish, and 10 more when you score 70% or more" },
   { points: 50, what: "Every award you win" },
 ];
 
@@ -274,6 +299,19 @@ export async function syncLoyalty(schoolId: string, userId: string) {
     SELECT ${schoolId}::uuid, lp.user_id, 5, 'Lesson completed', 'lesson:' || lp.lesson_id FROM learning_progress lp WHERE lp.user_id = ${userId} AND lp.status = 'COMPLETED' ON CONFLICT DO NOTHING`);
   await db.execute(sql`INSERT INTO loyalty_points (school_id, user_id, points, reason, ref)
     SELECT DISTINCT ${schoolId}::uuid, at.user_id, 5, 'Assignment submitted', 'work:' || at.assignment_id FROM assignment_attempts at WHERE at.user_id = ${userId} ON CONFLICT DO NOTHING`);
+  await db.execute(sql`INSERT INTO loyalty_points (school_id, user_id, points, reason, ref)
+    SELECT ${schoolId}::uuid, er.user_id, 3, 'E-book chapter read', 'ebook:' || er.topic_id FROM ebook_reads er WHERE er.user_id = ${userId} ON CONFLICT DO NOTHING`);
+  // Precious PS Study Centre: the first submission of each piece of work earns the points.
+  await db.execute(sql`INSERT INTO loyalty_points (school_id, user_id, points, reason, ref)
+    SELECT DISTINCT ${schoolId}::uuid, fa.user_id, 5, CASE fa.kind WHEN 'CLASSWORK' THEN 'Precious PS Study Centre classwork' ELSE 'Precious PS Study Centre assignment' END, 'fsc:' || lower(fa.kind) || ':' || fa.unit_id
+    FROM fsc_attempts fa WHERE fa.user_id = ${userId} AND fa.unit_id IS NOT NULL ON CONFLICT DO NOTHING`);
+  await db.execute(sql`INSERT INTO loyalty_points (school_id, user_id, points, reason, ref)
+    SELECT DISTINCT ${schoolId}::uuid, fa.user_id, 10, 'Precious PS Study Centre Term Review', 'fsc:review:' || fa.book_id
+    FROM fsc_attempts fa WHERE fa.user_id = ${userId} AND fa.kind = 'REVIEW' ON CONFLICT DO NOTHING`);
+  await db.execute(sql`INSERT INTO loyalty_points (school_id, user_id, points, reason, ref)
+    SELECT ${schoolId}::uuid, f.user_id, 10, 'Precious PS Study Centre: 70% or more', 'fsc:high:' || f.book_id
+    FROM (SELECT DISTINCT ON (book_id) user_id, book_id, percentage FROM fsc_attempts WHERE user_id = ${userId} AND kind = 'REVIEW' ORDER BY book_id, created_at) f
+    WHERE f.percentage >= 70 ON CONFLICT DO NOTHING`);
   const [{ total }] = await db.select({ total: sql<number>`coalesce(sum(${loyaltyPoints.points}), 0)::int` }).from(loyaltyPoints).where(eq(loyaltyPoints.userId, userId));
   const level = [...LOYALTY_LEVELS].reverse().find((l) => total >= l.min)!;
   const next = LOYALTY_LEVELS.find((l) => l.min > total) ?? null;

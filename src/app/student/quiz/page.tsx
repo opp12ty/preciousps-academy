@@ -16,6 +16,8 @@ export default async function QuizPage() {
     { mode: "QUIZ" as const, title: "Quiz Arena", text: "A general-knowledge quiz matched to your class and department. One question at a time, with the explanation after each answer.", locked: !has("QUIZ_ARENA") },
     { mode: "DAILY" as const, title: "Daily Challenge", text: "A short new challenge every day. Everyone gets the same questions, and you can play once a day.", locked: !has("DAILY_CHALLENGE") },
     { mode: "CULTURE" as const, title: "Culture Challenge", text: "Nigerian, African and world culture, history and geography.", locked: !has("CULTURE_CHALLENGE") },
+    { mode: "ISLAMIC" as const, title: "Islamic Knowledge Game", text: "Questions on the Qur'an, the Prophets and Islamic practice, as taught in IRS. Optional, for anyone who wants to learn.", locked: !has("QUIZ_ARENA") },
+    { mode: "BIBLE" as const, title: "Bible Knowledge Game", text: "Questions on Bible stories and teachings, as taught in CRS. Optional, for anyone who wants to learn.", locked: !has("QUIZ_ARENA") },
   ];
   return (
     <div className="space-y-6">

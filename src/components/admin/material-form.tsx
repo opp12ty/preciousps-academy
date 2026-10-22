@@ -2,8 +2,8 @@
 
 import { Loader2, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
-import { saveResourceAction } from "@/app/admin/actions";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { chapterChoicesAction, saveResourceAction } from "@/app/admin/actions";
 import { SECTION_CHOICES, sectionFormValue } from "@/core/sections";
 import { buttonClass, inputClass } from "../ui/primitives";
 import { useToast } from "../ui/toast";
@@ -17,6 +17,7 @@ export interface MaterialData {
   departmentId: string | null;
   classId: string | null;
   level: string | null;
+  topicId?: string | null;
   assetId: string | null;
   isRecommended: boolean;
   isPremium?: boolean;
@@ -36,6 +37,21 @@ export function MaterialForm({ m, subjects, classes, departments, maxFileMb }: {
   const toast = useToast();
   const router = useRouter();
   const limit = Math.min(maxFileMb, HOSTING_LIMIT_MB);
+  const [classId, setClassId] = useState(m?.classId ?? "");
+  const [subjectId, setSubjectId] = useState(m?.subjectId ?? "");
+  const [chapters, setChapters] = useState<{ value: string; label: string; term: string }[]>([]);
+  useEffect(() => {
+    let live = true;
+    if (!classId || !subjectId) {
+      setChapters([]);
+      return;
+    }
+    chapterChoicesAction(classId, subjectId).then((r) => live && setChapters(r.ok ? (r.data ?? []) : []));
+    return () => {
+      live = false;
+    };
+  }, [classId, subjectId]);
+  const termNames = [...new Set(chapters.map((c) => c.term))];
 
   const submit = () =>
     start(async () => {
@@ -106,8 +122,32 @@ export function MaterialForm({ m, subjects, classes, departments, maxFileMb }: {
         </label>
         <span className="mt-1 block text-xs font-normal text-muted">Up to {limit} MB. Files with macros are refused.</span>
       </div>
-      {select("Subject", "subjectId", "Any subject", subjects, m?.subjectId ?? "")}
-      {select("Class", "classId", "All classes", classes, m?.classId ?? "")}
+      <label className={field}>
+        Class
+        <select name="classId" value={classId} onChange={(e) => setClassId(e.target.value)} className={`${inputClass} mt-1.5`}>
+          <option value="">All classes</option>
+          {classes.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </label>
+      <label className={field}>
+        Subject
+        <select name="subjectId" value={subjectId} onChange={(e) => setSubjectId(e.target.value)} className={`${inputClass} mt-1.5`}>
+          <option value="">Any subject</option>
+          {subjects.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </label>
+      <label className={field}>
+        Place in the e-book
+        <select key={`${classId}-${subjectId}-${chapters.length}`} name="topicId" defaultValue={m?.topicId ?? ""} disabled={!classId || !subjectId} className={`${inputClass} mt-1.5`}>
+          <option value="">{classId && subjectId ? "Whole book (front of the e-book)" : "Choose a class and subject first"}</option>
+          {termNames.map((t) => (
+            <optgroup key={t} label={t}>
+              {chapters.filter((c) => c.term === t).map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </optgroup>
+          ))}
+        </select>
+        <span className="mt-1 block text-xs font-normal text-muted">Pick a term&apos;s chapter to show the file inside that chapter, or leave it as the whole book.</span>
+      </label>
       {select("Department", "departmentId", "All departments", departments, m?.departmentId ?? "")}
       <label className={field}>
         Section

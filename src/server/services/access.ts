@@ -150,7 +150,11 @@ export async function activateCode(actor: Actor, rawCode: string, ctx: ReqCtx, o
     const premiumNow = stillActive.length
       ? (await tx.select({ id: activationCodes.id }).from(activationCodes).where(and(inArray(activationCodes.id, stillActive.map((p) => p.codeId)), eq(activationCodes.tier, "PREMIUM")))).length > 0
       : false;
-    const upgrade = code.tier === "PREMIUM" && !premiumNow;
+    // A Downloads code may also be added on top: it only opens downloads the running code leaves out.
+    const liveFeatures = stillActive.length
+      ? (await tx.select({ features: activationCodes.features, tier: activationCodes.tier }).from(activationCodes).where(inArray(activationCodes.id, stillActive.map((p) => p.codeId)))).flatMap((c) => featuresOfCode(c))
+      : [];
+    const upgrade = (code.tier === "PREMIUM" && !premiumNow) || (featuresOfCode(code).includes("DOWNLOADS") && !liveFeatures.includes("DOWNLOADS"));
     if (stillActive.length > 0 && !upgrade && !(cfg.allowMultipleActive || student?.allow)) {
       return { error: "HAS_ACTIVE" as const, until: stillActive[0].currentExpiresAt };
     }
@@ -322,6 +326,23 @@ export async function studentOfAccessCode(schoolId: string, rawCode: string) {
 }
 
 /** Server-side gate for one feature of the central access code. Hiding a menu item is never enough. */
+export type DownloadItem = "ebooks" | "ebookFiles" | "resultSlips" | "reportCards";
+
+/**
+ * Whether a student or parent may download / print this kind of item, as the Admin set it under
+ * Academics → Downloads Control. Staff are never held back.
+ */
+export async function downloadAccess(user: { id: string; userType: string; schoolId: string }, item: DownloadItem) {
+  const cfg = await getSetting(user.schoolId, "downloads");
+  const mode = cfg[item];
+  const base = { phone: cfg.contact, needsCode: mode === "CODE" };
+  if (user.userType !== "STUDENT" && user.userType !== "PARENT") return { ...base, allowed: true };
+  if (mode === "OPEN") return { ...base, allowed: true };
+  if (mode === "LOCKED") return { ...base, allowed: false };
+  const st = await getAccessState(user.id);
+  return { ...base, allowed: st.status === "ACTIVE" && st.features.includes("DOWNLOADS") };
+}
+
 export async function requireFeature(userId: string, feature: Feature) {
   const s = await requireActiveAccess(userId);
   if (!s.features.includes(feature)) throw new AppError("ACCESS_REQUIRED", FEATURE_DENIED);
@@ -490,7 +511,7 @@ const isParent = async (userId: string) => (await getDb().select({ t: users.user
 
 /* ----------------------------------------------------------- parent portal */
 
-export const NEED_PARENT_CODE_MESSAGE = "The parent portal needs a parent access code. To get one, reach the Super Admin (08067578112), then enter it here.";
+export const NEED_PARENT_CODE_MESSAGE = "The parent portal needs a parent access code. To get one, reach the Super Admin (08169267383), then enter it here.";
 
 export interface ParentAccess {
   active: boolean;

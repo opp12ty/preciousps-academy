@@ -8,6 +8,7 @@ export interface HubFlags {
   phrasalVerbsEnabled: boolean;
   proverbsEnabled?: boolean;
   commonErrorsEnabled?: boolean;
+  registersEnabled?: boolean;
   gamesEnabled: boolean;
 }
 
@@ -21,6 +22,8 @@ export function MaterialsNav({ current, flags }: { current: string; flags: HubFl
     { key: "phrasal-verbs", href: "/student/materials/phrasal-verbs", label: "Phrasal Verbs", on: flags.phrasalVerbsEnabled },
     { key: "proverbs", href: "/student/materials/proverbs", label: "Proverbs", on: flags.proverbsEnabled !== false },
     { key: "common-errors", href: "/student/materials/common-errors", label: "Common Errors", on: flags.commonErrorsEnabled !== false },
+    { key: "registers", href: "/student/materials/registers", label: "Registers", on: flags.registersEnabled !== false },
+    { key: "ebooks", href: "/student/ebooks", label: "E-books", on: true },
     { key: "games", href: "/student/materials/games", label: "Games", on: flags.gamesEnabled },
   ].filter((t) => t.on);
   return (

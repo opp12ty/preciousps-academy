@@ -64,6 +64,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const groups: { title?: string; items: Item[] }[] = [
     { items: [{ href: "/admin", label: "Dashboard", icon: <LayoutDashboard /> }] },
     {
+      title: "Precious PS Study Centre (P1–SS3)",
+      items: [
+        { href: "/admin/preciousps-study-centre", label: "Precious PS E-books (import)", icon: <BookOpen />, perm: "curriculum.manage" },
+        { href: "/admin/preciousps-exams", label: "Precious PS Exams & Top 3", icon: <Trophy />, perm: "results.view" },
+      ],
+    },
+    {
       title: "People",
       items: [
         { href: "/admin/students", label: "Students", icon: <Users />, perm: "students.view" },
@@ -89,7 +96,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         { href: "/admin/curriculum", label: "Curriculum · Topics", icon: <ListTree />, perm: "curriculum.manage" },
         { href: "/admin/lessons", label: "Lessons", icon: <BookOpen />, perm: "curriculum.manage" },
         { href: "/admin/resources", label: "Resources", icon: <Library />, perm: "resources.manage" },
-        { href: "/admin/materials", label: "Study Materials", icon: <FileText />, perm: "resources.manage" },
+        { href: "/admin/materials", label: "Study Materials & E-book files", icon: <FileText />, perm: "resources.manage" },
+        { href: "/admin/downloads", label: "Downloads Control", icon: <FileText />, perm: "resources.manage" },
         { href: "/admin/learning", label: "Dictionary & Games", icon: <BookOpen />, perm: "learning.manage" },
         { href: "/admin/games", label: "Games (add your own)", icon: <Trophy />, perm: "learning.manage" },
         { href: "/admin/knowledge", label: "Knowledge & Parent Learning", icon: <BookOpen />, perm: "learning.manage" },
@@ -103,6 +111,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         { href: "/admin/ai", label: "AI Question Generator", icon: <Bot />, perm: "questions.ai" },
         { href: "/admin/examinations", label: "Examinations", icon: <MonitorCheck />, perm: "exams.view" },
         { href: "/admin/jamb", label: "JAMB Tests", icon: <GraduationCap />, perm: "exams.view" },
+        { href: "/admin/jamb-texts", label: "JAMB Literature Texts", icon: <BookOpen />, perm: "exams.manage" },
         { href: "/admin/international", label: "International (Premium)", icon: <Trophy />, perm: "premium.manage" },
         { href: "/admin/attempts", label: "Attempts", icon: <Timer />, perm: "exams.attempts" },
         { href: "/admin/results", label: "Results", icon: <Trophy />, perm: "results.view" },

@@ -1919,3 +1919,138 @@ export const suggestions = pgTable(
   },
   (t) => [index("suggestions_idx").on(t.schoolId, t.status, t.createdAt)],
 );
+
+/* ---------------------------------------------------------------- e-books and study planner */
+
+/** A learner has read a topic's chapter in the e-book (Study Materials step of the learning path). */
+export const ebookReads = pgTable(
+  "ebook_reads",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    topicId: uuid("topic_id")
+      .notNull()
+      .references(() => topics.id, { onDelete: "cascade" }),
+    readAt: ts("read_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.topicId] })],
+);
+
+/** A learner's own study plan: what to study on which day, ticked when done. */
+export const studyPlans = pgTable(
+  "study_plans",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    day: text("day").notNull(),
+    subjectId: uuid("subject_id").references(() => subjects.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    minutes: integer("minutes").notNull().default(30),
+    doneAt: ts("done_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("study_plans_user_day_idx").on(t.userId, t.day)],
+);
+
+/* ---------------------------------------------------------------- Precious PS Study Centre (imported e-books) */
+
+/** A question of a Precious PS Study Centre unit: written answers are marked against the model answer. */
+export interface FscTheoryQuestion { q: string; a: string; /** Multiple choice: the options (the answer is one of them). */ options?: string[] }
+/** A Term Review CBT question of a Precious PS Study Centre e-book. */
+export interface FscCbtQuestion { stem: string; options: { label: string; text: string }[]; answer: string; explanation?: string }
+
+/**
+ * An e-book the Admin uploaded to the Precious PS Study Centre (Word, PDF or PowerPoint), split into units.
+ * Separate from school work: it never reaches report cards, only Rewards & Loyalty and the Precious PS Top 3.
+ */
+export const fscBooks = pgTable(
+  "fsc_books",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    classId: uuid("class_id").references(() => classes.id, { onDelete: "set null" }),
+    subjectId: uuid("subject_id").references(() => subjects.id, { onDelete: "set null" }),
+    termId: uuid("term_id").references(() => terms.id, { onDelete: "set null" }),
+    /** EBOOK (units with work) or STORY (a Precious PS story book, in chapters). */
+    kind: text("kind").notNull().default("EBOOK"),
+    title: text("title").notNull(),
+    subtitle: text("subtitle"),
+    introHtml: text("intro_html").notNull().default(""),
+    sourceAssetId: uuid("source_asset_id"),
+    sourceName: text("source_name"),
+    review: jsonb("review").$type<FscCbtQuestion[]>().notNull().default([]),
+    notices: jsonb("notices").$type<string[]>().notNull().default([]),
+    status: text("status").notNull().default("DRAFT"),
+    createdBy: uuid("created_by"),
+    createdAt: createdAt(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("fsc_books_school_class_idx").on(t.schoolId, t.classId, t.status)],
+);
+
+export const fscUnits = pgTable(
+  "fsc_units",
+  {
+    id: id(),
+    bookId: uuid("book_id")
+      .notNull()
+      .references(() => fscBooks.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    title: text("title").notNull(),
+    subtitle: text("subtitle"),
+    week: text("week"),
+    bodyHtml: text("body_html").notNull().default(""),
+    /** Lesson notes in the platform's rich-text format (maths, diagrams), for books made from the content packs. */
+    bodyMd: text("body_md"),
+    advanced: text("advanced"),
+    advancedAnswer: text("advanced_answer"),
+    classwork: jsonb("classwork").$type<FscTheoryQuestion[]>().notNull().default([]),
+    assignment: jsonb("assignment").$type<FscTheoryQuestion[]>().notNull().default([]),
+  },
+  (t) => [index("fsc_units_book_idx").on(t.bookId, t.position)],
+);
+
+/** Every submission of a Precious PS Study Centre classwork, assignment or Term Review (the first one counts for the Top 3). */
+export const fscAttempts = pgTable(
+  "fsc_attempts",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    bookId: uuid("book_id")
+      .notNull()
+      .references(() => fscBooks.id, { onDelete: "cascade" }),
+    unitId: uuid("unit_id").references(() => fscUnits.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    score: real("score").notNull(),
+    total: real("total").notNull(),
+    percentage: real("percentage").notNull(),
+    answers: jsonb("answers").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("fsc_attempts_user_book_idx").on(t.userId, t.bookId), index("fsc_attempts_book_idx").on(t.bookId, t.kind, t.createdAt)],
+);
+
+/** A prescribed literature text for JAMB (UTME), uploaded by the Admin as a PDF with its examination year. */
+export const jambTexts = pgTable(
+  "jamb_texts",
+  {
+    id: id(),
+    schoolId: schoolRef(),
+    title: text("title").notNull(),
+    author: text("author"),
+    /** The UTME year the text is prescribed for. */
+    year: integer("year").notNull(),
+    genre: text("genre").notNull().default("PROSE"),
+    assetId: uuid("asset_id").notNull(),
+    status: text("status").notNull().default("PUBLISHED"),
+    createdBy: uuid("created_by"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("jamb_texts_school_year_idx").on(t.schoolId, t.year)],
+);

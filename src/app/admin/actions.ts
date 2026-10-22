@@ -36,6 +36,8 @@ import * as guardians from "@/server/services/guardians";
 import { setupInternational } from "@/server/services/international";
 import * as central from "@/server/services/central";
 import * as hub from "@/server/services/hub";
+import * as fscSvc from "@/server/services/preciousps-study-centre";
+import * as jambTexts from "@/server/services/jamb-texts";
 import * as community from "@/server/services/community";
 import * as promo from "@/server/services/promotions";
 import * as studentImport from "@/server/services/student-import";
@@ -568,6 +570,14 @@ export async function saveResourceAction(id: string | null, _: ActionResult | nu
       status: str(f, "status") ?? "DRAFT",
     }, ctx).then(() => undefined), "Resource saved.");
 }
+/** The e-book chapters (topics) of a class and subject, for placing an uploaded file inside the book. */
+export async function chapterChoicesAction(classId: string, subjectId: string) {
+  return action({ role: "staff", perm: "resources.manage" }, async (a) => {
+    if (!/^[0-9a-f-]{36}$/i.test(classId) || !/^[0-9a-f-]{36}$/i.test(subjectId)) return [];
+    const rows = await curriculum.listTopics(a.schoolId, { classId, subjectId, includeDrafts: true });
+    return rows.map((r) => ({ value: r.t.id, label: r.t.title, term: r.term ?? "No term" }));
+  });
+}
 export async function resourceStatusAction(id: string, status: "DRAFT" | "PUBLISHED" | "ARCHIVED") {
   return action({ role: "staff", perm: "resources.manage" }, (a, ctx) => resources.setResourceStatus(a, id, status, ctx), "Resource updated.");
 }
@@ -582,7 +592,7 @@ export async function broadcastAction(_: ActionResult | null, f: FormData) {
 /* ----------------------------------------------- settings, CMS, branding */
 
 /** Settings sections that an assigned administrator may edit; everything else is Super Admin only. */
-const SETTING_PERMS: Partial<Record<SettingKey, Permission>> = { forum: "forum.manage", learningHub: "learning.manage", premium: "premium.manage", parents: "parents.manage", knowledgeHub: "learning.manage", promotion: "students.manage" };
+const SETTING_PERMS: Partial<Record<SettingKey, Permission>> = { forum: "forum.manage", learningHub: "learning.manage", premium: "premium.manage", parents: "parents.manage", knowledgeHub: "learning.manage", promotion: "students.manage", downloads: "resources.manage" };
 
 export async function saveSettingAction(key: SettingKey, value: unknown) {
   // Forum settings belong to whoever moderates the forum; everything else is Super Admin only.
@@ -941,6 +951,43 @@ export async function answerIdeaAction(id: string, _: ActionResult | null, form:
     await answerIdea(a, id, { status: String(form.get("status") ?? "NEW"), reply: String(form.get("reply") ?? "") }, ctx);
     revalidatePath("/admin/ideas");
   }, "Saved. The sender has been told.");
+}
+
+/* ------------------------------------------------- Precious PS Study Centre */
+
+export async function importFscBookAction(input: { kind?: string; assetId: string; classId?: string; subjectId?: string; termId?: string; title?: string; bookId?: string }) {
+  return action({ role: "staff", perm: "curriculum.manage" }, (a, ctx) => fscSvc.importFscBook(a, input, ctx));
+}
+export async function generateFscAction() {
+  return action({ role: "staff", perm: "curriculum.manage" }, (a, ctx) => fscSvc.generateFscFromPacks(a, ctx));
+}
+export async function publishAllFscAction(classId?: string) {
+  return action({ role: "staff", perm: "curriculum.manage" }, (a, ctx) => fscSvc.publishAllFsc(a, ctx, classId));
+}
+export async function fscStatusAction(id: string, status: "PUBLISHED" | "DRAFT") {
+  return action({ role: "staff", perm: "curriculum.manage" }, (a, ctx) => fscSvc.setFscStatus(a, id, status === "PUBLISHED" ? "PUBLISHED" : "DRAFT", ctx), status === "PUBLISHED" ? "Published to the Precious PS Study Centre." : "Moved back to draft.");
+}
+export async function deleteFscBookAction(id: string) {
+  return action({ role: "staff", perm: "curriculum.manage" }, (a, ctx) => fscSvc.deleteFscBook(a, id, ctx), "E-book deleted.");
+}
+export async function updateFscBookAction(id: string, _: ActionResult | null, f: FormData) {
+  return action({ role: "staff", perm: "curriculum.manage" }, (a, ctx) => fscSvc.updateFscBook(a, id, { title: str(f, "title") ?? "", classId: str(f, "classId") ?? null, subjectId: str(f, "subjectId") ?? null, termId: str(f, "termId") ?? null, review: f.has("review") ? String(f.get("review") ?? "") : undefined }, ctx), "E-book saved.");
+}
+export async function updateFscUnitAction(unitId: string, _: ActionResult | null, f: FormData) {
+  const t = (k: string) => String(f.get(k) ?? "");
+  return action({ role: "staff", perm: "curriculum.manage" }, (a, ctx) => fscSvc.updateFscUnit(a, unitId, { title: t("title"), subtitle: t("subtitle"), advanced: t("advanced"), advancedAnswer: t("advancedAnswer"), classwork: t("classwork"), assignment: t("assignment") }, ctx), "Unit saved.");
+}
+
+/* ------------------------------------------------- JAMB literature texts */
+
+export async function addJambTextAction(d: { assetId: string; title: string; author?: string; year: number; genre?: string }) {
+  return action({ role: "staff", perm: "exams.manage" }, (a, ctx) => jambTexts.addJambText(a, d, ctx), "Book added.");
+}
+export async function jambTextStatusAction(id: string, status: "PUBLISHED" | "DRAFT") {
+  return action({ role: "staff", perm: "exams.manage" }, (a, ctx) => jambTexts.setJambTextStatus(a, id, status === "PUBLISHED" ? "PUBLISHED" : "DRAFT", ctx), "Saved.");
+}
+export async function deleteJambTextAction(id: string) {
+  return action({ role: "staff", perm: "exams.manage" }, (a, ctx) => jambTexts.deleteJambText(a, id, ctx), "Book removed.");
 }
 
 export async function setPrimarySchoolAction(on: boolean) {

@@ -1,9 +1,9 @@
 /*
- * FODAN CBT ACADEMY service worker. It keeps a copy of files that never change (the app's own
+ * Precious PS Academy service worker. It keeps a copy of files that never change (the app's own
  * scripts, styles and fonts) and of the brand pictures, so that after the first visit a page needs
  * only its own data from the network. Pages, examination data, results and sound are never stored.
  */
-const CACHE = "fodan-static-v1";
+const CACHE = "preciousps-static-v1";
 
 self.addEventListener("install", () => self.skipWaiting());
 

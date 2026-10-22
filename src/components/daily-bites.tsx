@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Medal, Sparkles, Sun } from "lucide-react";
 import type { Bite } from "@/server/services/daily";
+import type { Value } from "@/content/african-values";
 import { cx } from "./ui/primitives";
 
 const LOOK: Record<string, { label: string; from: string; to: string; href: string }> = {
@@ -11,11 +12,20 @@ const LOOK: Record<string, { label: string; from: string; to: string; href: stri
 };
 
 /** Four colourful cards with today's word, idiom, proverb and common error. Rendered on the server: no extra downloads. */
-export function DailyBites({ bites, linkBase }: { bites: Bite[]; linkBase?: string }) {
-  if (!bites.length) return null;
+export function DailyBites({ bites, linkBase, value }: { bites: Bite[]; linkBase?: string; value?: Value }) {
+  if (!bites.length && !value) return null;
   return (
     <section aria-labelledby="bites-title" className="space-y-3">
       <h2 id="bites-title" className="flex items-center gap-2 text-lg font-extrabold text-navy-800"><Sparkles className="size-5 text-gold-500" aria-hidden /> Today&rsquo;s learning bites</h2>
+      {value && (
+        <div className="pop relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#3d1d08] via-[#7a3a10] to-[#9a3412] p-4 text-white shadow-card">
+          <div aria-hidden className="mudcloth absolute inset-0 opacity-20" />
+          <div aria-hidden className="kente-band absolute inset-x-0 bottom-0 h-1.5" />
+          <p className="relative text-[0.68rem] font-bold uppercase tracking-[0.16em] text-gold-400">African value of the day · {value[1]}</p>
+          <p className="relative mt-1 text-xl font-extrabold">{value[0]}</p>
+          <p className="relative mt-0.5 text-sm text-white/85">{value[2]} <strong className="text-gold-400">Today:</strong> {value[3]}</p>
+        </div>
+      )}
       <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {bites.map((b, i) => {
           const look = LOOK[b.kind] ?? LOOK.WORD;

@@ -67,6 +67,11 @@ export default async function LessonPage({ params }: PageProps<"/student/study/l
           </li>
         ))}
       </ol>
+      {done && (
+        <Link prefetch={false} href={`/student/ebooks/${v.subjectId}?topic=${l.topicId}#topic-${l.topicId}`} className="mb-6 flex items-center justify-between gap-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 px-5 py-3 text-white shadow-card hover:shadow-lift">
+          <span><span className="block text-xs font-bold uppercase tracking-wide text-white/80">Next on your learning path</span><span className="block font-extrabold">Study this topic further in your e-book (Study Materials) →</span></span>
+        </Link>
+      )}
 
       {embed && (
         <div className="mb-6 aspect-video overflow-hidden rounded-2xl bg-navy-900 shadow-card">

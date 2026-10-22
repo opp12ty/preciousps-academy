@@ -371,6 +371,8 @@ export async function startAttempt(actor: Actor, examId: string, clientSessionId
   if (exam.endsAt && exam.endsAt <= now) throw new AppError("EXAM_UNAVAILABLE", "This examination has closed.");
   if (exam.isPremium) await requirePremiumAccess(actor.id);
   else if (exam.requiresAccess) await requireFeature(actor.id, "CBT");
+  // CA tests and term examinations follow the learning path.
+  await (await import("./learning-path")).assertPathAllows(actor, exam);
 
   // Close out any attempt whose time ran out before we decide.
   await sweepExpiredAttempts({ userId: actor.id });

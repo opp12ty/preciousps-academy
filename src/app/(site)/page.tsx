@@ -12,7 +12,7 @@ const ICONS = { BookOpen, MonitorCheck, Target, ClipboardCheck, LineChart, Shiel
 
 /** Founder portrait shown until a replacement is uploaded in Homepage & Content → Homepage → Founder. */
 import { HomeExtras } from "@/components/site/home-extras";
-import { AfricanCulture, EducationSystem, KenteBand } from "@/components/site/home-africa";
+import { AfricanCulture, AfricanValues, EducationSystem, KenteBand } from "@/components/site/home-africa";
 import { LiveClock } from "@/components/site/live-clock";
 
 
@@ -23,6 +23,8 @@ export default async function HomePage() {
   const brand = await getBrand();
   const home = await getContent(brand.schoolId, "home");
   const faq = await getContent(brand.schoolId, "faq");
+  const af = await getContent(brand.schoolId, "home-africa");
+  const vals = await getContent(brand.schoolId, "african-values");
   const slides = home.carousel.slides.filter((s) => s.title.trim()).map((s) => ({ ...s, link: safeLink(s.link) }));
   const dark = home.appearance.darkGlowStyle;
   const announcements = home.announcements.items.filter((a) => a.text.trim()).map((a) => ({ ...a, link: safeLink(a.link) }));
@@ -131,7 +133,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <EducationSystem />
+      <EducationSystem pictureId={af.educationPictureAssetId} caption={af.educationCaption} text={{ eyebrow: af.educationEyebrow, heading: af.educationHeading, intro: af.educationIntro }} stages={af.stages} />
       <KenteBand />
 
       {/* FEATURES */}
@@ -188,10 +190,12 @@ export default async function HomePage() {
       </section>
 
       <KenteBand />
-      <AfricanCulture dark={dark} />
+      <div className="cv-auto"><AfricanCulture dark={dark} pictureId={af.culturePictureAssetId} caption={af.cultureCaption} text={{ eyebrow: af.cultureEyebrow, heading: af.cultureHeading, intro: af.cultureIntro }} cards={af.cultureCards} /></div>
+      <KenteBand />
+      <div className="cv-auto"><AfricanValues pictureId={af.farmPictureAssetId} caption={af.farmCaption} text={{ eyebrow: af.valuesEyebrow, heading: af.valuesHeading, intro: af.valuesIntro }} values={vals.values} /></div>
       <KenteBand />
 
-      <HomeExtras dark={dark} />
+      <div className="cv-auto"><HomeExtras dark={dark} /></div>
 
       {/* FOUNDER */}
       {founder.enabled && (

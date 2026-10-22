@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {
+  Award,
   Bell,
   BookMarked,
   BookOpen,
@@ -14,6 +15,7 @@ import {
   MessagesSquare,
   MonitorCheck,
   NotebookPen,
+  Route,
   ShieldCheck,
   Sun,
   Target,
@@ -40,13 +42,22 @@ export default async function StudentLayout({ children }: { children: React.Reac
     {
       title: "Learn",
       items: [
+        { href: "/student/path", label: "My Learning Path", icon: <Route /> },
+        { href: "/student/planner", label: "My Study Planner", icon: <ClipboardList /> },
         { href: "/student/study", label: t("student.studyCentre"), icon: <BookOpen /> },
+        { href: "/student/ebooks", label: "My E-books", icon: <Library /> },
         { href: "/student/subjects", label: t("student.subjects"), icon: <BookMarked /> },
         { href: "/student/classwork", label: t("student.classwork"), icon: <NotebookPen /> },
         { href: "/student/assignments", label: t("student.assignments"), icon: <ClipboardList /> },
         { href: "/student/holiday", label: "Holiday Programme", icon: <Sun /> },
         { href: "/student/resources", label: t("student.resources"), icon: <Library /> },
         { href: "/student/materials", label: t("student.materials"), icon: <FileText /> },
+      ],
+    },
+    {
+      title: "Precious PS Study Centre",
+      items: [
+        { href: "/student/preciousps-study-centre", label: "Precious PS Study Centre", icon: <Award /> },
       ],
     },
     {

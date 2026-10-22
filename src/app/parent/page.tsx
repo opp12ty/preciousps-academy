@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Brain, Users } from "lucide-react";
 import { dailyBites, lagosDay } from "@/server/services/daily";
+import { valueOfDay } from "@/content/african-values";
 import { holidayCalendar } from "@/server/services/holiday";
 import { DailyBites, HolidayBanner } from "@/components/daily-bites";
 import { requireParentPage } from "@/server/http";
@@ -51,7 +52,7 @@ export default async function ParentHome({ searchParams }: PageProps<"/parent">)
           <span className="block text-sm text-white/80">Nigeria, Africa, the world, health, money, history and more. Free, with explanations.</span>
         </span>
       </Link>
-      <DailyBites bites={bites} />
+      <DailyBites bites={bites} value={valueOfDay(lagosDay(), (await getContent(s.user.schoolId, "african-values")).values)} />
       {sp.welcome && <Alert tone="success">Your account is ready.{" "}If you entered a Student ID, a link request has been sent for your child to accept.</Alert>}
       {children.length ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

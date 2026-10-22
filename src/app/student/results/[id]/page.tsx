@@ -12,6 +12,8 @@ import { ResultReview } from "@/components/result-review";
 import { appealOfResult, appealWindow, APPEAL_DAYS } from "@/server/services/appeals";
 import { AppealForm } from "@/components/student/appeal-form";
 import { PrintButton } from "@/components/print-button";
+import { DownloadLocked, PrintLock } from "@/components/download-gate";
+import { downloadAccess } from "@/server/services/access";
 import { Alert, Badge, buttonClass, Card, PageHeader } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Result" };
@@ -21,7 +23,7 @@ export default async function ResultPage({ params, searchParams }: PageProps<"/s
   const s = await requireStudentPage();
   const { id } = await params;
   const sp = await searchParams;
-  const brand = await getBrand();
+  const [brand, dl] = await Promise.all([getBrand(), downloadAccess(s.user, "resultSlips")]);
   let r;
   try {
     r = await getStudentResult(s.actor, id, await reqCtx());
@@ -52,21 +54,24 @@ export default async function ResultPage({ params, searchParams }: PageProps<"/s
           Your score was calculated securely on the server.
         </Alert>
       )}
+      {!dl.allowed && <PrintLock phone={dl.phone} />}
       <div className="no-print">
         <PageHeader
           breadcrumbs={[{ href: "/student/results", label: "Results" }, { label: r.examTitle }]}
           title="Result"
           actions={
             <>
-              <PrintButton />
+              {dl.allowed ? <PrintButton /> : <DownloadLocked phone={dl.phone} needsCode={dl.needsCode} />}
               {canCertify && (
                 <Link href={`/student/certificate/${res.id}`} className={buttonClass("secondary")}>
                   <Award className="size-4" /> Certificate
                 </Link>
               )}
-              <a href={`/api/v1/results/${res.id}/slip`} className={buttonClass("primary")} target="_blank" rel="noopener">
-                <Download className="size-4" /> Result slip (PDF)
-              </a>
+              {dl.allowed && (
+                <a href={`/api/v1/results/${res.id}/slip`} className={buttonClass("primary")} target="_blank" rel="noopener">
+                  <Download className="size-4" /> Result slip (PDF)
+                </a>
+              )}
             </>
           }
         />

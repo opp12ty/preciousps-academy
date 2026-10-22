@@ -20,6 +20,8 @@ export const SCIENCE_HUB_CATEGORIES = [
   "Plumbing and sanitation",
   "Computers and phones",
   "Machines at home",
+  "Skills acquisition",
+  "Art and craft",
 ] as const;
 export type ScienceCategory = (typeof SCIENCE_HUB_CATEGORIES)[number];
 
@@ -169,4 +171,54 @@ export const SCIENCE_ARTICLES: StarterArticle[] = [
     ["Pressure booster", "Where tanks are not high enough, a **surface pump** with a **pressure tank** keeps water at steady pressure. A **pressure switch** starts the pump when a tap is opened."],
     ["Water quality", "Test borehole water before drinking. Common treatments: **sediment filters**, **activated carbon**, **chlorination** or **UV**, and boiling. Keep the borehole capped and away from soakaways."],
   ], ["Boreholes reach aquifers", "Submersible pumps use impellers", "Float switches prevent overflow", "Test and treat drinking water"], "Ask how water reaches the taps in your school. Is there a borehole, pump and tank? Draw the system."),
+
+  /* ------------------------------------------------------ skills acquisition */
+  ...guide("Skills acquisition", "Making liquid soap: a small-business skill", "How liquid soap is made, the safety rules, and how to cost and sell it.", [
+    ["What liquid soap is", "Liquid soap is a mixture of a **surfactant** (the part that lifts dirt and grease), **water**, a **thickener**, **colour** and **fragrance**. Many small producers in Nigeria use a ready-made base and mix it with water and additives."],
+    ["Safety first", "Some soap chemicals, such as **caustic soda**, burn skin and eyes. Learn only under a trained adult, wear **gloves, goggles and a mask**, work in an airy place, never taste or smell chemicals directly, and keep them away from children. Label every container."],
+    ["Process overview", "[[diagram: flow Measure water -> Dissolve thickener -> Add surfactant slowly -> Stir gently -> Add colour and scent -> Rest overnight -> Bottle and label || Typical steps]]"],
+    ["Business sense", "Work out the **cost per litre** (materials ÷ litres made), add packaging and transport, then set a price. Keep records of every sale. Quality and clean packaging bring returning customers."],
+  ], ["Learn under supervision", "Protective gear always", "Cost per litre guides price", "Label every container"], "With an adult, list the materials and prices for 10 litres of liquid soap and work out the cost per litre."),
+  ...guide("Skills acquisition", "Adire tie-dye at home", "A Yoruba textile art you can learn: patterns, steps and care.", [
+    ["About adire", "**Adire** is resist-dyed cloth from south-west Nigeria, made famous in **Abeokuta**. Parts of the cloth are tied, stitched or covered with starch so the dye cannot reach them, leaving patterns."],
+    ["Steps", "[[diagram: flow Wash cloth -> Tie or fold pattern -> Dip in dye -> Air and dip again -> Rinse -> Untie and dry || Tie-dye steps]]\nUse rubber bands or raffia to tie circles, folds or stripes. Each dip makes the colour deeper."],
+    ["Safety and care", "Wear gloves and old clothes; work outside. Wash new adire separately in cold water."],
+  ], ["Resist-dyeing makes patterns", "Abeokuta is famous for adire", "More dips, deeper colour"], "Tie-dye an old white T-shirt with an adult and photograph the result."),
+  ...guide("Skills acquisition", "Bead making and jewellery", "Design, string and sell beaded bracelets and necklaces.", [
+    ["Materials", "Beads (glass, plastic, wood or coral), **nylon thread or wire**, clasps, crimp beads, scissors and pliers."],
+    ["Making a bracelet", "1. Measure the wrist and add 2 cm.\n2. Plan a colour pattern.\n3. String the beads.\n4. Attach the clasp with a crimp bead.\n5. Test that it holds."],
+    ["Culture and business", "Beads carry deep meaning in many Nigerian cultures (for example coral beads worn by royalty and brides). Sell at school fairs, online or to boutiques; price by materials plus your time."],
+  ], ["Plan a pattern", "Secure clasps well", "Price materials plus time"], "Design and make a bracelet in your school colours."),
+  ...guide("Skills acquisition", "Baking bread and snacks", "The science of baking and the steps to bake bread and chin-chin safely.", [
+    ["The science", "**Yeast** feeds on sugar and gives off carbon dioxide gas, which makes bread dough **rise**. Heat in the oven sets the structure and browns the crust."],
+    ["Bread steps", "[[diagram: flow Mix flour, yeast, sugar, salt, water -> Knead 10 minutes -> Rise 1 hour -> Shape -> Rise again -> Bake 25–30 minutes || Bread making]]"],
+    ["Kitchen safety and hygiene", "Wash hands, tie hair back, use oven gloves, keep handles turned in and never leave hot oil unattended (chin-chin is fried)."],
+  ], ["Yeast makes dough rise", "Knead for strength", "Hygiene and heat safety"], "Bake a small loaf with an adult and record the rising time."),
+  ...guide("Skills acquisition", "Build a simple electric circuit", "Learn how circuits work with a safe battery, bulb and switch.", [
+    ["Parts", "A **battery** (energy source), **wires** (conductors), a **bulb** or LED (load) and a **switch** (controls the flow)."],
+    ["How it works", "[[diagram: flow Battery + -> Switch -> Bulb -> Battery - || A closed circuit lights the bulb]]\nCurrent flows only when the circuit is **closed**. Opening the switch breaks the path and the bulb goes off."],
+    ["Series and parallel", "In **series**, bulbs share one path and are dimmer; in **parallel**, each has its own path and stays bright."],
+    ["Safety", "Use only small batteries (1.5 V–9 V). **Never** experiment with mains electricity (230 V)."],
+  ], ["A circuit must be closed", "Series vs parallel", "Batteries only, never mains"], "Build a series and a parallel circuit with two bulbs and compare their brightness."),
+  /* ------------------------------------------------------------ art and craft */
+  ...guide("Art and craft", "Drawing basics: line, shape, shading and perspective", "The building blocks every artist and engineer uses.", [
+    ["Line and shape", "Every drawing starts with **lines** that form **shapes**: circles, squares and triangles. Sketch lightly first, then darken the lines you keep."],
+    ["Shading", "Shading shows **light and shadow** so objects look solid. Press harder for dark areas and lighter for highlights. Practise a **tone scale** from white to black in five steps."],
+    ["Perspective", "Objects look smaller as they get further away. In **one-point perspective**, lines meet at a **vanishing point** on the horizon.\n\n[[diagram: flow Horizon line -> Vanishing point -> Lines to the point -> Depth || One-point perspective]]"],
+  ], ["Sketch lightly first", "Shading makes forms solid", "Lines meet at the vanishing point"], "Draw a road and trees in one-point perspective."),
+  ...guide("Art and craft", "Colour: the colour wheel and painting", "Primary, secondary and complementary colours, and how artists use them.", [
+    ["The colour wheel", "**Primary** colours: red, yellow, blue. **Secondary**: orange, green, purple (mix two primaries). **Complementary** colours sit opposite each other (red–green, blue–orange) and make each other look brighter."],
+    ["Warm and cool", "Warm colours (red, orange, yellow) feel lively; cool colours (blue, green, purple) feel calm."],
+    ["Painting tips", "Mix on a palette, paint large areas first, let layers dry, and clean brushes after use."],
+  ], ["Three primaries make all colours", "Complements contrast", "Warm vs cool"], "Paint a colour wheel with 12 colours using only red, yellow and blue."),
+  ...guide("Art and craft", "Nigerian art traditions", "Nok, Ife, Benin, Igbo-Ukwu, Uli and modern Nigerian art.", [
+    ["Ancient masterpieces", "**Nok** terracotta heads (over 2,000 years old), **Igbo-Ukwu** bronzes (about the 9th century), **Ife** bronze and terracotta heads, and the **Benin** bronzes and ivories."],
+    ["Living traditions", "**Uli** body and wall painting (Igbo), **adire** cloth (Yoruba), **Kano dye pits**, leatherwork, pottery (e.g. Ladi Kwali's famous pots) and wood carving."],
+    ["Modern artists", "Ben Enwonwu, Bruce Onobrakpeya and many young Nigerian artists exhibit worldwide."],
+  ], ["Nigeria has world-famous ancient art", "Traditions are still alive", "Modern Nigerian art is celebrated"], "Visit a museum or gallery, or research one Nigerian artist, and present their work to your class."),
+  ...guide("Art and craft", "Clay modelling and pottery", "Shape, dry and fire clay into useful and beautiful objects.", [
+    ["Methods", "**Pinch** pots (pressing with fingers), **coil** pots (rolling ropes of clay and stacking them) and **slab** building (flat sheets joined together)."],
+    ["Drying and firing", "Dry slowly in the shade to avoid cracks, then **fire** in a kiln or traditional open fire to harden."],
+    ["Decoration", "Carve patterns, add impressed designs, or polish (burnish) with a smooth stone."],
+  ], ["Pinch, coil and slab", "Dry slowly", "Firing hardens clay"], "Make a small coil pot and decorate it with a pattern from your culture."),
 ];

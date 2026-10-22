@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { requireStudentPage } from "@/server/http";
 import { getBrand } from "@/server/brand";
-import { featureWithheld } from "@/server/services/access";
+import { downloadAccess, featureWithheld } from "@/server/services/access";
 import { reportCard } from "@/server/services/records";
 import { FEATURE_DENIED } from "@/core/features";
 import { ReportCardView } from "@/components/report-card";
@@ -21,6 +21,6 @@ export default async function StudentReportCard({ searchParams }: PageProps<"/st
     );
   }
   const term = typeof sp.term === "string" && /^[0-2]$/.test(sp.term) ? Number(sp.term) : undefined;
-  const [card, brand] = await Promise.all([reportCard(s.user.schoolId, s.user.id, term), getBrand()]);
-  return <ReportCardView card={card} brand={brand} base="/student/report-card" note="Your report card is worked out from your released results and submitted assignments. A later term's card includes the terms before it." />;
+  const [card, brand, dl] = await Promise.all([reportCard(s.user.schoolId, s.user.id, term), getBrand(), downloadAccess(s.user, "reportCards")]);
+  return <ReportCardView card={card} brand={brand} download={dl} base="/student/report-card" note="Your report card is worked out from your released results and submitted assignments. A later term's card includes the terms before it." />;
 }

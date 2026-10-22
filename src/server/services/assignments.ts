@@ -10,6 +10,7 @@ import { broadcast } from "./notifications";
 import { resolveSection, sectionCond, studentScope } from "./scope";
 import { SECTIONS, sectionAllows } from "@/core/sections";
 import { loadBankQuestions } from "./questions";
+import { getSetting } from "../settings";
 
 const uuidOpt = z
   .string()
@@ -137,9 +138,11 @@ export async function listStudentAssignments(actor: Actor, kind?: "ASSIGNMENT" |
     ? await db.select().from(assignmentAttempts).where(and(eq(assignmentAttempts.userId, actor.id), inArray(assignmentAttempts.assignmentId, ids)))
     : [];
   const now = new Date();
+  const cfg = await getSetting(actor.schoolId, "learning");
   return rows.map(({ a, subject, topic }) => {
     const mine = atts.filter((x) => x.assignmentId === a.id);
     const best = mine.reduce<number | null>((m, x) => (m === null || x.percentage > m ? x.percentage : m), null);
+    const mustRedo = cfg.learningPath && a.kind === "ASSIGNMENT" && mine.length > 0 && (best ?? 0) < cfg.assignmentPassMark;
     return {
       id: a.id,
       title: a.title,
@@ -152,7 +155,8 @@ export async function listStudentAssignments(actor: Actor, kind?: "ASSIGNMENT" |
       attemptsUsed: mine.length,
       best,
       passed: mine.some((x) => x.passed),
-      state: a.startsAt && a.startsAt > now ? "UPCOMING" : a.dueAt && a.dueAt < now ? "CLOSED" : mine.length >= a.attemptLimit ? "DONE" : mine.length ? "IN_PROGRESS" : "PENDING",
+      mustRedo,
+      state: a.startsAt && a.startsAt > now ? "UPCOMING" : a.dueAt && a.dueAt < now ? "CLOSED" : mustRedo ? "IN_PROGRESS" : mine.length >= a.attemptLimit ? "DONE" : mine.length ? "IN_PROGRESS" : "PENDING",
     };
   });
 }
@@ -198,7 +202,13 @@ export async function submitAssignment(actor: Actor, id: string, raw: unknown, c
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM users WHERE id = ${actor.id} FOR UPDATE`);
     const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(assignmentAttempts).where(and(eq(assignmentAttempts.assignmentId, id), eq(assignmentAttempts.userId, actor.id)));
-    if (n >= a.attemptLimit) throw new AppError("ATTEMPT_LIMIT", `You have used all ${a.attemptLimit} attempt(s).`);
+    if (n >= a.attemptLimit) {
+      // On the learning path an assignment may be redone, after reading the corrections, until it reaches the pass mark.
+      const cfg = await getSetting(actor.schoolId, "learning", tx);
+      const [{ b }] = await tx.select({ b: sql<number | null>`max(${assignmentAttempts.percentage})` }).from(assignmentAttempts).where(and(eq(assignmentAttempts.assignmentId, id), eq(assignmentAttempts.userId, actor.id)));
+      const redo = cfg.learningPath && a.kind === "ASSIGNMENT" && (b === null || Number(b) < cfg.assignmentPassMark);
+      if (!redo) throw new AppError("ATTEMPT_LIMIT", `You have used all ${a.attemptLimit} attempt(s).`);
+    }
     const feedback: { questionId: string; isCorrect: boolean; answered: boolean; correctOptionIds: string[]; explanation: string | null }[] = [];
     const items = bank.map((q) => {
       const snap = buildSnapshot(q, false, Math.random);

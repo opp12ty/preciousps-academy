@@ -3,6 +3,7 @@ import { CalendarDays, Sun, Users } from "lucide-react";
 import { requireParentPage } from "@/server/http";
 import { parentHoliday } from "@/server/services/holiday";
 import { TASK_KINDS } from "@/content/holiday";
+import { getContent } from "@/server/services/content";
 import { ParentTaskDelete, ParentTaskForm } from "@/components/holiday";
 import { Badge, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui/primitives";
 
@@ -13,6 +14,7 @@ const fmt = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("en-NG"
 export default async function ParentHolidayPage() {
   const s = await requireParentPage();
   const p = await parentHoliday(s.actor);
+  const special = await getContent(s.user.schoolId, "special-days");
   const h = p.holiday;
   return (
     <div className="space-y-6">
@@ -61,6 +63,19 @@ export default async function ParentHolidayPage() {
       ) : (
         <Card><EmptyState icon={<Users className="size-6" />} title="No linked child yet" description="Link your child's account from My children first. Then you can give holiday tasks and follow their progress." /></Card>
       )}
+      <Card>
+        <CardHeader title="Special days and festivals" description={special.intro} />
+        <ul className="grid gap-3 p-5 pt-0 md:grid-cols-2">
+          {special.days.filter((d) => d.name.trim()).map((d) => (
+            <li key={d.name} className="rounded-xl border border-line p-4">
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: d.faith === "Islamic" ? "#047857" : d.faith === "Christian" ? "#1d4ed8" : "#a8841e" }}>{d.faith} · {d.when}</p>
+              <p className="mt-0.5 font-extrabold text-navy-800">{d.name}</p>
+              <p className="mt-1 text-sm text-muted">{d.about}</p>
+              <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm text-navy-800">{d.activities.filter((a) => a.trim()).map((a) => <li key={a}>{a}</li>)}</ul>
+            </li>
+          ))}
+        </ul>
+      </Card>
     </div>
   );
 }

@@ -16,13 +16,14 @@ export const FEATURES = {
   CULTURE_CHALLENGE: { label: "Culture Challenge", group: "Games", description: "Nigerian, African and world culture and history." },
   COMMUNITY: { label: "Student Community", group: "Community", description: "The moderated student forum." },
   INTERNATIONAL: { label: "International & Advanced", group: "Premium", description: "IELTS-, TOEFL-, SAT- and checkpoint-style practice." },
+  DOWNLOADS: { label: "Downloads (e-books & exams)", group: "Downloads", description: "Download and print e-books, study PDFs, result slips and report cards. Without it they can still be read in the app." },
 } as const;
 
 export type Feature = keyof typeof FEATURES;
 export const FEATURE_KEYS = Object.keys(FEATURES) as Feature[];
 
-/** What a code opens when no features were chosen for it (every code made before entitlements existed). */
-export const STANDARD_FEATURES: Feature[] = FEATURE_KEYS.filter((f) => f !== "INTERNATIONAL");
+/** What a code opens when no features were chosen for it (every code made before entitlements existed). Downloads are always chosen on purpose. */
+export const STANDARD_FEATURES: Feature[] = FEATURE_KEYS.filter((f) => f !== "INTERNATIONAL" && f !== "DOWNLOADS");
 
 /** The features a code grants: its own list when one was set, otherwise the standard set; Premium adds International. */
 export function featuresOfCode(code: { features: string[] | null; tier: string }): Feature[] {

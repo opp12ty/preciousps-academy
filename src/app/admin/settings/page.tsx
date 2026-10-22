@@ -157,6 +157,13 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
                   { key: "weeklyGoalDays", label: "Weekly study goal (active days per week)", type: "number", min: 1, max: 7, hint: "Shown on the student dashboard and the parent report." },
                   { key: "enforcePrerequisites", label: "Enforce prerequisites", type: "bool" },
                   { key: "allowRetry", label: "Allow classwork retries", type: "bool" },
+                  { key: "learningPath", label: "Follow the Precious PS learning path", type: "bool", hint: "Study Centre → assignments (redo until the pass mark) → CBT Exam Prep (CA 1) → Study Materials (e-book) → Revision CBT (CA 2) → term examination. School accounts are not held to it." },
+                  { key: "assignmentPassMark", label: "Assignment score needed to move on (%)", type: "number", min: 1, max: 100 },
+                  { key: "ca1Questions", label: "Questions in CBT Exam Prep (CA 1)", type: "number", min: 5, max: 200 },
+                  { key: "ca2Questions", label: "Questions in Revision CBT (CA 2)", type: "number", min: 5, max: 200 },
+                  { key: "weightAssignment", label: "Report card: Assignment marks", type: "number", min: 0, max: 100 },
+                  { key: "weightCa", label: "Report card: CA test marks (CA 1 + CA 2)", type: "number", min: 0, max: 100 },
+                  { key: "weightExam", label: "Report card: Examination marks", type: "number", min: 0, max: 100 },
                 ])} />
               </div>
             </Card>

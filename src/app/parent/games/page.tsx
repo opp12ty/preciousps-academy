@@ -18,6 +18,8 @@ export default async function ParentGames() {
       <QuizRunner
         games={[
           { mode: "PARENT_GK", title: "General Knowledge Exam", text: "A fresh set of questions every time from a bank of over 400: Nigeria and its states, Africa, the world, history, science, health and first aid, money, language, sport, culture and everyday life." },
+          { mode: "PARENT_ISLAMIC", title: "Islamic Knowledge Game", text: "The Qur'an, the Prophets and Islamic practice. Optional, with explanations." },
+          { mode: "PARENT_BIBLE", title: "Bible Knowledge Game", text: "Bible stories and teachings. Optional, with explanations." },
           { mode: "PARENTING", title: "Parenting Scenario Challenge", text: "Everyday situations with children and teenagers: what response helps most? Includes child development and temperament." },
           { mode: "PARENT_KNOWLEDGE", title: "Knowledge Challenge", text: "Nigeria, Africa, the world, and science and technology." },
         ]}

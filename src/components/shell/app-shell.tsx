@@ -1,6 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
+import { PageFilter } from "./page-filter";
 import { Bell, LogOut, Menu, Search, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -154,8 +155,9 @@ export function AppShell({
               />
             </form>
           ) : (
-            <div className="flex-1" />
+            <div className="flex min-w-0 flex-1"><PageFilter className="w-full max-w-md" /></div>
           )}
+          {searchable && <PageFilter className="hidden w-64 xl:block" />}
           <div className="ml-auto flex items-center gap-2">
             <Link href={`${root}/notifications`} className="relative grid size-10 place-items-center rounded-xl text-navy-800 ring-1 ring-line hover:bg-surface" aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`}>
               <Bell className="size-5" />

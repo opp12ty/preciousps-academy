@@ -89,6 +89,7 @@ async function Settings({ schoolId }: { schoolId: string }) {
     { key: "idiomsEnabled", label: "Show Idioms", type: "bool" },
     { key: "proverbsEnabled", label: "Show Proverbs", type: "bool" },
     { key: "commonErrorsEnabled", label: "Show Common Errors", type: "bool" },
+    { key: "registersEnabled", label: "Show Registers (professions)", type: "bool" },
     { key: "clichesEnabled", label: "Show Clichés", type: "bool" },
     { key: "phrasalVerbsEnabled", label: "Show Phrasal Verbs", type: "bool" },
     { key: "gamesEnabled", label: "Show Games", type: "bool", hint: "Switch off to hide every game at once." },

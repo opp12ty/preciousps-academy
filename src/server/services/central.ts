@@ -51,7 +51,7 @@ export const CENTRAL_COLUMNS: Record<CurriculumKey, string[]> = {
   exams: ["Subject", ...PACK_COLUMNS.exams],
   assignments: ["Subject", ...PACK_COLUMNS.assignments],
 };
-export const WORD_SHEETS: Record<WordKind, string> = { WORD: "Dictionary", IDIOM: "Idioms", CLICHE: "Cliches", PHRASAL_VERB: "Phrasal Verbs", PROVERB: "Proverbs", COMMON_ERROR: "Common Errors" };
+export const WORD_SHEETS: Record<WordKind, string> = { WORD: "Dictionary", IDIOM: "Idioms", CLICHE: "Cliches", PHRASAL_VERB: "Phrasal Verbs", PROVERB: "Proverbs", COMMON_ERROR: "Common Errors", REGISTER: "Registers" };
 export const WORD_COLUMNS = ["Word or Phrase", "Part of Speech", "Meaning", "Example", "Picture (emoji)", "Section", "Class", "Status"];
 export const RESOURCE_SHEET = "Resources";
 export const RESOURCE_COLUMNS = ["Title", "Description", "Subject", "Class", "Section", "Type", "Link (https)", "Recommended", "Premium", "Status"];
@@ -286,7 +286,7 @@ export async function previewCentral(actor: Actor, file: { name: string; bytes: 
   const resources = parseResources(wb, l);
   const hub = parseHub(wb);
   const holiday = parseHoliday(wb, l);
-  const counts = { WORD: 0, IDIOM: 0, CLICHE: 0, PHRASAL_VERB: 0, PROVERB: 0, COMMON_ERROR: 0 } as Record<WordKind, number>;
+  const counts = { WORD: 0, IDIOM: 0, CLICHE: 0, PHRASAL_VERB: 0, PROVERB: 0, COMMON_ERROR: 0, REGISTER: 0 } as Record<WordKind, number>;
   for (const w of words.rows) counts[w.kind]++;
   return {
     subjects: out,
